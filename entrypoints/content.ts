@@ -9,6 +9,6 @@ export default defineContentScript({
     mountSidebarControlUi(ctx);
     console.log("Content script loaded on", window.location.href);
     fetchMarginTable();
-    showMargin(ctx);
+    addMarginToTableObat(ctx);
   },
 });
