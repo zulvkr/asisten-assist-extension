@@ -1,10 +1,14 @@
 const API_KEY = "AIzaSyBs2KxfVTHAA8ccLG7cc4lQVqwWOzsMOTE";
 const SPREADSHEET_ID = "1e1Dx9ssIJYDQYnMCygwMS2RfX3WxXF7aN9nvV9995wA";
-const RANGE = "TabelMargin"; // Adjust as needed
+const RANGE = "TabelMargin";
+
+type kodeObat = string;
+type namaObat = string;
+type marginObat = string;
 
 declare global {
   interface Window {
-    marginData: Array<Array<string>>;
+    marginData: Array<[kodeObat, namaObat, marginObat]>;
   }
 }
 

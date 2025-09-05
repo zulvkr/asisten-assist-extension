@@ -1,4 +1,10 @@
 import { defineConfig } from "wxt";
+import { resolve } from "node:path";
 
 // See https://wxt.dev/api/config.html
-export default defineConfig({});
+export default defineConfig({
+  webExt: {
+    chromiumProfile: resolve(".wxt/chrome-data"),
+    keepProfileChanges: true,
+  },
+});

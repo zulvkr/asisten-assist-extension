@@ -42,6 +42,12 @@ function createBodyCell(
   return td;
 }
 
+function removeExtraNodes(cell: HTMLTableCellElement) {
+  for (let i = 1; i < cell.childNodes.length; ) {
+    cell.removeChild(cell.childNodes[i]);
+  }
+}
+
 function addMarginColumn(table: HTMLTableElement) {
   const marginData: MarginRow[] = (window as any).marginData || [];
   const headerRow = table.querySelector(
@@ -64,10 +70,16 @@ function addMarginColumn(table: HTMLTableElement) {
   const kodeColIdx = getColumnIndex(headerRow, "Kode");
   if (kodeColIdx === -1) return;
 
+  const namaObatColIdx = getColumnIndex(headerRow, "Nama Obat");
+  if (namaObatColIdx === -1) return;
+
   table.querySelectorAll("tbody tr").forEach((row) => {
     const tr = row as HTMLTableRowElement;
     const codeCell = tr.cells[kodeColIdx];
     if (!codeCell) return;
+    const namaObatCell = tr.cells[namaObatColIdx];
+    if (!namaObatCell) return;
+    removeExtraNodes(namaObatCell);
     const code = codeCell.textContent?.trim();
     const marginRow = marginData.find((dataRow) => dataRow[0] === code);
     const lastCell = tr.cells[tr.cells.length - 1] || null;
