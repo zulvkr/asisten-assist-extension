@@ -9,6 +9,19 @@ export default defineContentScript({
     mountSidebarControlUi(ctx);
     console.log("Content script loaded on", window.location.href);
     fetchMarginTable();
-    addMarginToTableObat(ctx);
+
+    const observer = new MutationObserver(() => {
+      modifyTableObat(ctx);
+    });
+
+    function waitForTargetAndObserve() {
+      const target = document.querySelector("#kamarmedis-content");
+      if (target) {
+        observer.observe(target, { childList: true, subtree: true });
+      } else {
+        setTimeout(waitForTargetAndObserve, 500);
+      }
+    }
+    waitForTargetAndObserve();
   },
 });
