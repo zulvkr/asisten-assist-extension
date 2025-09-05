@@ -7,5 +7,8 @@ export default defineContentScript({
   matches: ["https://clinica.assist.id/*"],
   main(ctx) {
     mountSidebarControlUi(ctx);
+    console.log("Content script loaded on", window.location.href);
+    fetchMarginTable();
+    showMargin(ctx);
   },
 });
