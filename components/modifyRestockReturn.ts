@@ -1,3 +1,37 @@
+function createOrUpdateHargaBeliPPNDiv(hargaBeliInput: HTMLInputElement) {
+  const grandParent = hargaBeliInput.parentElement
+    ?.parentElement as HTMLElement;
+  if (!grandParent) return;
+  let ppnDiv = grandParent.querySelector(
+    "#harga-beli-ppn"
+  ) as HTMLElement | null;
+  if (!ppnDiv) {
+    ppnDiv = document.createElement("div");
+    ppnDiv.id = "harga-beli-ppn";
+    ppnDiv.style.background = "#fffbe6";
+    ppnDiv.style.border = "1px solid #ffe58f";
+    ppnDiv.style.borderRadius = "6px";
+    ppnDiv.style.padding = "8px 12px";
+    ppnDiv.style.marginTop = "8px";
+    ppnDiv.style.fontFamily = "inherit";
+    ppnDiv.style.fontSize = "14px";
+    ppnDiv.style.color = "#ad8b00";
+    ppnDiv.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)";
+    grandParent.appendChild(ppnDiv);
+  }
+  const val = hargaBeliInput.value;
+  const num = parseRupiah(val);
+  if (num !== null) {
+    const withPPN = Math.round(num * 1.11);
+    ppnDiv.innerHTML = `<strong>Bila ditambah 11%:</strong> <span>${withPPN.toLocaleString(
+      "id-ID"
+    )}</span>`;
+    ppnDiv.style.display = "";
+  } else {
+    ppnDiv.innerHTML = "";
+    ppnDiv.style.display = "none";
+  }
+}
 const h1XPath =
   '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/div[1]/div/h1[text()="Restock dan Return Obat / Barang"]';
 const obatNameInputXPath =
@@ -164,5 +198,16 @@ export const modifyRestockReturn = (ctx: any) => {
     inputHargaJualSatuanObatBaru
   );
 
+  if (!(hargaBeliInput && hargaJualInput)) return;
+
   createOrUpdateSaranHargaJual(hargaBeliInput, hargaJualInput, matchingData);
+
+  if (!(hargaBeliInput as any)._ppnListener) {
+    const updatePPNDiv = () => {
+      createOrUpdateHargaBeliPPNDiv(hargaBeliInput);
+    };
+    hargaBeliInput.addEventListener("input", updatePPNDiv);
+    (hargaBeliInput as any)._ppnListener = updatePPNDiv;
+    createOrUpdateHargaBeliPPNDiv(hargaBeliInput);
+  }
 };
