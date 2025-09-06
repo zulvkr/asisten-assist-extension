@@ -89,7 +89,6 @@ function addMarginColumn(table: HTMLTableElement) {
     tr.appendChild(createBodyCell(lastCell, marginRow ? marginRow[2] : ""));
   });
 }
-
 window.tableObatWasLoadingState || false;
 
 export const modifyTableObat = (ctx: any) => {
@@ -115,6 +114,7 @@ export const modifyTableObat = (ctx: any) => {
     "thead tr"
   ) as HTMLTableRowElement | null;
   const bodyRows = table.querySelectorAll("tbody tr");
+  if (!headerRow) return;
 
   // Check if currently in loading/no data state
   const firstBodyRow = bodyRows[0] as HTMLTableRowElement | null;
@@ -124,16 +124,13 @@ export const modifyTableObat = (ctx: any) => {
     firstBodyRow.cells[0].getAttribute("colspan") === "12"
   );
 
-  const hasMarginCol =
-    headerRow &&
-    Array.from(headerRow.cells).some(
-      (cell) => cell.textContent?.trim() === marginColumnTitle
-    );
+  const hasMarginCol = Array.from(headerRow.cells).some(
+    (cell) => cell.textContent?.trim() === marginColumnTitle
+  );
 
   // Add margin column if not present, or if table just finished loading data
   const shouldAddMarginCol =
-    headerRow &&
-    (!hasMarginCol || (window.tableObatWasLoadingState && !isLoadingState));
+    !hasMarginCol || (window.tableObatWasLoadingState && !isLoadingState);
   if (shouldAddMarginCol) {
     addMarginColumn(table);
   }
