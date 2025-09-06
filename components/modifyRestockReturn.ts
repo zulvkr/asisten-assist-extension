@@ -136,10 +136,13 @@ function createOrUpdateSaranHargaJual(
         const beliVal = hargaBeliInput.value;
         const beliNum = parseRupiah(beliVal);
         if (beliNum !== null) {
-          const jualNum = Math.round(beliNum * (1 + marginPercent / 100));
+          const roundedFromNum = Math.round(
+            beliNum * (1 + marginPercent / 100)
+          );
+          const jualNum = calculateSaranHargaJual(beliNum, marginPercent);
           extraDiv.innerHTML = `<strong>Saran Harga Jual:</strong> Rp ${jualNum.toLocaleString(
             "id-ID"
-          )}`;
+          )} <br/>dari pembulatan Rp ${roundedFromNum.toLocaleString("id-ID")}`;
         } else {
           extraDiv.innerHTML = `<strong>Saran Harga Jual:</strong> -`;
         }
@@ -150,6 +153,37 @@ function createOrUpdateSaranHargaJual(
       updateHargaJualExtra();
     }
   }
+}
+
+function calculateSaranHargaJual(
+  hargaBeli: number,
+  marginPercent: number
+): number {
+  const basePrice = Math.round(hargaBeli * (1 + marginPercent / 100));
+  const multipliedBy10 = basePrice * 10;
+
+  if (multipliedBy10 <= 10000) {
+    const remainder = multipliedBy10 % 1000;
+    if (remainder !== 0) {
+      const adjustment = (1000 - remainder) / 10;
+      return basePrice + adjustment;
+    }
+  } else if (multipliedBy10 > 10000 && multipliedBy10 <= 50000) {
+    const remainder = basePrice % 200;
+    if (remainder !== 0) {
+      if (remainder >= 100) {
+        return basePrice + (200 - remainder);
+      } else {
+        return basePrice - remainder;
+      }
+    }
+  } else {
+    const remainder = basePrice % 1000;
+    if (remainder !== 0) {
+      return basePrice - remainder;
+    }
+  }
+  return basePrice;
 }
 
 function findMatchingMarginData(
