@@ -89,25 +89,13 @@ function addMarginColumn(table: HTMLTableElement) {
     tr.appendChild(createBodyCell(lastCell, marginRow ? marginRow[2] : ""));
   });
 }
-window.tableObatWasLoadingState || false;
+// Removed global window.tableObatWasLoadingState
 
 export const modifyTableObat = (ctx: any) => {
-  const h1 = document.evaluate(
-    h1XPath,
-    document,
-    null,
-    XPathResult.FIRST_ORDERED_NODE_TYPE,
-    null
-  ).singleNodeValue as HTMLHeadingElement | null;
+  const h1 = evaluateXPath<HTMLHeadingElement>(h1XPath, document);
   if (!h1) return;
 
-  const table = document.evaluate(
-    tableXPath,
-    document,
-    null,
-    XPathResult.FIRST_ORDERED_NODE_TYPE,
-    null
-  ).singleNodeValue as HTMLTableElement | null;
+  const table = evaluateXPath<HTMLTableElement>(tableXPath, document);
   if (!table) return;
 
   const headerRow = table.querySelector(
@@ -128,12 +116,14 @@ export const modifyTableObat = (ctx: any) => {
     (cell) => cell.textContent?.trim() === marginColumnTitle
   );
 
+  const prevLoadingState = (table as any)._tableObatWasLoadingState || false;
+
   // Add margin column if not present, or if table just finished loading data
   const shouldAddMarginCol =
-    !hasMarginCol || (window.tableObatWasLoadingState && !isLoadingState);
+    !hasMarginCol || (prevLoadingState && !isLoadingState);
   if (shouldAddMarginCol) {
     addMarginColumn(table);
   }
 
-  window.tableObatWasLoadingState = isLoadingState;
+  (table as any)._tableObatWasLoadingState = isLoadingState;
 };

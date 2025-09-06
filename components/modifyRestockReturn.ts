@@ -1,40 +1,42 @@
-function parseRupiah(str: string): number | null {
-  // Remove Rp, dots, and spaces, replace comma with dot
-  const cleaned = str
-    .replace(/Rp\s?/i, "")
-    .replace(/\./g, "")
-    .replace(/,/g, ".")
-    .trim();
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? null : num;
-}
+const h1XPath =
+  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/div[1]/div/h1[text()="Restock dan Return Obat / Barang"]';
+const obatNameInputXPath =
+  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//*[@id="autocomplete"]';
+const inputHargaBeliSatuanObat =
+  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//input[@name="baseFee"]';
+const inputHargaJualSatuanObatBaru =
+  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//input[@name="sellNormalFeeNew"]';
+
 function createOrUpdateObatNameExtraDiv(
   obatNameInput: HTMLInputElement,
   matchingData: [string, string, string] | null
 ) {
   const parent = obatNameInput.parentElement as HTMLElement;
-  const grandParent = parent.parentElement as HTMLElement;
-  let extraDiv = grandParent.querySelector(
+  const grandParent = parent?.parentElement as HTMLElement;
+  let extraDiv = grandParent?.querySelector(
     "#extraobatname"
   ) as HTMLElement | null;
   if (!extraDiv) {
-    extraDiv = document.createElement("div") as HTMLElement;
+    extraDiv = document.createElement("div");
     extraDiv.id = "extraobatname";
-    if (parent.nextSibling) {
-      grandParent.insertBefore(extraDiv, parent.nextSibling);
+    if (parent?.nextSibling) {
+      grandParent?.insertBefore(extraDiv, parent.nextSibling);
     } else {
-      grandParent.appendChild(extraDiv);
+      grandParent?.appendChild(extraDiv);
     }
   }
-  extraDiv.style.background = "#f8f9fa";
-  extraDiv.style.border = "1px solid #dee2e6";
-  extraDiv.style.borderRadius = "6px";
-  extraDiv.style.padding = "8px 12px";
-  extraDiv.style.marginTop = "8px";
-  extraDiv.style.fontFamily = "inherit";
-  extraDiv.style.fontSize = "14px";
-  extraDiv.style.color = "#333";
-  extraDiv.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)";
+  setStyles(extraDiv, {
+    background: "#f8f9fa",
+    border: "1px solid #dee2e6",
+    borderRadius: "6px",
+    padding: "8px 12px",
+    marginTop: "8px",
+    fontFamily: "inherit",
+    fontSize: "14px",
+    color: "#333",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+  });
+
   const [kode, nama, margin] = matchingData || ["-", "-", "-"];
   extraDiv.innerHTML = `
     <div><strong>Kode Obat:</strong> ${kode}</div>
@@ -68,73 +70,52 @@ function createOrUpdateSaranHargaJual(
     if (!extraDiv) {
       extraDiv = document.createElement("div");
       extraDiv.id = extraHargaJualId;
-      extraDiv.style.background = "#eaf7ea";
-      extraDiv.style.border = "1px solid #b2d8b2";
-      extraDiv.style.borderRadius = "6px";
-      extraDiv.style.padding = "6px 10px";
-      extraDiv.style.marginTop = "6px";
-      extraDiv.style.fontFamily = "inherit";
-      extraDiv.style.fontSize = "13px";
-      extraDiv.style.color = "#225522";
-      extraDiv.style.boxShadow = "0 1px 4px rgba(0,0,0,0.04)";
+      setStyles(extraDiv, {
+        background: "#eaf7ea",
+        border: "1px solid #b2d8b2",
+        borderRadius: "6px",
+        padding: "6px 10px",
+        marginTop: "6px",
+        fontFamily: "inherit",
+        fontSize: "13px",
+        color: "#225522",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+      });
       hargaJualInput.parentElement?.parentElement?.appendChild(extraDiv);
     }
 
-    // Remove previous listener if exists
-    if ((hargaBeliInput as any)._hargaBeliListener) {
-      return;
+    // Remove previous listener if margin has changed
+    if (
+      (hargaBeliInput as any)._hargaBeliListener &&
+      (hargaBeliInput as any)._hargaBeliListenerMargin !== marginPercent
+    ) {
+      hargaBeliInput.removeEventListener(
+        "input",
+        (hargaBeliInput as any)._hargaBeliListener
+      );
+      (hargaBeliInput as any)._hargaBeliListener = null;
+      (hargaBeliInput as any)._hargaBeliListenerMargin = null;
     }
-    // Define and store the listener
-    const updateHargaJualExtra = () => {
-      const beliVal = hargaBeliInput.value;
-      const beliNum = parseRupiah(beliVal);
-      if (beliNum !== null) {
-        const jualNum = Math.round(beliNum * (1 + marginPercent / 100));
-        extraDiv.innerHTML = `<strong>Saran Harga Jual:</strong> Rp ${jualNum.toLocaleString(
-          "id-ID"
-        )}`;
-      } else {
-        extraDiv.innerHTML = `<strong>Saran Harga Jual:</strong> -`;
-      }
-    };
-    hargaBeliInput.addEventListener("input", updateHargaJualExtra);
-    (hargaBeliInput as any)._hargaBeliListener = updateHargaJualExtra;
-    updateHargaJualExtra();
+    // Add listener only if not present for current margin
+    if (!(hargaBeliInput as any)._hargaBeliListener) {
+      const updateHargaJualExtra = () => {
+        const beliVal = hargaBeliInput.value;
+        const beliNum = parseRupiah(beliVal);
+        if (beliNum !== null) {
+          const jualNum = Math.round(beliNum * (1 + marginPercent / 100));
+          extraDiv.innerHTML = `<strong>Saran Harga Jual:</strong> Rp ${jualNum.toLocaleString(
+            "id-ID"
+          )}`;
+        } else {
+          extraDiv.innerHTML = `<strong>Saran Harga Jual:</strong> -`;
+        }
+      };
+      hargaBeliInput.addEventListener("input", updateHargaJualExtra);
+      (hargaBeliInput as any)._hargaBeliListener = updateHargaJualExtra;
+      (hargaBeliInput as any)._hargaBeliListenerMargin = marginPercent;
+      updateHargaJualExtra();
+    }
   }
-}
-const h1XPath =
-  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/div[1]/div/h1[text()="Restock dan Return Obat / Barang"]';
-const obatNameInputXPath =
-  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//*[@id="autocomplete"]';
-const inputHargaBeliSatuanObat =
-  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//input[@name="baseFee"]';
-const inputHargaJualSatuanObatBaru =
-  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//input[@name="sellNormalFeeNew"]';
-
-function evaluateXPath<T extends Node>(
-  xpath: string,
-  context: Document | Element = document
-): T | null {
-  return document.evaluate(
-    xpath,
-    context,
-    null,
-    XPathResult.FIRST_ORDERED_NODE_TYPE,
-    null
-  ).singleNodeValue as T | null;
-}
-
-function normalizeNamaObat(str: string): string {
-  return str
-    .replace(/\s{2,}/g, " ")
-    .trim()
-    .toUpperCase();
-}
-
-function parsePercentString(str: string): number | null {
-  const cleaned = str.replace("%", "").trim();
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? null : num;
 }
 
 function findMatchingMarginData(
@@ -158,10 +139,11 @@ export const modifyRestockReturn = (ctx: any) => {
   let obatNameValue = obatNameInput.value.trim();
   if (obatNameValue.length < 3) return;
 
-  window._prevObatNameValue = window._prevObatNameValue || "";
-  const prevObatNameValue = window._prevObatNameValue;
+  (obatNameInput as any)._prevObatNameValue =
+    (obatNameInput as any)._prevObatNameValue || "";
+  const prevObatNameValue = (obatNameInput as any)._prevObatNameValue;
   const isObatNameChanged = prevObatNameValue !== obatNameValue;
-  window._prevObatNameValue = obatNameValue;
+  (obatNameInput as any)._prevObatNameValue = obatNameValue;
 
   let isLoadingState = false;
   const nextNode = obatNameInput.nextSibling as HTMLElement | null;
@@ -183,6 +165,4 @@ export const modifyRestockReturn = (ctx: any) => {
   );
 
   createOrUpdateSaranHargaJual(hargaBeliInput, hargaJualInput, matchingData);
-
-  window.restockReturnObatWasLoadingState = isLoadingState;
 };
