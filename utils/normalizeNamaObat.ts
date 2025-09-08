@@ -1,6 +1,3 @@
 export function normalizeNamaObat(str: string): string {
-  return str
-    .replace(/\s{2,}/g, " ")
-    .trim()
-    .toUpperCase();
+  return str.replace(/\s+/g, "").toUpperCase();
 }
