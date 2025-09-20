@@ -1,16 +1,15 @@
 import "../assets/main.css";
-import { mountSidebarControlUi } from "../components/sidebarUi";
 
 export default defineContentScript({
   matches: ["https://clinica.assist.id/*"],
-  main(ctx) {
-    mountSidebarControlUi(ctx);
+  async main(ctx) {
     console.log("Content script loaded on", window.location.href);
-    fetchMarginTable();
+    await fetchMarginTable();
 
     const observer = new MutationObserver(() => {
       modifyTableObat(ctx);
       modifyRestockReturn(ctx);
+      modifyTableBhp(ctx);
     });
 
     function waitForTargetAndObserve() {
@@ -21,6 +20,24 @@ export default defineContentScript({
         setTimeout(waitForTargetAndObserve, 500);
       }
     }
+
+    function waitButtonAndListen() {
+      const button = evaluateXPath(
+        '//*[@id="appBar"]/div/div/div[2]/div[2]/div/div[2]/button'
+      );
+      if (button) {
+        button.addEventListener("click", async () => {
+          await fetchMarginTable();
+          modifyTableObat(ctx);
+          modifyRestockReturn(ctx);
+          modifyTableBhp(ctx);
+        });
+      } else {
+        setTimeout(waitButtonAndListen, 500);
+      }
+    }
+
+    waitButtonAndListen();
     waitForTargetAndObserve();
   },
 });

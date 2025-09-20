@@ -1,3 +1,5 @@
+import { ContentScriptContext } from "#imports";
+
 function createOrUpdateHargaBeliPPNDiv(hargaBeliInput: HTMLInputElement) {
   const grandParent = hargaBeliInput.parentElement
     ?.parentElement as HTMLElement;
@@ -197,7 +199,7 @@ function findMatchingMarginData(
   return match || null;
 }
 
-export const modifyRestockReturn = (ctx: any) => {
+export const modifyRestockReturn = (ctx: ContentScriptContext) => {
   const h1 = evaluateXPath<HTMLHeadingElement>(h1XPath);
   if (!h1) return;
 
