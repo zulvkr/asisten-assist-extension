@@ -40,8 +40,12 @@ const obatNameInputXPath =
   '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//*[@id="autocomplete"]';
 const inputHargaBeliSatuanObat =
   '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//input[@name="baseFee"]';
+const inputHargaBeliSatuanObatBHP =
+  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//input[@name="baseFeeAKHP"]';
 const inputHargaJualSatuanObatBaru =
   '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//input[@name="sellNormalFeeNew"]';
+const inputHargaJualSatuanObatBaruBHP =
+  '//*[@id="kamarmedis-content"]/div/div/div[2]/div[2]/div[1]/div/form/div[6]//input[@id="normalPriceAKHPNew"]';
 
 function createOrUpdateObatNameExtraDiv(
   obatNameInput: HTMLInputElement,
@@ -233,17 +237,38 @@ export const modifyRestockReturn = (ctx: ContentScriptContext) => {
   const hargaJualInput = evaluateXPath<HTMLInputElement>(
     inputHargaJualSatuanObatBaru
   );
+  const hargaBeliInputBHP = evaluateXPath<HTMLInputElement>(
+    inputHargaBeliSatuanObatBHP
+  );
+  const hargaJualInputBHP = evaluateXPath<HTMLInputElement>(
+    inputHargaJualSatuanObatBaruBHP
+  );
 
-  if (!(hargaBeliInput && hargaJualInput)) return;
+  if (hargaBeliInput && hargaJualInput) {
+    createOrUpdateSaranHargaJual(hargaBeliInput, hargaJualInput, matchingData);
 
-  createOrUpdateSaranHargaJual(hargaBeliInput, hargaJualInput, matchingData);
-
-  if (!(hargaBeliInput as any)._ppnListener) {
-    const updatePPNDiv = () => {
+    if (!(hargaBeliInput as any)._ppnListener) {
+      const updatePPNDiv = () => {
+        createOrUpdateHargaBeliPPNDiv(hargaBeliInput);
+      };
+      hargaBeliInput.addEventListener("input", updatePPNDiv);
+      (hargaBeliInput as any)._ppnListener = updatePPNDiv;
       createOrUpdateHargaBeliPPNDiv(hargaBeliInput);
-    };
-    hargaBeliInput.addEventListener("input", updatePPNDiv);
-    (hargaBeliInput as any)._ppnListener = updatePPNDiv;
-    createOrUpdateHargaBeliPPNDiv(hargaBeliInput);
+    }
+  } else if (hargaBeliInputBHP && hargaJualInputBHP) {
+    createOrUpdateSaranHargaJual(
+      hargaBeliInputBHP,
+      hargaJualInputBHP,
+      matchingData
+    );
+
+    if (!(hargaBeliInputBHP as any)._ppnListener) {
+      const updatePPNDivBHP = () => {
+        createOrUpdateHargaBeliPPNDiv(hargaBeliInputBHP);
+      };
+      hargaBeliInputBHP.addEventListener("input", updatePPNDivBHP);
+      (hargaBeliInputBHP as any)._ppnListener = updatePPNDivBHP;
+      createOrUpdateHargaBeliPPNDiv(hargaBeliInputBHP);
+    }
   }
 };
