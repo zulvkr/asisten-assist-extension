@@ -6,6 +6,8 @@ type marginObat = string;
 
 declare global {
   interface Window {
-    marginData: Array<[kodeObat, namaObat, marginObat]>;
+    marginData: Array<
+      [kodeObat, namaObat, marginObat, batasWarning, disableWarning]
+    >;
   }
 }

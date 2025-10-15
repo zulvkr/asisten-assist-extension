@@ -85,7 +85,6 @@ function addMarginColumn(table: HTMLTableElement) {
 
   table.querySelectorAll("tbody tr").forEach((row) => {
     const tr = row as HTMLTableRowElement;
-    console.log("Processing BHP row:", tr);
     const codeCell = tr.cells[kodeColIdx];
     if (!codeCell) return;
     const namaBarangCell = tr.cells[namaBarangColIdx];
@@ -118,8 +117,6 @@ export const modifyTableBhp = (ctx: any) => {
     firstBodyRow.cells.length === 1 &&
     firstBodyRow.cells[0].getAttribute("colspan") === "10"
   );
-
-  console.log("Table BHP loading state:", isLoadingState);
 
   const hasMarginCol = Array.from(headerRow.cells).some(
     (cell) => cell.textContent?.trim() === marginColumnTitle
