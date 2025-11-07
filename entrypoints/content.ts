@@ -1,13 +1,14 @@
 import { stockCheckerCron } from "@/components/stockCheckerCron";
 import "../assets/main.css";
 import { loginWithPocketbase } from "@/composables/loginWithPocketbase";
+import { mountHitunganHarianButtonUi } from "@/components/addHitunganHarianButton";
 
 export default defineContentScript({
   matches: ["https://clinica.assist.id/*"],
   async main(ctx) {
     console.log("Content script loaded on", window.location.href);
     await fetchMarginTable();
-    const pb = await loginWithPocketbase();
+    // const pb = await loginWithPocketbase();
 
     const observer = new MutationObserver(() => {
       modifyTableObat(ctx);
@@ -19,7 +20,8 @@ export default defineContentScript({
       const target = document.querySelector("#kamarmedis-content");
       if (target) {
         observer.observe(target, { childList: true, subtree: true });
-        stockCheckerCron(ctx, pb);
+        // stockCheckerCron(ctx, pb);
+        mountHitunganHarianButtonUi(ctx).mount();
       } else {
         setTimeout(waitForTargetAndObserve, 500);
       }

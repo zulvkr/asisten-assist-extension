@@ -7,4 +7,7 @@ export default defineConfig({
     chromiumProfile: resolve(".wxt/chrome-data"),
     keepProfileChanges: true,
   },
+  manifest: {
+    host_permissions: ["https://api-clinica.assist.id/*"],
+  },
 });
