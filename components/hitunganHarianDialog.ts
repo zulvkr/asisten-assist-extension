@@ -3,44 +3,10 @@ import { fetchPemasukanData } from "./pemasukan";
 import type { PemasukanData, Payment, Item } from "@/types/PemasukanData";
 import { formatRupiah } from "@/utils/rupiahUtils";
 import { setStyles } from "@/utils/setStyles";
-
-const SHIFT_CONFIG = [
-  { label: "Pagi" as const, startHour: 7, endHour: 14 },
-  { label: "Siang" as const, startHour: 14, endHour: 21 },
-];
-
-const SHIFT_ORDER = SHIFT_CONFIG.map((config) => config.label);
-
-type ShiftLabel = (typeof SHIFT_CONFIG)[number]["label"];
-
-type PaymentCategory = "cash" | "debit";
-
-interface SectionTotals {
-  cash: number;
-  debit: number;
-  total: number;
-}
-
-interface ShiftDetailRow {
-  transactionId: string;
-  code: string;
-  createdAt: string;
-  patientName: string;
-  apotek: SectionTotals;
-  klinik: SectionTotals;
-  pengeluaran: number;
-}
-
-interface ShiftSummaryRow {
-  key: string;
-  dateKey: string;
-  displayDate: string;
-  shift: ShiftLabel;
-  apotek: SectionTotals;
-  klinik: SectionTotals;
-  pengeluaran: number;
-  details: ShiftDetailRow[];
-}
+import {
+  calculateShiftSummaries,
+  type ShiftSummaryRow,
+} from "@/utils/hitunganHarianCalculations";
 
 let activeOverlay: HTMLElement | null = null;
 
@@ -230,167 +196,6 @@ function formatDateForInput(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function getShiftLabel(date: Date): ShiftLabel | null {
-  const hour = date.getHours();
-  for (const config of SHIFT_CONFIG) {
-    if (hour >= config.startHour && hour < config.endHour) {
-      return config.label;
-    }
-  }
-  return null;
-}
-
-function createEmptyTotals(): SectionTotals {
-  return { cash: 0, debit: 0, total: 0 };
-}
-
-function normalisePaymentCategory(payment: Payment): PaymentCategory {
-  const raw = `${payment.type ?? ""} ${payment.name ?? ""} ${
-    payment.intent ?? ""
-  }`;
-  const normalised = raw.toLowerCase();
-  if (
-    normalised.includes("debit") ||
-    normalised.includes("transfer") ||
-    normalised.includes("kartu") ||
-    normalised.includes("card") ||
-    normalised.includes("bpjs") ||
-    normalised.includes("asuransi") ||
-    normalised.includes("perusahaan") ||
-    normalised.includes("bank") ||
-    normalised.includes("kredit")
-  ) {
-    return "debit";
-  }
-  return "cash";
-}
-
-function splitAmount(
-  amount: number,
-  apotekTotal: number,
-  klinikTotal: number
-): { apotek: number; klinik: number } {
-  if (!isFinite(amount)) {
-    return { apotek: 0, klinik: 0 };
-  }
-  const total = apotekTotal + klinikTotal;
-  if (total <= 0) {
-    if (apotekTotal > 0 && klinikTotal <= 0) {
-      return { apotek: amount, klinik: 0 };
-    }
-    if (klinikTotal > 0 && apotekTotal <= 0) {
-      return { apotek: 0, klinik: amount };
-    }
-    return { apotek: amount / 2, klinik: amount / 2 };
-  }
-  const apotekShare = apotekTotal <= 0 ? 0 : (amount * apotekTotal) / total;
-  const klinikShare = amount - apotekShare;
-  return { apotek: apotekShare, klinik: klinikShare };
-}
-
-function sumItemTotals(items: Item[], type: "apotek" | "klinik"): number {
-  return items
-    .filter((item) => item.incomeType === type)
-    .reduce((sum, item) => sum + (item.totalFee ?? 0), 0);
-}
-
-function addSectionTotals(target: SectionTotals, addition: SectionTotals) {
-  target.cash += addition.cash;
-  target.debit += addition.debit;
-  target.total += addition.total;
-}
-
-function calculateShiftSummaries(data: PemasukanData[]): ShiftSummaryRow[] {
-  const map = new Map<string, ShiftSummaryRow>();
-
-  for (const tx of data) {
-    const createdAt = new Date(tx.createdAt);
-    if (Number.isNaN(createdAt.getTime())) {
-      continue;
-    }
-
-    const shift = getShiftLabel(createdAt);
-    if (!shift) {
-      continue;
-    }
-
-    const dateKey = formatDateForInput(createdAt);
-    const summaryKey = `${dateKey}__${shift}`;
-
-    if (!map.has(summaryKey)) {
-      map.set(summaryKey, {
-        key: summaryKey,
-        dateKey,
-        displayDate: new Intl.DateTimeFormat("id-ID", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "2-digit",
-        }).format(createdAt),
-        shift,
-        apotek: createEmptyTotals(),
-        klinik: createEmptyTotals(),
-        pengeluaran: 0,
-        details: [],
-      });
-    }
-
-    const summary = map.get(summaryKey)!;
-
-    const apotekItemTotal = sumItemTotals(tx.Items ?? [], "apotek");
-    const klinikItemTotal = sumItemTotals(tx.Items ?? [], "klinik");
-
-    const detailTotals = {
-      apotek: createEmptyTotals(),
-      klinik: createEmptyTotals(),
-    };
-    let pengeluaran = 0;
-
-    for (const payment of tx.Payments ?? []) {
-      const amount = payment.totalFee ?? 0;
-      if (!amount) continue;
-
-      if (payment.isOutcome) {
-        pengeluaran += amount;
-        continue;
-      }
-
-      const category = normalisePaymentCategory(payment);
-      const split = splitAmount(amount, apotekItemTotal, klinikItemTotal);
-      detailTotals.apotek[category] += split.apotek;
-      detailTotals.klinik[category] += split.klinik;
-    }
-
-    detailTotals.apotek.total =
-      detailTotals.apotek.cash + detailTotals.apotek.debit;
-    detailTotals.klinik.total =
-      detailTotals.klinik.cash + detailTotals.klinik.debit;
-
-    addSectionTotals(summary.apotek, detailTotals.apotek);
-    addSectionTotals(summary.klinik, detailTotals.klinik);
-    summary.pengeluaran += pengeluaran;
-
-    summary.details.push({
-      transactionId: tx._id,
-      code: tx.code,
-      createdAt: tx.createdAt,
-      patientName: tx.Patients?.nama ?? "-",
-      apotek: detailTotals.apotek,
-      klinik: detailTotals.klinik,
-      pengeluaran,
-    });
-  }
-
-  const summaries = Array.from(map.values());
-  summaries.sort((a, b) => {
-    if (a.dateKey === b.dateKey) {
-      return SHIFT_ORDER.indexOf(a.shift) - SHIFT_ORDER.indexOf(b.shift);
-    }
-    return a.dateKey.localeCompare(b.dateKey);
-  });
-
-  return summaries;
-}
-
 function renderSummaries(container: HTMLElement, summaries: ShiftSummaryRow[]) {
   container.replaceChildren();
 
@@ -411,11 +216,9 @@ function renderSummaries(container: HTMLElement, summaries: ShiftSummaryRow[]) {
   const headers = [
     "Tanggal",
     "Shift",
-    "PJ Shift",
     "Cash Apotek",
     "Debit Apotek",
     "Total Apotek",
-    "Pengeluaran",
     "Cash Klinik",
     "Debit Klinik",
     "Total Klinik",
@@ -430,7 +233,7 @@ function renderSummaries(container: HTMLElement, summaries: ShiftSummaryRow[]) {
       color: "#ffffff",
       padding: "10px",
       border: "1px solid #1e3a8a",
-      textAlign: index >= 3 && index <= 9 ? "right" : "left",
+      textAlign: index >= 2 && index <= 7 ? "right" : "left",
       fontWeight: "600",
       fontSize: "14px",
     });
@@ -447,11 +250,9 @@ function renderSummaries(container: HTMLElement, summaries: ShiftSummaryRow[]) {
     const cells: Array<string | HTMLElement> = [
       summary.displayDate,
       summary.shift,
-      "-",
       formatRupiah(summary.apotek.cash),
       formatRupiah(summary.apotek.debit),
       formatRupiah(summary.apotek.total),
-      formatRupiah(summary.pengeluaran),
       formatRupiah(summary.klinik.cash),
       formatRupiah(summary.klinik.debit),
       formatRupiah(summary.klinik.total),
@@ -462,7 +263,7 @@ function renderSummaries(container: HTMLElement, summaries: ShiftSummaryRow[]) {
       setStyles(td, {
         border: "1px solid #e2e8f0",
         padding: "10px",
-        textAlign: index >= 3 && index <= 9 ? "right" : "left",
+        textAlign: index >= 2 && index <= 7 ? "right" : "left",
         fontSize: "14px",
       });
       if (value instanceof HTMLElement) {
@@ -539,25 +340,14 @@ function renderSummaries(container: HTMLElement, summaries: ShiftSummaryRow[]) {
         });
         item.appendChild(pasienLine);
 
+        item.appendChild(buildItemsSection(detail.items));
+
         item.appendChild(
           buildDetailLine("Apotek", detail.apotek.cash, detail.apotek.debit)
         );
         item.appendChild(
           buildDetailLine("Klinik", detail.klinik.cash, detail.klinik.debit)
         );
-
-        if (detail.pengeluaran) {
-          const pengeluaranLine = document.createElement("div");
-          pengeluaranLine.textContent = `Pengeluaran: ${formatRupiah(
-            detail.pengeluaran
-          )}`;
-          setStyles(pengeluaranLine, {
-            marginTop: "4px",
-            color: "#b91c1c",
-            fontWeight: "500",
-          });
-          item.appendChild(pengeluaranLine);
-        }
 
         detailCell.appendChild(item);
       });
@@ -616,6 +406,82 @@ function buildDetailLine(
   line.appendChild(debitSpan);
 
   return line;
+}
+
+function buildItemsSection(items: ShiftDetailItem[]): HTMLDivElement {
+  const container = document.createElement("div");
+  setStyles(container, {
+    borderTop: "1px solid #e2e8f0",
+    paddingTop: "8px",
+    marginTop: "6px",
+  });
+
+  const title = document.createElement("div");
+  title.textContent = "Items";
+  setStyles(title, {
+    fontWeight: "500",
+    marginBottom: "4px",
+    color: "#1f2937",
+  });
+  container.appendChild(title);
+
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.textContent = "Tidak ada item pada transaksi ini.";
+    setStyles(empty, {
+      color: "#64748b",
+      fontSize: "13px",
+    });
+    container.appendChild(empty);
+    return container;
+  }
+
+  items.forEach((detailItem) => {
+    const line = document.createElement("div");
+    setStyles(line, {
+      display: "flex",
+      justifyContent: "space-between",
+      gap: "12px",
+      fontSize: "14px",
+      marginBottom: "4px",
+      color: "#0f172a",
+    });
+
+    const label = document.createElement("span");
+    const typeParts = [detailItem.type, detailItem.incomeType]
+      .filter(Boolean)
+      .map((value) => formatLabel(String(value)));
+    label.textContent = `${detailItem.name} (${typeParts.join(" • ") || "-"})`;
+    setStyles(label, {
+      flex: "1",
+    });
+    line.appendChild(label);
+
+    const price = document.createElement("span");
+    price.textContent = formatRupiah(detailItem.totalFee);
+    setStyles(price, {
+      minWidth: "120px",
+      textAlign: "right",
+      fontWeight: "500",
+      color: "#0f172a",
+    });
+    line.appendChild(price);
+
+    container.appendChild(line);
+  });
+
+  return container;
+}
+
+function formatLabel(value: string): string {
+  if (!value) {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function formatTime(value: string): string {
