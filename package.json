@@ -2,7 +2,7 @@
   "name": "asisten-assist",
   "description": "Asisten Assist Extension",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
