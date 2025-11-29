@@ -15,6 +15,7 @@
     "postinstall": "wxt prepare"
   },
   "devDependencies": {
+    "@wxt-dev/module-vue": "^1.0.3",
     "typescript": "^5.9.2",
     "wxt": "^0.20.6"
   },
@@ -23,6 +24,7 @@
   },
   "dependencies": {
     "date-fns": "^4.1.0",
-    "pocketbase": "^0.26.2"
+    "pocketbase": "^0.26.2",
+    "vue": "^3.5.25"
   }
 }

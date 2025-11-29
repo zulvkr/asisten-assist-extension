@@ -1,8 +1,10 @@
 import { createIntegratedUi } from "wxt/utils/content-script-ui/integrated";
-import { createShowHitunganHarianButton } from "./createShowHitunganHarianButon";
-import { showHitunganHarianDialog } from "./hitunganHarianDialog";
+import { createApp, type App as VueApp } from "vue";
+import HitunganHarianApp from "./HitunganHarianApp.vue";
 
 export function mountHitunganHarianButtonUi(ctx: any) {
+  let app: VueApp<Element> | null = null;
+
   const ui = createIntegratedUi(ctx, {
     position: "inline",
     anchor: () => {
@@ -17,10 +19,13 @@ export function mountHitunganHarianButtonUi(ctx: any) {
     },
     onMount: (container) => {
       console.log("Mounting Hitungan Harian Button UI");
-      const button = createShowHitunganHarianButton(() => {
-        showHitunganHarianDialog();
-      });
-      container.append(button);
+      app = createApp(HitunganHarianApp);
+      app.mount(container);
+      return app;
+    },
+    onRemove: (mountedApp) => {
+      mountedApp?.unmount();
+      app = null;
     },
   });
   return ui;
