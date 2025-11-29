@@ -1,7 +1,5 @@
-import { stockCheckerCron } from "@/components/stockCheckerCron";
 import "../assets/main.css";
-import { loginWithPocketbase } from "@/composables/loginWithPocketbase";
-import { mountHitunganHarianButtonUi } from "@/components/addHitunganHarianButton";
+import { mountHitunganHarianButtonUi } from "@/components/hitungan-harian/addHitunganHarianButton";
 
 export default defineContentScript({
   matches: ["https://clinica.assist.id/*"],

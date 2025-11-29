@@ -34,6 +34,7 @@ export async function fetchPemasukanData(
     response.data.length,
     `range ${tanggalMin} - ${tanggalMax}`
   );
+  console.debug(response.data);
 
   return response.data;
 }

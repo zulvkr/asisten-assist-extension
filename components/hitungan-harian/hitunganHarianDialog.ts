@@ -1,6 +1,5 @@
 import { enrichPemasukanData } from "@/utils/enrichPemasukanData";
 import { fetchPemasukanData } from "./pemasukan";
-import type { PemasukanData, Payment, Item } from "@/types/PemasukanData";
 import { formatRupiah } from "@/utils/rupiahUtils";
 import { setStyles } from "@/utils/setStyles";
 import {

@@ -1,5 +1,5 @@
 import { createIntegratedUi } from "wxt/utils/content-script-ui/integrated";
-import { createShowHitunganHarianButton } from "./showHitunganHarianButon";
+import { createShowHitunganHarianButton } from "./createShowHitunganHarianButon";
 import { showHitunganHarianDialog } from "./hitunganHarianDialog";
 
 export function mountHitunganHarianButtonUi(ctx: any) {
@@ -24,5 +24,4 @@ export function mountHitunganHarianButtonUi(ctx: any) {
     },
   });
   return ui;
-  // ui.autoMount();
 }
