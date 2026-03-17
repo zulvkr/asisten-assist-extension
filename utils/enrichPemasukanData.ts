@@ -1,7 +1,7 @@
 import { PemasukanDataArray } from "../types/PemasukanData";
 
 export function enrichPemasukanData(
-  data: PemasukanDataArray
+  data: PemasukanDataArray,
 ): PemasukanDataArray {
   return data
     .filter((item) => item.status === "paid off")
@@ -10,7 +10,9 @@ export function enrichPemasukanData(
       Items: item.Items.map((it) => ({
         ...it,
         incomeType:
-          it.type === "prescription" || it.type === "akhp"
+          it.type === "prescription" ||
+          it.type === "akhp" ||
+          it.type === "scourPrescription"
             ? "apotek"
             : "klinik",
       })),

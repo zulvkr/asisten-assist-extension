@@ -107,7 +107,7 @@ function createShiftSummaryRow(
   summaryKey: string,
   dateKey: string,
   displayDate: string,
-  shift: ShiftLabel
+  shift: ShiftLabel,
 ): ShiftSummaryRow {
   return {
     key: summaryKey,
@@ -136,12 +136,12 @@ function calculateTransactionTotals(tx: PemasukanData): {
     name: item.name ?? "-",
     type: item.type ?? "",
     incomeType: item.incomeType,
-    totalFee: item.totalFee ?? 0,
+    totalFee: item.type === "scourPrescription" ? 0 : (item.totalFee ?? 0),
   }));
 
   for (const item of tx.Items ?? []) {
     const incomeType = item.incomeType;
-    const amount = item.totalFee ?? 0;
+    const amount = item.type === "scourPrescription" ? 0 : (item.totalFee ?? 0);
     if (incomeType === "apotek") {
       if (paymentCategory === "cash") {
         detailTotals.apotek.cash += amount;
@@ -171,7 +171,7 @@ function calculateTransactionTotals(tx: PemasukanData): {
 
 function processTransaction(
   tx: PemasukanData,
-  map: Map<string, ShiftSummaryRow>
+  map: Map<string, ShiftSummaryRow>,
 ): void {
   const createdAt = new Date(tx.createdAt);
   if (Number.isNaN(createdAt.getTime())) {
@@ -194,7 +194,7 @@ function processTransaction(
     }).format(createdAt);
     map.set(
       summaryKey,
-      createShiftSummaryRow(summaryKey, dateKey, displayDate, shift)
+      createShiftSummaryRow(summaryKey, dateKey, displayDate, shift),
     );
   }
 
@@ -225,7 +225,7 @@ function sortShiftSummaries(summaries: ShiftSummaryRow[]): ShiftSummaryRow[] {
 }
 
 export function calculateShiftSummaries(
-  data: PemasukanData[]
+  data: PemasukanData[],
 ): ShiftSummaryRow[] {
   const map = new Map<string, ShiftSummaryRow>();
 

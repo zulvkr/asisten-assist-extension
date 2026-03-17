@@ -14,7 +14,7 @@ export interface SellingPrice {
 export interface Item {
   _id: string;
   name: string;
-  type: "prescription" | "akhp" | "procedure";
+  type: "prescription" | "akhp" | "procedure" | "scourPrescription";
   medicineId?: string;
   akhpId?: string;
   procedureId?: string;
