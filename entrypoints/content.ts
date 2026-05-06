@@ -5,6 +5,20 @@ export default defineContentScript({
   matches: ["https://clinica.assist.id/*"],
   async main(ctx) {
     console.log("Content script loaded on", window.location.href);
+
+    browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (!message || message.type !== "GET_ASSIST_TOKEN") {
+        return;
+      }
+
+      sendResponse({
+        ok: true,
+        token: localStorage.getItem("token") ?? "",
+      });
+
+      return false;
+    });
+
     await fetchMarginTable();
     // const pb = await loginWithPocketbase();
 
@@ -27,7 +41,7 @@ export default defineContentScript({
 
     function waitButtonAndListen() {
       const button = evaluateXPath(
-        '//*[@id="appBar"]/div/div/div[2]/div[2]/div/div[2]/button'
+        '//*[@id="appBar"]/div/div/div[2]/div[2]/div/div[2]/button',
       );
       if (button) {
         button.addEventListener("click", async () => {

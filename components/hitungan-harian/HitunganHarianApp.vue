@@ -568,28 +568,28 @@ async function exportToExcel() {
           patients.address?.subdistrict ?? "",
           patients.address?.post ?? "",
           // payment
-          firstPayment ? firstPayment._id ?? "" : "",
-          firstPayment ? firstPayment.totalFee ?? "" : "",
-          firstPayment ? firstPayment.percentageTotal ?? "" : "",
-          firstPayment ? firstPayment.status ?? "" : "",
-          firstPayment ? firstPayment.type ?? "" : "",
-          firstPayment ? firstPayment.name ?? "" : "",
-          firstPayment ? firstPayment.transactionId ?? "" : "",
-          firstPayment ? firstPayment.transactionDate ?? "" : "",
-          firstPayment ? firstPayment.accountTxId ?? "" : "",
-          firstPayment ? firstPayment.hospitalId ?? "" : "",
-          firstPayment ? firstPayment.reason ?? "" : "",
+          firstPayment ? (firstPayment._id ?? "") : "",
+          firstPayment ? (firstPayment.totalFee ?? "") : "",
+          firstPayment ? (firstPayment.percentageTotal ?? "") : "",
+          firstPayment ? (firstPayment.status ?? "") : "",
+          firstPayment ? (firstPayment.type ?? "") : "",
+          firstPayment ? (firstPayment.name ?? "") : "",
+          firstPayment ? (firstPayment.transactionId ?? "") : "",
+          firstPayment ? (firstPayment.transactionDate ?? "") : "",
+          firstPayment ? (firstPayment.accountTxId ?? "") : "",
+          firstPayment ? (firstPayment.hospitalId ?? "") : "",
+          firstPayment ? (firstPayment.reason ?? "") : "",
           firstPayment ? String(firstPayment.isCovered ?? "") : "",
           firstPayment ? String(firstPayment.isNeedClaim ?? "") : "",
           firstPayment ? String(firstPayment.isOutcome ?? "") : "",
-          firstPayment ? firstPayment.intent ?? "" : "",
-          firstPayment ? firstPayment.createdAt ?? "" : "",
-          firstPayment ? firstPayment.createdId ?? "" : "",
-          firstPayment ? firstPayment.paidName ?? "" : "",
-          firstPayment ? firstPayment.change ?? "" : "",
-          firstPayment ? firstPayment.createdName ?? "" : "",
-          firstPayment ? firstPayment.trueCreatedAt ?? "" : "",
-          firstPayment ? firstPayment.discount ?? "" : "",
+          firstPayment ? (firstPayment.intent ?? "") : "",
+          firstPayment ? (firstPayment.createdAt ?? "") : "",
+          firstPayment ? (firstPayment.createdId ?? "") : "",
+          firstPayment ? (firstPayment.paidName ?? "") : "",
+          firstPayment ? (firstPayment.change ?? "") : "",
+          firstPayment ? (firstPayment.createdName ?? "") : "",
+          firstPayment ? (firstPayment.trueCreatedAt ?? "") : "",
+          firstPayment ? (firstPayment.discount ?? "") : "",
           // arrays/objects as JSON
           diagnosesJson,
           otherNotesJson,
@@ -716,7 +716,12 @@ async function exportToExcel() {
   max-width: 1080px;
   width: 100%;
   padding: 24px;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
 }
 
 .dialog-header {
