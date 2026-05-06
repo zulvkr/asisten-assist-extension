@@ -10,6 +10,7 @@ export default defineConfig({
   },
   manifest: {
     host_permissions: [
+      "https://clinica.assist.id/*",
       "https://api-clinica.assist.id/*",
       "https://omni.desty.app/*",
       "https://*.desty.app/*",

@@ -11,9 +11,18 @@ export default defineContentScript({
         return;
       }
 
+      const token = localStorage.getItem("token") ?? "";
+
+      // Also store in extension storage for backup/persistence
+      if (token) {
+        browser.storage.local.set({ assistToken: token }).catch(() => {
+          // Ignore storage errors
+        });
+      }
+
       sendResponse({
         ok: true,
-        token: localStorage.getItem("token") ?? "",
+        token,
       });
 
       return false;

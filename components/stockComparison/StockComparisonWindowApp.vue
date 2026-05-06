@@ -229,6 +229,7 @@ async function requestAssistTokenFromActiveTab(): Promise<string> {
     ...candidateTabs.filter((tab) => tab.id && tab.id !== activeTab?.id),
   ];
 
+  // Try to get token from content script on clinica.assist.id tabs
   for (const tab of orderedCandidates) {
     if (!tab.id) {
       continue;
@@ -246,6 +247,19 @@ async function requestAssistTokenFromActiveTab(): Promise<string> {
     } catch {
       // Skip tabs without receiving content script.
     }
+  }
+
+  // Fallback: Try to get from extension storage as backup
+  try {
+    const stored = await browser.storage.local.get("assistToken");
+    if (stored.assistToken && typeof stored.assistToken === "string") {
+      const token = stored.assistToken.trim();
+      if (token) {
+        return token;
+      }
+    }
+  } catch {
+    // Ignore storage errors
   }
 
   throw new Error(
