@@ -8,7 +8,7 @@ export interface GetAssistSoldItemsOptions {
 export interface GetSoldItemsByDateResult {
   soldItems: SoldItemAggregate[];
   skippedByType: number;
-  missingMedicineId: number;
+  missingItemId: number;
 }
 
 const ALLOWED_ASSIST_ITEM_TYPES = new Set([
@@ -25,7 +25,7 @@ export function getAssistSoldItemsByDate(
   const grouped = new Map<string, SoldItemAggregate>();
 
   let skippedByType = 0;
-  let missingMedicineId = 0;
+  let missingItemId = 0;
 
   for (const transaction of transactions) {
     if (includeOnlyPaidOff && transaction.status !== "paid off") {
@@ -38,13 +38,16 @@ export function getAssistSoldItemsByDate(
         continue;
       }
 
-      const medicineId = item.medicineId?.trim() ?? "";
-      if (!medicineId) {
-        missingMedicineId += 1;
+      const assistItemId =
+        item.type === "akhp"
+          ? (item.akhpId?.trim() ?? "")
+          : (item.medicineId?.trim() ?? "");
+      if (!assistItemId) {
+        missingItemId += 1;
       }
-      // Items without a medicineId are grouped under "" — they won't find stock data
+      // Items without an Assist item id are grouped under "" — they won't find stock data
       // but we never skip them, so they appear in the output as "unknown" status.
-      const key = medicineId || `__noId__::${item.name}`;
+      const key = assistItemId || `__noId__::${item.name}`;
 
       const existing = grouped.get(key);
       if (existing) {
@@ -53,7 +56,7 @@ export function getAssistSoldItemsByDate(
       }
 
       grouped.set(key, {
-        medicineId,
+        medicineId: assistItemId,
         itemName: item.name,
         qtySold: item.quantity,
         source: "assist",
@@ -66,6 +69,6 @@ export function getAssistSoldItemsByDate(
       (a, b) => b.qtySold - a.qtySold || a.itemName.localeCompare(b.itemName),
     ),
     skippedByType,
-    missingMedicineId,
+    missingItemId,
   };
 }

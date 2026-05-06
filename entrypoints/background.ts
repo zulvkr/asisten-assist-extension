@@ -96,38 +96,85 @@ async function fetchMarginSkuRows(): Promise<MarginSkuRow[]> {
   }));
 }
 
-async function fetchAssistStockItems(
-  token: string,
-): Promise<AssistStockItem[]> {
-  const url = new URL(`${ASSIST_API_BASE}/KMedicineStocks/getList`);
-  url.searchParams.append("hospitalId", HOSPITAL_ID);
-  url.searchParams.append("fieldName", "medName");
-  url.searchParams.append("skip", "0");
-  url.searchParams.append("limit", "5000");
+async function fetchAssistStockItemsByPath(params: {
+  token: string;
+  path: string;
+  fieldName: string;
+}): Promise<AssistStockItem[]> {
+  const allItems: AssistStockItem[] = [];
+  const pageSize = 1000;
+  let skip = 0;
+  let total = Number.POSITIVE_INFINITY;
 
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    credentials: "include",
-    headers: {
-      Accept: "application/json, text/plain, */*",
-      "Accept-Language": "en-US,en;q=0.9",
-      Authorization: token,
-      Priority: "u=1, i",
-      "Sec-Fetch-Dest": "empty",
-      "Sec-Fetch-Mode": "cors",
-      "Sec-Fetch-Site": "same-site",
-    },
-  });
+  while (skip < total) {
+    const url = new URL(`${ASSIST_API_BASE}/${params.path}`);
+    url.searchParams.append("hospitalId", HOSPITAL_ID);
+    url.searchParams.append("fieldName", params.fieldName);
+    url.searchParams.append("sort", "1");
+    url.searchParams.append("skip", String(skip));
+    url.searchParams.append("limit", String(pageSize));
 
-  if (!response.ok) {
-    throw new Error(`Gagal mengambil stok Assist: ${response.status}`);
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        Authorization: params.token,
+        Priority: "u=1, i",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Gagal mengambil stok Assist (${params.path}): ${response.status}`,
+      );
+    }
+
+    const payload = (await response.json()) as {
+      total?: number;
+      data?: AssistStockItem[];
+    };
+    const items = payload.data ?? [];
+    allItems.push(...items);
+
+    const resolvedTotal = Number(payload.total ?? allItems.length);
+    total = Number.isFinite(resolvedTotal) ? resolvedTotal : allItems.length;
+
+    if (items.length < pageSize) {
+      break;
+    }
+
+    skip += pageSize;
   }
 
-  const payload = (await response.json()) as { data?: AssistStockItem[] };
-  return payload.data ?? [];
+  return allItems;
 }
 
-function buildAssistStockByMedicineId(
+async function fetchAssistMedicineStockItems(
+  token: string,
+): Promise<AssistStockItem[]> {
+  return fetchAssistStockItemsByPath({
+    token,
+    path: "KMedicineStocks/getList",
+    fieldName: "medName",
+  });
+}
+
+async function fetchAssistBhpStockItems(
+  token: string,
+): Promise<AssistStockItem[]> {
+  return fetchAssistStockItemsByPath({
+    token,
+    path: "KAKHPStocks/getList",
+    fieldName: "itemName",
+  });
+}
+
+function buildAssistStockByItemId(
   stockItems: AssistStockItem[],
 ): Record<string, number> {
   const result: Record<string, number> = {};
@@ -185,17 +232,21 @@ async function handleFetchStockComparison(
   }
 
   try {
-    const [pemasukanData, marginRows, stockItems] = await Promise.all([
-      fetchAssistPemasukan(startDate, endDate, assistToken),
-      fetchMarginSkuRows(),
-      fetchAssistStockItems(assistToken),
-    ]);
+    const [pemasukanData, marginRows, medicineStockItems, bhpStockItems] =
+      await Promise.all([
+        fetchAssistPemasukan(startDate, endDate, assistToken),
+        fetchMarginSkuRows(),
+        fetchAssistMedicineStockItems(assistToken),
+        fetchAssistBhpStockItems(assistToken),
+      ]);
+
+    const stockItems = [...medicineStockItems, ...bhpStockItems];
 
     const soldResult = getAssistSoldItemsByDate(pemasukanData, {
       includeOnlyPaidOff: true,
     });
 
-    const assistStockByMedicineId = buildAssistStockByMedicineId(stockItems);
+    const assistStockByMedicineId = buildAssistStockByItemId(stockItems);
     const kodeObatByMedicineId = buildKodeObatByMedicineId(stockItems);
 
     // Kode Obat is Assist metadata and is used only as a bridge key to read SKU from marginData.
@@ -276,9 +327,9 @@ async function handleFetchStockComparison(
         `${soldResult.skippedByType} item dilewati karena tipe transaksi tidak termasuk perhitungan stok.`,
       );
     }
-    if (soldResult.missingMedicineId > 0) {
+    if (soldResult.missingItemId > 0) {
       warnings.push(
-        `${soldResult.missingMedicineId} item tanpa medicineId tidak bisa dicocokkan ke stok Assist dan ditandai unknown.`,
+        `${soldResult.missingItemId} item tanpa id Assist (medicineId/akhpId) tidak bisa dicocokkan ke stok Assist dan ditandai unknown.`,
       );
     }
     if (missingKodeObatCount > 0) {
