@@ -107,6 +107,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { requestAssistTokenFromOpenTabs } from "@/composables/assistTokenManager";
 import { requestDestyTokenFromOpenTabs } from "@/composables/destyOmniTokenManager";
 import {
   type KesesuaianStock,
@@ -162,7 +163,19 @@ async function runComparison() {
   warnings.value = [];
 
   try {
-    const assistToken = await requestAssistTokenFromActiveTab();
+    const assistTokenResult = await requestAssistTokenFromOpenTabs();
+    if (!assistTokenResult.token) {
+      if (assistTokenResult.warnings.length) {
+        warnings.value.push(...assistTokenResult.warnings);
+      }
+
+      throw new Error(
+        "Token Assist tidak ditemukan. Buka dan login ke clinica.assist.id, lalu coba lagi.",
+      );
+    }
+
+    const assistToken = assistTokenResult.token;
+
     let destyToken = "";
     let destyTenantId = "";
     let destyMasterWarehouseId = "";
@@ -212,59 +225,6 @@ async function runComparison() {
   } finally {
     loading.value = false;
   }
-}
-
-async function requestAssistTokenFromActiveTab(): Promise<string> {
-  const [activeTab] = await browser.tabs.query({
-    active: true,
-    currentWindow: true,
-  });
-
-  const candidateTabs = await browser.tabs.query({
-    url: ["*://clinica.assist.id/*"],
-  });
-
-  const orderedCandidates = [
-    ...(activeTab?.id ? [activeTab] : []),
-    ...candidateTabs.filter((tab) => tab.id && tab.id !== activeTab?.id),
-  ];
-
-  // Try to get token from content script on clinica.assist.id tabs
-  for (const tab of orderedCandidates) {
-    if (!tab.id) {
-      continue;
-    }
-
-    try {
-      const tokenResponse = (await browser.tabs.sendMessage(tab.id, {
-        type: "GET_ASSIST_TOKEN",
-      })) as { ok?: boolean; token?: string } | undefined;
-
-      const token = tokenResponse?.token?.trim() ?? "";
-      if (token) {
-        return token;
-      }
-    } catch {
-      // Skip tabs without receiving content script.
-    }
-  }
-
-  // Fallback: Try to get from extension storage as backup
-  try {
-    const stored = await browser.storage.local.get("assistToken");
-    if (stored.assistToken && typeof stored.assistToken === "string") {
-      const token = stored.assistToken.trim();
-      if (token) {
-        return token;
-      }
-    }
-  } catch {
-    // Ignore storage errors
-  }
-
-  throw new Error(
-    "Token Assist tidak ditemukan. Buka dan login ke clinica.assist.id, lalu coba lagi.",
-  );
 }
 
 function kesesuaianRank(kesesuaian: KesesuaianStock): number {
