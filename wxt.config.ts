@@ -9,6 +9,10 @@ export default defineConfig({
     keepProfileChanges: true,
   },
   manifest: {
-    host_permissions: ["https://api-clinica.assist.id/*"],
+    host_permissions: [
+      "https://api-clinica.assist.id/*",
+      "https://omni.desty.app/*",
+      "https://*.desty.app/*",
+    ],
   },
 });

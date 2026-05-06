@@ -1,4 +1,9 @@
-export type StockStatus = "good" | "warning" | "critical" | "unknown";
+export type KesesuaianStock =
+  | "Sesuai"
+  | "Tidak sesuai"
+  | "SKU belum diisi"
+  | "Stok Assist tidak tersedia"
+  | "Stok Desty tidak tersedia";
 
 /**
  * Aggregated item sold for a date range.
@@ -16,11 +21,12 @@ export interface SoldItemAggregate {
 export interface StockComparisonRow {
   medicineId: string;
   kodeObat: string;
+  sku?: string;
   itemName: string;
   qtySold: number;
   assistStock: number | null;
   destyStock: number | null;
-  status: StockStatus;
+  kesesuaian: KesesuaianStock;
   notes: string[];
 }
 
@@ -41,20 +47,24 @@ function normalizeStock(value: number | null | undefined): number | null {
   return value;
 }
 
-function resolveStatus(
+function resolveKesesuaian(
   assistStock: number | null,
-  qtySold: number,
-): StockStatus {
+  destyStock: number | null,
+  hasSku: boolean,
+): KesesuaianStock {
+  if (!hasSku) {
+    return "SKU belum diisi";
+  }
   if (assistStock === null) {
-    return "unknown";
+    return "Stok Assist tidak tersedia";
   }
-  if (assistStock <= 0 && qtySold > 0) {
-    return "critical";
+  if (destyStock === null) {
+    return "Stok Desty tidak tersedia";
   }
-  if (assistStock < qtySold) {
-    return "warning";
+  if (destyStock !== assistStock) {
+    return "Tidak sesuai";
   }
-  return "good";
+  return "Sesuai";
 }
 
 export function compareStockLevels(
@@ -62,31 +72,46 @@ export function compareStockLevels(
 ): StockComparisonRow[] {
   const grouped = new Map<
     string,
-    { itemName: string; qtySold: number; sku?: string; notes: string[] }
+    {
+      medicineId: string;
+      itemName: string;
+      qtySold: number;
+      sku?: string;
+      notes: string[];
+    }
   >();
 
   for (const item of input.soldItems) {
-    const medicineId = item.medicineId?.trim();
-    if (!medicineId) {
-      continue;
-    }
+    const medicineId = item.medicineId?.trim() ?? "";
+    // Keep rows without medicineId in output so callers can surface unknowns.
+    const aggregateKey =
+      medicineId || `__noId__::${item.sku ?? ""}::${item.itemName}`;
 
-    const existing = grouped.get(medicineId);
+    const existing = grouped.get(aggregateKey);
     if (existing) {
       existing.qtySold += item.qtySold;
       continue;
     }
 
-    grouped.set(medicineId, {
+    const notes: string[] = [];
+    if (!medicineId) {
+      notes.push(
+        "medicineId tidak tersedia; tidak dapat dipetakan ke stok Assist.",
+      );
+    }
+
+    grouped.set(aggregateKey, {
+      medicineId,
       itemName: item.itemName,
       qtySold: item.qtySold,
       sku: item.sku,
-      notes: [],
+      notes,
     });
   }
 
   const rows: StockComparisonRow[] = [];
-  for (const [medicineId, aggregate] of grouped.entries()) {
+  for (const aggregate of grouped.values()) {
+    const medicineId = aggregate.medicineId;
     const assistStock = normalizeStock(
       input.assistStockByMedicineId?.[medicineId],
     );
@@ -95,16 +120,23 @@ export function compareStockLevels(
     const destyStock = sku
       ? normalizeStock(input.destyStockBySku?.[sku])
       : null;
+    const notes = [...aggregate.notes];
+    if (!sku) {
+      notes.push(
+        "SKU belum diisi — lengkapi kode obat dan SKU di sheet margin.",
+      );
+    }
 
     rows.push({
       medicineId,
       kodeObat,
+      sku: aggregate.sku,
       itemName: aggregate.itemName,
       qtySold: aggregate.qtySold,
       assistStock,
       destyStock,
-      status: resolveStatus(assistStock, aggregate.qtySold),
-      notes: aggregate.notes,
+      kesesuaian: resolveKesesuaian(assistStock, destyStock, Boolean(sku)),
+      notes,
     });
   }
 

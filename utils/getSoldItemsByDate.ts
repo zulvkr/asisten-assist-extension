@@ -8,6 +8,7 @@ export interface GetAssistSoldItemsOptions {
 export interface GetSoldItemsByDateResult {
   soldItems: SoldItemAggregate[];
   skippedByType: number;
+  missingMedicineId: number;
 }
 
 const ALLOWED_ASSIST_ITEM_TYPES = new Set([
@@ -24,6 +25,7 @@ export function getAssistSoldItemsByDate(
   const grouped = new Map<string, SoldItemAggregate>();
 
   let skippedByType = 0;
+  let missingMedicineId = 0;
 
   for (const transaction of transactions) {
     if (includeOnlyPaidOff && transaction.status !== "paid off") {
@@ -37,6 +39,9 @@ export function getAssistSoldItemsByDate(
       }
 
       const medicineId = item.medicineId?.trim() ?? "";
+      if (!medicineId) {
+        missingMedicineId += 1;
+      }
       // Items without a medicineId are grouped under "" — they won't find stock data
       // but we never skip them, so they appear in the output as "unknown" status.
       const key = medicineId || `__noId__::${item.name}`;
@@ -61,5 +66,6 @@ export function getAssistSoldItemsByDate(
       (a, b) => b.qtySold - a.qtySold || a.itemName.localeCompare(b.itemName),
     ),
     skippedByType,
+    missingMedicineId,
   };
 }

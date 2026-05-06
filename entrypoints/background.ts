@@ -1,5 +1,9 @@
 import type { PemasukanData } from "@/types/PemasukanData";
 import {
+  buildDestyStockBySku,
+  fetchDestyOmniStock,
+} from "@/composables/destyOmniStockApi";
+import {
   compareStockLevels,
   type StockComparisonRow,
 } from "@/utils/compareStockLevels";
@@ -17,6 +21,9 @@ interface FetchStockComparisonPayload {
   endDate?: string;
   source?: "assist" | "desty" | "both";
   assistToken?: string;
+  destyToken?: string;
+  destyTenantId?: string;
+  destyMasterWarehouseId?: string;
 }
 
 interface MarginSkuRow {
@@ -156,7 +163,11 @@ async function handleFetchStockComparison(
   const startDate =
     typeof payload.startDate === "string" ? payload.startDate : "";
   const endDate = typeof payload.endDate === "string" ? payload.endDate : "";
+  const source = payload.source ?? "assist";
   const assistToken = payload.assistToken?.trim() ?? "";
+  const destyToken = payload.destyToken?.trim() ?? "";
+  const destyTenantId = payload.destyTenantId?.trim() ?? "";
+  const destyMasterWarehouseId = payload.destyMasterWarehouseId?.trim() ?? "";
 
   if (!startDate || !endDate) {
     return {
@@ -187,17 +198,69 @@ async function handleFetchStockComparison(
     const assistStockByMedicineId = buildAssistStockByMedicineId(stockItems);
     const kodeObatByMedicineId = buildKodeObatByMedicineId(stockItems);
 
-    // Enrich sold items with sku from marginData (for future Desty matching)
+    // Kode Obat is Assist metadata and is used only as a bridge key to read SKU from marginData.
+    const normalizeCode = (value: string): string => value.trim().toUpperCase();
     const skuByKodeObat = new Map<string, string>();
     for (const row of marginRows) {
       if (row.kodeObat && row.sku) {
-        skuByKodeObat.set(row.kodeObat, row.sku);
+        skuByKodeObat.set(normalizeCode(row.kodeObat), row.sku.trim());
       }
     }
+
+    let missingSkuMappingCount = 0;
+    let missingKodeObatCount = 0;
     for (const item of soldResult.soldItems) {
       const kodeObat = kodeObatByMedicineId[item.medicineId] ?? "";
-      if (kodeObat) {
-        item.sku = skuByKodeObat.get(kodeObat);
+      if (!kodeObat) {
+        missingKodeObatCount += 1;
+        continue;
+      }
+
+      const sku = skuByKodeObat.get(normalizeCode(kodeObat));
+      if (sku) {
+        item.sku = sku;
+      } else {
+        missingSkuMappingCount += 1;
+      }
+    }
+
+    let destyStockBySku: Record<string, number | null> | undefined;
+    const warnings: string[] = [];
+
+    const shouldUseDesty = source === "desty" || source === "both";
+    if (shouldUseDesty) {
+      const skus = Array.from(
+        new Set(
+          soldResult.soldItems
+            .map((item) => item.sku?.trim() ?? "")
+            .filter((sku) => Boolean(sku)),
+        ),
+      );
+
+      if (!destyToken) {
+        warnings.push(
+          "Token Desty tidak tersedia. Hasil tetap ditampilkan dari Assist.",
+        );
+      } else if (skus.length === 0) {
+        warnings.push(
+          "Tidak ada SKU yang bisa dipakai untuk sinkronisasi Desty pada rentang ini.",
+        );
+      } else {
+        try {
+          const destyItems = await fetchDestyOmniStock({
+            token: destyToken,
+            skus,
+            tenantId: destyTenantId,
+            masterWarehouseId: destyMasterWarehouseId,
+          });
+          destyStockBySku = buildDestyStockBySku(destyItems);
+        } catch (error) {
+          warnings.push(
+            error instanceof Error
+              ? `Gagal mengambil stok Desty: ${error.message}`
+              : "Gagal mengambil stok Desty. Hasil tetap ditampilkan dari Assist.",
+          );
+        }
       }
     }
 
@@ -205,12 +268,27 @@ async function handleFetchStockComparison(
       soldItems: soldResult.soldItems,
       assistStockByMedicineId,
       kodeObatByMedicineId,
+      destyStockBySku,
     });
 
-    const warnings: string[] = [];
     if (soldResult.skippedByType > 0) {
       warnings.push(
         `${soldResult.skippedByType} item dilewati karena tipe transaksi tidak termasuk perhitungan stok.`,
+      );
+    }
+    if (soldResult.missingMedicineId > 0) {
+      warnings.push(
+        `${soldResult.missingMedicineId} item tanpa medicineId tidak bisa dicocokkan ke stok Assist dan ditandai unknown.`,
+      );
+    }
+    if (missingKodeObatCount > 0) {
+      warnings.push(
+        `${missingKodeObatCount} item tidak punya kodeObat dari Assist, sehingga SKU margin tidak bisa dicari.`,
+      );
+    }
+    if (missingSkuMappingCount > 0) {
+      warnings.push(
+        `${missingSkuMappingCount} item tidak menemukan pasangan SKU di marginData berdasarkan kodeObat Assist.`,
       );
     }
 

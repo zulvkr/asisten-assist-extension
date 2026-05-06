@@ -14,6 +14,14 @@
         Akhir
         <input v-model="endDate" type="date" />
       </label>
+      <label>
+        Sumber
+        <select v-model="source">
+          <option value="both">Both</option>
+          <option value="assist">Assist</option>
+          <option value="desty">Desty Omni</option>
+        </select>
+      </label>
       <button type="button" :disabled="loading" @click="runComparison">
         {{ loading ? "Memuat..." : "Jalankan Perbandingan" }}
       </button>
@@ -29,7 +37,9 @@
       <button type="button" @click="currentSort = 'qtySold'">
         Sort Qty Sold
       </button>
-      <button type="button" @click="currentSort = 'status'">Sort Status</button>
+      <button type="button" @click="currentSort = 'kesesuaian'">
+        Sort Kesesuaian
+      </button>
     </section>
 
     <section class="table-wrap">
@@ -41,27 +51,51 @@
         <thead>
           <tr>
             <th>Kode Obat</th>
+            <th>SKU</th>
             <th>Nama Item</th>
             <th>Qty Sold</th>
             <th>Assist Stock</th>
-            <th>Status</th>
+            <th>Desty Stock</th>
+            <th>Kesesuaian</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="row in sortedRows"
-            :key="`${row.medicineId}-${row.itemName}`"
+            :key="`${row.medicineId}-${row.sku ?? ''}-${row.itemName}`"
+            :class="{
+              'row-no-sku': row.kesesuaian === 'SKU belum diisi',
+              'row-mismatch': row.kesesuaian === 'Tidak sesuai',
+            }"
           >
             <td>{{ row.kodeObat }}</td>
+            <td>
+              <template v-if="row.sku">{{ row.sku }}</template>
+              <span v-else class="sku-missing"
+                >Belum diisi — lengkapi kode obat &amp; SKU di sheet
+                margin</span
+              >
+            </td>
             <td>{{ row.itemName }}</td>
             <td>{{ row.qtySold }}</td>
             <td>{{ row.assistStock ?? "-" }}</td>
+            <td>{{ row.destyStock ?? "-" }}</td>
             <td>
               <span
-                :class="['status', row.status]"
+                :class="[
+                  'kesesuaian',
+                  row.kesesuaian === 'Sesuai' && 'kesesuaian--sesuai',
+                  row.kesesuaian === 'Tidak sesuai' &&
+                    'kesesuaian--tidak-sesuai',
+                  row.kesesuaian === 'SKU belum diisi' && 'kesesuaian--no-sku',
+                  row.kesesuaian === 'Stok Assist tidak tersedia' &&
+                    'kesesuaian--assist-kosong',
+                  row.kesesuaian === 'Stok Desty tidak tersedia' &&
+                    'kesesuaian--desty-kosong',
+                ]"
                 :title="row.notes.join(' | ')"
               >
-                {{ row.status }}
+                {{ row.kesesuaian }}
               </span>
             </td>
           </tr>
@@ -73,14 +107,16 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { requestDestyTokenFromOpenTabs } from "@/composables/destyOmniTokenManager";
 import {
+  type KesesuaianStock,
   type StockComparisonRow,
-  type StockStatus,
 } from "@/utils/compareStockLevels";
 import { validateDateRangeLimit } from "@/utils/validateDateRangeLimit";
 
-type SortMode = "qtySold" | "status";
+type SortMode = "qtySold" | "kesesuaian";
 type ValidationState = "muted" | "ok" | "error";
+type DataSource = "assist" | "desty" | "both";
 
 const today = formatDateForInput(new Date());
 
@@ -92,6 +128,7 @@ const validationMessage = ref("");
 const validationState = ref<ValidationState>("muted");
 const warnings = ref<string[]>([]);
 const loading = ref(false);
+const source = ref<DataSource>("both");
 
 const sortedRows = computed(() => {
   const data = [...rows.value];
@@ -100,7 +137,9 @@ const sortedRows = computed(() => {
     return data.sort((a, b) => b.qtySold - a.qtySold);
   }
 
-  return data.sort((a, b) => statusRank(a.status) - statusRank(b.status));
+  return data.sort(
+    (a, b) => kesesuaianRank(a.kesesuaian) - kesesuaianRank(b.kesesuaian),
+  );
 });
 
 async function runComparison() {
@@ -124,13 +163,30 @@ async function runComparison() {
 
   try {
     const assistToken = await requestAssistTokenFromActiveTab();
+    let destyToken = "";
+    let destyTenantId = "";
+    let destyMasterWarehouseId = "";
+
+    if (source.value !== "assist") {
+      const destyTokenResult = await requestDestyTokenFromOpenTabs();
+      destyToken = destyTokenResult.token;
+      destyTenantId = destyTokenResult.tenantId;
+      destyMasterWarehouseId = destyTokenResult.masterWarehouseId;
+      if (destyTokenResult.warnings.length) {
+        warnings.value.push(...destyTokenResult.warnings);
+      }
+    }
+
     const response = (await browser.runtime.sendMessage({
       type: "FETCH_STOCK_COMPARISON",
       payload: {
         startDate: startDate.value,
         endDate: endDate.value,
-        source: "assist",
+        source: source.value,
         assistToken,
+        destyToken,
+        destyTenantId,
+        destyMasterWarehouseId,
       },
     })) as
       | { ok: true; data: StockComparisonRow[]; warnings?: string[] }
@@ -197,16 +253,18 @@ async function requestAssistTokenFromActiveTab(): Promise<string> {
   );
 }
 
-function statusRank(status: StockStatus): number {
-  switch (status) {
-    case "critical":
+function kesesuaianRank(kesesuaian: KesesuaianStock): number {
+  switch (kesesuaian) {
+    case "Tidak sesuai":
       return 1;
-    case "warning":
+    case "Stok Assist tidak tersedia":
       return 2;
-    case "unknown":
+    case "Stok Desty tidak tersedia":
       return 3;
-    case "good":
+    case "SKU belum diisi":
       return 4;
+    case "Sesuai":
+      return 5;
     default:
       return 99;
   }
