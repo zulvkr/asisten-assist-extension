@@ -1,6 +1,6 @@
-const API_ENDPOINT =
-  "https://api-clinica.assist.id/api/superapps/getEmrTransactionsByHospitalId";
-const HOSPITAL_ID = "6874f9569abc98f9c645b330";
+import { runtimeConfig } from "@/config/runtimeConfig";
+
+const API_ENDPOINT = `${runtimeConfig.assistApiBase}/superapps/getEmrTransactionsByHospitalId`;
 
 export interface FetchPemasukanParams {
   tanggalMin?: string;
@@ -24,7 +24,7 @@ function formatDateForQuery(date: Date): string {
 }
 
 function resolveFetchParams(
-  params: FetchPemasukanParams = {}
+  params: FetchPemasukanParams = {},
 ): ResolvedFetchPemasukanParams {
   const today = new Date();
   const tanggalMin = params.tanggalMin ?? formatDateForQuery(today);
@@ -36,12 +36,12 @@ function resolveFetchParams(
 }
 
 export function buildPemasukanRequest(
-  params: FetchPemasukanParams = {}
+  params: FetchPemasukanParams = {},
 ): { url: string } & ResolvedFetchPemasukanParams {
   const resolved = resolveFetchParams(params);
   const url = new URL(API_ENDPOINT);
 
-  url.searchParams.append("hospitalId", HOSPITAL_ID);
+  url.searchParams.append("hospitalId", runtimeConfig.assistHospitalId);
   url.searchParams.append("noInvoice", "");
   url.searchParams.append("nama", "");
   url.searchParams.append("skip", String(resolved.skip));

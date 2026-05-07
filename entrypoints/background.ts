@@ -9,12 +9,8 @@ import {
 } from "@/utils/compareStockLevels";
 import { getAssistSoldItemsByDate } from "@/utils/getSoldItemsByDate";
 import { buildPemasukanRequest } from "@/utils/pemasukanApi";
-
-const ASSIST_API_BASE = "https://api-clinica.assist.id/api";
-const HOSPITAL_ID = "6874f9569abc98f9c645b330";
-const SHEET_API_KEY = "AIzaSyBs2KxfVTHAA8ccLG7cc4lQVqwWOzsMOTE";
-const SHEET_SPREADSHEET_ID = "1e1Dx9ssIJYDQYnMCygwMS2RfX3WxXF7aN9nvV9995wA";
-const SHEET_RANGE = "TabelMargin";
+import { runtimeConfig } from "@/config/runtimeConfig";
+import { buildAssistHeaders } from "@/services/integration/assistRequest";
 
 interface FetchStockComparisonPayload {
   startDate?: string;
@@ -53,15 +49,7 @@ async function fetchAssistPemasukan(
   const response = await fetch(url, {
     method: "GET",
     credentials: "include",
-    headers: {
-      Accept: "application/json, text/plain, */*",
-      "Accept-Language": "en-US,en;q=0.9",
-      Authorization: token,
-      Priority: "u=1, i",
-      "Sec-Fetch-Dest": "empty",
-      "Sec-Fetch-Mode": "cors",
-      "Sec-Fetch-Site": "same-site",
-    },
+    headers: buildAssistHeaders(token),
   });
 
   if (!response.ok) {
@@ -77,9 +65,9 @@ async function fetchAssistPemasukan(
 }
 
 async function fetchMarginSkuRows(): Promise<MarginSkuRow[]> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_SPREADSHEET_ID}/values/${encodeURIComponent(
-    SHEET_RANGE,
-  )}?key=${SHEET_API_KEY}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${runtimeConfig.sheets.spreadsheetId}/values/${encodeURIComponent(
+    runtimeConfig.sheets.range,
+  )}?key=${runtimeConfig.sheets.apiKey}`;
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -107,8 +95,8 @@ async function fetchAssistStockItemsByPath(params: {
   let total = Number.POSITIVE_INFINITY;
 
   while (skip < total) {
-    const url = new URL(`${ASSIST_API_BASE}/${params.path}`);
-    url.searchParams.append("hospitalId", HOSPITAL_ID);
+    const url = new URL(`${runtimeConfig.assistApiBase}/${params.path}`);
+    url.searchParams.append("hospitalId", runtimeConfig.assistHospitalId);
     url.searchParams.append("fieldName", params.fieldName);
     url.searchParams.append("sort", "1");
     url.searchParams.append("skip", String(skip));
@@ -117,15 +105,7 @@ async function fetchAssistStockItemsByPath(params: {
     const response = await fetch(url.toString(), {
       method: "GET",
       credentials: "include",
-      headers: {
-        Accept: "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        Authorization: params.token,
-        Priority: "u=1, i",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
-      },
+      headers: buildAssistHeaders(params.token),
     });
 
     if (!response.ok) {
@@ -398,15 +378,7 @@ export default defineBackground(() => {
         const response = await fetch(url, {
           method: "GET",
           credentials: "include",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            Authorization: token,
-            Priority: "u=1, i",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
-          },
+          headers: buildAssistHeaders(token),
         });
 
         if (!response.ok) {

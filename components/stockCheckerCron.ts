@@ -1,6 +1,8 @@
 import { ContentScriptContext } from "wxt/utils/content-script-context";
 import PocketBase from "pocketbase";
 import { startOfHour } from "date-fns/fp/startOfHour";
+import { runtimeConfig } from "@/config/runtimeConfig";
+import { buildAssistHeaders } from "@/services/integration/assistRequest";
 
 interface StockData {
   medName: string;
@@ -51,10 +53,8 @@ interface StockData {
 
 export const stockCheckerCron = (ctx: ContentScriptContext, pb: PocketBase) => {
   const token = localStorage.getItem("token");
-  const hospitalId = "6874f9569abc98f9c645b330";
-  const baseUrl = "https://api-clinica.assist.id/api";
-  const url = new URL(`${baseUrl}/KMedicineStocks/getList`);
-  url.searchParams.append("hospitalId", hospitalId);
+  const url = new URL(`${runtimeConfig.assistApiBase}/KMedicineStocks/getList`);
+  url.searchParams.append("hospitalId", runtimeConfig.assistHospitalId);
   url.searchParams.append("fieldName", "medName");
   url.searchParams.append("skip", "0");
   url.searchParams.append("limit", "5000");
@@ -62,14 +62,10 @@ export const stockCheckerCron = (ctx: ContentScriptContext, pb: PocketBase) => {
   function fetchStockData() {
     return fetch(url.toString(), {
       headers: {
-        Authorization: token ?? "",
-        Accept: "application/json, text/plain, */*",
+        ...buildAssistHeaders(token ?? ""),
         Origin: "https://clinica.assist.id",
         Priority: "u=1, i",
         Referer: "https://clinica.assist.id/",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
       },
       method: "GET",
     })
@@ -96,7 +92,7 @@ export const stockCheckerCron = (ctx: ContentScriptContext, pb: PocketBase) => {
         } else {
           console.error(
             "Error fetching last stok date from PocketBase:",
-            error
+            error,
           );
         }
       });
@@ -160,7 +156,7 @@ export const stockCheckerCron = (ctx: ContentScriptContext, pb: PocketBase) => {
     const startOfCurrentHour = startOfHour(new Date()).toISOString();
     if (lastStokDate === startOfCurrentHour) {
       console.log(
-        "Stock data for the current hour already exists in PocketBase. Skipping upload."
+        "Stock data for the current hour already exists in PocketBase. Skipping upload.",
       );
       return;
     }
