@@ -167,7 +167,6 @@ export default defineContentScript({
     });
 
     await fetchMarginTable();
-    // const pb = await loginWithPocketbase();
 
     const observer = new MutationObserver(() => {
       modifyTableObat(ctx);
@@ -179,7 +178,6 @@ export default defineContentScript({
       const target = document.querySelector("#kamarmedis-content");
       if (target) {
         observer.observe(target, { childList: true, subtree: true });
-        // stockCheckerCron(ctx, pb);
         mountHitunganHarianButtonUi(ctx).mount();
       } else {
         setTimeout(waitForTargetAndObserve, 500);
