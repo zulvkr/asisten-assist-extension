@@ -1,10 +1,32 @@
 <template>
   <main class="popup-menu-root">
     <h1>Menu</h1>
-    <p class="subtitle">Akses fitur perbandingan stok dari jendela terpisah.</p>
+    <p class="subtitle">
+      Akses fitur perbandingan stok dan rekomendasi belanja dari jendela
+      terpisah.
+    </p>
 
-    <button type="button" :disabled="opening" @click="openComparisonWindow">
-      {{ opening ? "Membuka..." : "Buka Perbandingan Stok" }}
+    <button
+      type="button"
+      :disabled="Boolean(openingTarget)"
+      @click="openComparisonWindow"
+    >
+      {{
+        openingTarget === "comparison" ? "Membuka..." : "Buka Perbandingan Stok"
+      }}
+    </button>
+
+    <button
+      type="button"
+      class="button-secondary"
+      :disabled="Boolean(openingTarget)"
+      @click="openRecommendationWindow"
+    >
+      {{
+        openingTarget === "recommendation"
+          ? "Membuka..."
+          : "Buka Rekomendasi Belanja"
+      }}
     </button>
 
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
@@ -14,11 +36,13 @@
 <script setup lang="ts">
 import { ref } from "vue";
 
-const opening = ref(false);
+type OpeningTarget = "comparison" | "recommendation" | null;
+
+const openingTarget = ref<OpeningTarget>(null);
 const errorMessage = ref("");
 
 async function openComparisonWindow() {
-  opening.value = true;
+  openingTarget.value = "comparison";
   errorMessage.value = "";
 
   try {
@@ -37,7 +61,34 @@ async function openComparisonWindow() {
         ? error.message
         : "Gagal membuka jendela perbandingan.";
   } finally {
-    opening.value = false;
+    openingTarget.value = null;
+  }
+}
+
+async function openRecommendationWindow() {
+  openingTarget.value = "recommendation";
+  errorMessage.value = "";
+
+  try {
+    const url = new URL(
+      "./rekomendasi-belanja.html",
+      browser.runtime.getURL("/popup.html"),
+    ).toString();
+    await browser.windows.create({
+      url,
+      type: "popup",
+      width: 1320,
+      height: 860,
+    });
+
+    window.close();
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : "Gagal membuka jendela rekomendasi.";
+  } finally {
+    openingTarget.value = null;
   }
 }
 </script>

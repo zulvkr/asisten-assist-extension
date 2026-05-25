@@ -7,10 +7,24 @@ import {
   compareStockLevels,
   type StockComparisonRow,
 } from "@/utils/compareStockLevels";
-import { getAssistSoldItemsByDate } from "@/utils/getSoldItemsByDate";
+import {
+  getAssistShoppingSalesByDate,
+  getAssistSoldItemsByDate,
+} from "@/utils/getSoldItemsByDate";
 import { buildPemasukanRequest } from "@/utils/pemasukanApi";
 import { runtimeConfig } from "@/config/runtimeConfig";
 import { buildAssistHeaders } from "@/services/integration/assistRequest";
+import type {
+  ShoppingCatalogItem,
+  ShoppingItemType,
+  ShoppingRecommendationRow,
+  ShoppingRecommendationSettings,
+} from "@/types/ShoppingRecommendation";
+import {
+  buildShoppingRecommendationRows,
+  resolveShoppingRecommendationSettings,
+  validateShoppingRecommendationSettings,
+} from "@/utils/shoppingRecommendations";
 
 interface FetchStockComparisonPayload {
   startDate?: string;
@@ -22,6 +36,11 @@ interface FetchStockComparisonPayload {
   destyMasterWarehouseId?: string;
 }
 
+interface FetchShoppingRecommendationsPayload {
+  assistToken?: string;
+  settings?: Partial<ShoppingRecommendationSettings>;
+}
+
 interface MarginSkuRow {
   kodeObat: string;
   namaObat: string;
@@ -31,7 +50,24 @@ interface MarginSkuRow {
 interface AssistStockItem {
   id?: string;
   code?: string;
+  medName?: string;
+  itemName?: string;
+  brandName?: string;
+  unit?: string;
   stockTotal?: number;
+  buyFee?: number;
+  avgHPP?: number;
+  sellNormalFee?: number;
+}
+
+interface ShoppingRecommendationResponse {
+  ok: true;
+  data: ShoppingRecommendationRow[];
+  catalogItems: ShoppingCatalogItem[];
+  warnings: string[];
+  settings: ShoppingRecommendationSettings;
+  lookbackDays: number;
+  generatedAt: string;
 }
 
 async function fetchAssistPemasukan(
@@ -39,29 +75,42 @@ async function fetchAssistPemasukan(
   endDate: string,
   token: string,
 ): Promise<PemasukanData[]> {
-  const { url } = buildPemasukanRequest({
-    tanggalMin: startDate,
-    tanggalMax: endDate,
-    limit: 1000,
-    skip: 0,
-  });
+  const allRows: PemasukanData[] = [];
+  const pageSize = 1000;
+  let skip = 0;
 
-  const response = await fetch(url, {
-    method: "GET",
-    credentials: "include",
-    headers: buildAssistHeaders(token),
-  });
+  while (true) {
+    const { url } = buildPemasukanRequest({
+      tanggalMin: startDate,
+      tanggalMax: endDate,
+      limit: pageSize,
+      skip,
+    });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    const errorMessage = errorBody?.trim()
-      ? errorBody.slice(0, 200)
-      : `Gagal mengambil data pemasukan: ${response.status}`;
-    throw new Error(errorMessage);
+    const response = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+      headers: buildAssistHeaders(token),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      const errorMessage = errorBody?.trim()
+        ? errorBody.slice(0, 200)
+        : `Gagal mengambil data pemasukan: ${response.status}`;
+      throw new Error(errorMessage);
+    }
+
+    const payload = (await response.json()) as { result?: PemasukanData[] };
+    const rows = payload?.result ?? [];
+    allRows.push(...rows);
+
+    if (rows.length < pageSize) {
+      return allRows;
+    }
+
+    skip += pageSize;
   }
-
-  const payload = (await response.json()) as { result?: PemasukanData[] };
-  return payload?.result ?? [];
 }
 
 async function fetchMarginSkuRows(): Promise<MarginSkuRow[]> {
@@ -179,6 +228,141 @@ function buildKodeObatByMedicineId(
     }
   }
   return result;
+}
+
+function buildShoppingCatalogItems(
+  stockItems: AssistStockItem[],
+  itemType: ShoppingItemType,
+): ShoppingCatalogItem[] {
+  return stockItems
+    .map((item) => {
+      const itemId = String(item.id ?? "").trim();
+      if (!itemId) {
+        return null;
+      }
+
+      return {
+        itemId,
+        itemType,
+        code: String(item.code ?? "").trim(),
+        itemName: String(item.medName ?? item.itemName ?? "").trim(),
+        brandName: String(item.brandName ?? "").trim(),
+        unit: String(item.unit ?? "").trim(),
+        stockTotal: Number(item.stockTotal ?? 0),
+        buyFee: toNullableNumber(item.buyFee),
+        avgHpp: toNullableNumber(item.avgHPP),
+        sellNormalFee: toNullableNumber(item.sellNormalFee),
+      } satisfies ShoppingCatalogItem;
+    })
+    .filter((item): item is ShoppingCatalogItem => Boolean(item));
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return null;
+  }
+
+  return value;
+}
+
+function formatDateOffsetFromToday(daysOffset: number): string {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + daysOffset);
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+async function handleFetchShoppingRecommendations(
+  payload: FetchShoppingRecommendationsPayload,
+): Promise<ShoppingRecommendationResponse | { ok: false; error: string }> {
+  const assistToken = payload.assistToken?.trim() ?? "";
+  if (!assistToken) {
+    return {
+      ok: false,
+      error:
+        "Token Assist tidak tersedia. Pastikan tab clinica.assist.id sedang aktif.",
+    };
+  }
+
+  const settings = resolveShoppingRecommendationSettings(
+    payload.settings ?? {},
+  );
+  const settingsValidation = validateShoppingRecommendationSettings(settings);
+  if (!settingsValidation.valid) {
+    return {
+      ok: false,
+      error: settingsValidation.reason,
+    };
+  }
+
+  const lookbackDays = 30;
+  const endDate = formatDateOffsetFromToday(0);
+  const startDate = formatDateOffsetFromToday(-(lookbackDays - 1));
+
+  try {
+    const [pemasukanData, medicineStockItems, bhpStockItems] =
+      await Promise.all([
+        fetchAssistPemasukan(startDate, endDate, assistToken),
+        fetchAssistMedicineStockItems(assistToken),
+        fetchAssistBhpStockItems(assistToken),
+      ]);
+
+    const salesResult = getAssistShoppingSalesByDate(pemasukanData, {
+      includeOnlyPaidOff: true,
+    });
+    const catalogItems = [
+      ...buildShoppingCatalogItems(medicineStockItems, "prescription"),
+      ...buildShoppingCatalogItems(bhpStockItems, "akhp"),
+    ];
+
+    const rows = buildShoppingRecommendationRows({
+      catalogItems,
+      salesAggregates: salesResult.salesAggregates,
+      settings,
+      lookbackDays,
+    });
+
+    const warnings: string[] = [];
+    if (salesResult.skippedByType > 0) {
+      warnings.push(
+        `${salesResult.skippedByType} item transaksi non-stok dilewati dari perhitungan rekomendasi.`,
+      );
+    }
+    if (salesResult.missingItemId > 0) {
+      warnings.push(
+        `${salesResult.missingItemId} item tanpa id Assist tetap ditampilkan, tetapi mungkin tidak bisa dicocokkan ke katalog.`,
+      );
+    }
+
+    const missingBuyFeeCount = rows.filter((row) => row.buyFee === null).length;
+    if (missingBuyFeeCount > 0) {
+      warnings.push(
+        `${missingBuyFeeCount} item tidak memiliki buyFee dari payload stok Assist.`,
+      );
+    }
+
+    return {
+      ok: true,
+      data: rows,
+      catalogItems,
+      warnings,
+      settings,
+      lookbackDays,
+      generatedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat menyiapkan rekomendasi belanja.",
+    };
+  }
 }
 
 async function handleFetchStockComparison(
@@ -351,6 +535,17 @@ export default defineBackground(() => {
       (async () => {
         const result = await handleFetchStockComparison(
           (message.payload ?? {}) as FetchStockComparisonPayload,
+        );
+        sendResponse(result);
+      })();
+
+      return true;
+    }
+
+    if (message.type === "FETCH_SHOPPING_RECOMMENDATIONS") {
+      (async () => {
+        const result = await handleFetchShoppingRecommendations(
+          (message.payload ?? {}) as FetchShoppingRecommendationsPayload,
         );
         sendResponse(result);
       })();

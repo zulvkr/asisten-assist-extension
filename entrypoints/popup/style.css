@@ -46,6 +46,15 @@ button:hover {
   background: #1e293b;
 }
 
+.button-secondary {
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.button-secondary:hover {
+  background: #115e59;
+}
+
 .error {
   margin: 0;
   font-size: 12px;
