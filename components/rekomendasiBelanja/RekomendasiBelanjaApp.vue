@@ -299,10 +299,21 @@
 
     <section class="table-panel">
       <header>
-        <h2>Tabel Rekomendasi</h2>
-        <p class="meta">
-          {{ generatedLabel }}
-        </p>
+        <div>
+          <h2>Tabel Rekomendasi</h2>
+          <p class="meta">
+            {{ generatedLabel }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="ghost-button"
+          :disabled="!bulkReplenishCount"
+          @click="fillReplenishForFilteredRows"
+        >
+          Isi Replenish All
+          {{ bulkReplenishCount ? `(${bulkReplenishCount})` : "" }}
+        </button>
         <div class="indicator-legend" aria-label="Legend indikator item">
           <span
             v-for="indicator in indicatorLegend"
@@ -1005,6 +1016,14 @@ const filteredRows = computed(() => {
   });
 });
 
+const bulkReplenishRows = computed(() => {
+  return filteredRows.value.filter(
+    (row) => !row.needsManualReview && row.replenishSuggestedQty > 0,
+  );
+});
+
+const bulkReplenishCount = computed(() => bulkReplenishRows.value.length);
+
 const draftRows = computed<DraftSummaryRow[]>(() => {
   return Object.entries(draftQuantities.value)
     .map(([itemId, quantity]) => {
@@ -1171,6 +1190,22 @@ function setDraftQuantity(itemId: string, value: number | string) {
 
   draftQuantities.value[itemId] = quantity;
   draftQuantities.value = { ...draftQuantities.value };
+}
+
+function fillReplenishForFilteredRows() {
+  if (!bulkReplenishRows.value.length) {
+    return;
+  }
+
+  const nextDraftQuantities = { ...draftQuantities.value };
+
+  for (const row of bulkReplenishRows.value) {
+    nextDraftQuantities[row.itemId] = row.replenishSuggestedQty;
+  }
+
+  draftQuantities.value = nextDraftQuantities;
+  infoMessage.value = `${bulkReplenishRows.value.length} item diisi ke draft dengan qty replenish.`;
+  errorMessage.value = "";
 }
 
 function setQuickFilter(filterKey: QuickFilterKey) {

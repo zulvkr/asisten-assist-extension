@@ -140,7 +140,9 @@ export function buildShoppingRecommendationRows(
       lookbackDays: input.lookbackDays,
       now,
     });
-    const averageDailySales = activeDays > 0 ? qtySold30Days / activeDays : 0;
+    const averageDailySales =
+      input.lookbackDays > 0 ? qtySold30Days / input.lookbackDays : 0;
+    const activeDailySales = activeDays > 0 ? qtySold30Days / activeDays : 0;
     const isCheap =
       typeof catalogItem?.buyFee === "number" &&
       catalogItem.buyFee <= settings.cheapProductMaxPrice;
@@ -158,6 +160,10 @@ export function buildShoppingRecommendationRows(
       lastKnownStockAfter: salesAggregate?.lastKnownStockAfter ?? null,
       now,
     });
+    const activeEstimatedDaysRemaining = calculateEstimatedDaysRemaining(
+      stockTotal,
+      activeDailySales,
+    );
     const trueVelocity =
       qtySold30Days > 0
         ? qtySold30Days /
@@ -167,11 +173,8 @@ export function buildShoppingRecommendationRows(
               calculateEstimatedDemandConstraintDays({
                 estimatedOutOfStockDays,
                 stockTotal,
-                averageDailySales,
-                estimatedDaysRemaining: calculateEstimatedDaysRemaining(
-                  stockTotal,
-                  averageDailySales,
-                ),
+                averageDailySales: activeDailySales,
+                estimatedDaysRemaining: activeEstimatedDaysRemaining,
                 lookbackDays: input.lookbackDays,
                 leadTimeLimit,
                 lastSoldAt: salesAggregate?.lastSoldAt ?? null,
@@ -189,8 +192,8 @@ export function buildShoppingRecommendationRows(
       calculateEstimatedDemandConstraintDays({
         estimatedOutOfStockDays,
         stockTotal,
-        averageDailySales,
-        estimatedDaysRemaining,
+        averageDailySales: activeDailySales,
+        estimatedDaysRemaining: activeEstimatedDaysRemaining,
         lookbackDays: input.lookbackDays,
         leadTimeLimit,
         lastSoldAt: salesAggregate?.lastSoldAt ?? null,
