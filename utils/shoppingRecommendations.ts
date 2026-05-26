@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS,
   DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS,
   type RecommendationStatusColor,
   type ShoppingCatalogItem,
@@ -12,6 +13,7 @@ interface BuildShoppingRecommendationRowsInput {
   catalogItems: ShoppingCatalogItem[];
   salesAggregates: ShoppingSalesAggregate[];
   settings?: Partial<ShoppingRecommendationSettings>;
+  pendingOrderQuantities?: Record<string, number>;
   lookbackDays: number;
 }
 
@@ -91,6 +93,7 @@ export function buildShoppingRecommendationRows(
   input: BuildShoppingRecommendationRowsInput,
 ): ShoppingRecommendationRow[] {
   const settings = resolveShoppingRecommendationSettings(input.settings);
+  const now = new Date();
   const salesByItemId = new Map(
     input.salesAggregates.map((aggregate) => [aggregate.itemId, aggregate]),
   );
@@ -118,9 +121,12 @@ export function buildShoppingRecommendationRows(
     const salesAggregate = salesByItemId.get(itemId);
 
     const qtySold30Days = Number(salesAggregate?.qtySold ?? 0);
-    const averageDailySales =
-      input.lookbackDays > 0 ? qtySold30Days / input.lookbackDays : 0;
     const stockTotal = Number(catalogItem?.stockTotal ?? 0);
+    const pendingOrderQty = normalizeNonNegativeNumber(
+      input.pendingOrderQuantities?.[itemId],
+      0,
+    );
+    const effectiveStockTotal = stockTotal + pendingOrderQty;
     const observedUnits = Array.from(
       new Set((salesAggregate?.observedUnits ?? []).filter(Boolean)),
     );
@@ -129,6 +135,12 @@ export function buildShoppingRecommendationRows(
       ? `Terjual dalam lebih dari satu unit: ${observedUnits.join(", ")}.`
       : "";
     const isDormant = qtySold30Days <= 0;
+    const activeDays = resolveActiveDays({
+      firstSoldAt: salesAggregate?.firstSoldAt ?? null,
+      lookbackDays: input.lookbackDays,
+      now,
+    });
+    const averageDailySales = activeDays > 0 ? qtySold30Days / activeDays : 0;
     const isCheap =
       typeof catalogItem?.buyFee === "number" &&
       catalogItem.buyFee <= settings.cheapProductMaxPrice;
@@ -137,14 +149,110 @@ export function buildShoppingRecommendationRows(
       isCheap && isFastMoving
         ? settings.cheapFastMovingLeadTime
         : settings.defaultLeadTime;
+    const estimatedOutOfStockDays = calculateEstimatedOutOfStockDays({
+      stockTotal,
+      qtySold30Days,
+      lookbackDays: input.lookbackDays,
+      leadTimeLimit,
+      lastSoldAt: salesAggregate?.lastSoldAt ?? null,
+      lastKnownStockAfter: salesAggregate?.lastKnownStockAfter ?? null,
+      now,
+    });
+    const trueVelocity =
+      qtySold30Days > 0
+        ? qtySold30Days /
+          Math.max(
+            1,
+            activeDays -
+              calculateEstimatedDemandConstraintDays({
+                estimatedOutOfStockDays,
+                stockTotal,
+                averageDailySales,
+                estimatedDaysRemaining: calculateEstimatedDaysRemaining(
+                  stockTotal,
+                  averageDailySales,
+                ),
+                lookbackDays: input.lookbackDays,
+                leadTimeLimit,
+                lastSoldAt: salesAggregate?.lastSoldAt ?? null,
+                lastKnownStockAfter:
+                  salesAggregate?.lastKnownStockAfter ?? null,
+                now,
+              }),
+          )
+        : 0;
     const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
       stockTotal,
       averageDailySales,
     );
+    const estimatedDemandConstraintDays =
+      calculateEstimatedDemandConstraintDays({
+        estimatedOutOfStockDays,
+        stockTotal,
+        averageDailySales,
+        estimatedDaysRemaining,
+        lookbackDays: input.lookbackDays,
+        leadTimeLimit,
+        lastSoldAt: salesAggregate?.lastSoldAt ?? null,
+        lastKnownStockAfter: salesAggregate?.lastKnownStockAfter ?? null,
+        now,
+      });
+    const adjustedTrueVelocity =
+      qtySold30Days > 0
+        ? qtySold30Days /
+          Math.max(1, activeDays - estimatedDemandConstraintDays)
+        : 0;
+    const effectiveDaysRemaining = calculateEstimatedDaysRemaining(
+      effectiveStockTotal,
+      averageDailySales,
+    );
     const targetStock = Math.ceil(averageDailySales * settings.targetStockDays);
-    const calculatedSuggestedQty = needsManualReview
+    const replenishSuggestedQty = needsManualReview
       ? 0
-      : Math.max(0, targetStock - stockTotal);
+      : Math.max(0, targetStock - effectiveStockTotal);
+    const potentialSalesGrowthPercent =
+      averageDailySales > 0
+        ? ((adjustedTrueVelocity - averageDailySales) / averageDailySales) * 100
+        : 0;
+    const growthSuggestedQty = needsManualReview
+      ? 0
+      : calculateGrowthSuggestedQty({
+          averageDailySales,
+          trueVelocity: adjustedTrueVelocity,
+          estimatedDaysRemaining,
+          leadTimeLimit,
+          targetStock,
+          replenishSuggestedQty,
+          potentialSalesGrowthPercent,
+          stockTotal,
+          isDormant,
+        });
+    const calculatedSuggestedQty = replenishSuggestedQty + growthSuggestedQty;
+    const potentialIncomeLoss =
+      stockTotal <= 0 && typeof catalogItem?.sellNormalFee === "number"
+        ? adjustedTrueVelocity * leadTimeLimit * catalogItem.sellNormalFee
+        : 0;
+    const unitProfit =
+      typeof catalogItem?.sellNormalFee === "number"
+        ? catalogItem.sellNormalFee -
+          (catalogItem.avgHpp ?? catalogItem.buyFee ?? 0)
+        : 0;
+    const profitContribution30Days = qtySold30Days * Math.max(0, unitProfit);
+    const isCappedDemand =
+      estimatedDemandConstraintDays >=
+        DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.cappedDemandMinOutOfStockDays &&
+      potentialSalesGrowthPercent >=
+        DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.cappedDemandMinGrowthPercent;
+    const isGoldenProduct =
+      profitContribution30Days >=
+        DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.goldenProductMinProfitContribution &&
+      averageDailySales >= settings.fastMovingMinDailySales;
+    const isDeadStock =
+      stockTotal > 0 &&
+      estimatedDaysRemaining >=
+        DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.deadStockMinDaysRemaining &&
+      averageDailySales <=
+        DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.deadStockMaxDailySales;
 
     const notes: string[] = [];
     if (manualReviewReason) {
@@ -159,6 +267,40 @@ export function buildShoppingRecommendationRows(
     if (catalogItem?.buyFee === null || catalogItem?.buyFee === undefined) {
       notes.push("Buy fee tidak tersedia dari payload stok Assist.");
     }
+    if (pendingOrderQty > 0) {
+      notes.push(`${pendingOrderQty} unit sedang dipesan.`);
+    }
+    if (estimatedDemandConstraintDays > 0) {
+      notes.push(
+        `Permintaan terhambat sekitar ${formatCompactNumber(estimatedDemandConstraintDays)} hari dari stock-out atau coverage yang terlalu tipis.`,
+      );
+    }
+    if (potentialIncomeLoss > 0) {
+      notes.push(
+        `Potensi rugi omzet ${formatCompactNumber(potentialIncomeLoss)} selama lead time.`,
+      );
+    }
+    if (isCappedDemand) {
+      notes.push("Permintaan kemungkinan terhambat oleh stock-out.");
+    }
+    if (isGoldenProduct) {
+      notes.push("Produk emas: kontribusi profit 30 hari tinggi.");
+    }
+    if (isDeadStock) {
+      notes.push("Stok mati: perputaran lambat dengan coverage panjang.");
+    }
+    const growthRecommendationNote = buildGrowthRecommendationNote({
+      growthSuggestedQty,
+      replenishSuggestedQty,
+      potentialSalesGrowthPercent,
+      estimatedDaysRemaining,
+      leadTimeLimit,
+      isDeadStock,
+      isDormant,
+    });
+    if (growthRecommendationNote) {
+      notes.push(growthRecommendationNote);
+    }
 
     rows.push({
       itemId,
@@ -169,22 +311,37 @@ export function buildShoppingRecommendationRows(
       brandName: catalogItem?.brandName ?? "",
       unit: catalogItem?.unit ?? observedUnits[0] ?? "",
       stockTotal,
+      pendingOrderQty,
+      effectiveStockTotal,
       buyFee: catalogItem?.buyFee ?? null,
       avgHpp: catalogItem?.avgHpp ?? null,
       sellNormalFee: catalogItem?.sellNormalFee ?? null,
       qtySold30Days,
+      activeDays,
       averageDailySales,
+      trueVelocity: adjustedTrueVelocity,
+      estimatedOutOfStockDays,
+      estimatedDemandConstraintDays,
       estimatedDaysRemaining,
+      effectiveDaysRemaining,
       leadTimeLimit,
       targetStock,
+      replenishSuggestedQty,
+      growthSuggestedQty,
       calculatedSuggestedQty,
+      potentialIncomeLoss,
+      potentialSalesGrowthPercent,
+      growthRecommendationNote,
       statusColor: resolveStatusColor({
-        estimatedDaysRemaining,
+        estimatedDaysRemaining: effectiveDaysRemaining,
         leadTimeLimit,
         targetStockDays: settings.targetStockDays,
       }),
       isDormant,
       needsManualReview,
+      isCappedDemand,
+      isGoldenProduct,
+      isDeadStock,
       manualReviewReason,
       observedTransactionUnits: observedUnits,
       notes,
@@ -199,11 +356,194 @@ export function compareShoppingRecommendationRows(
   right: ShoppingRecommendationRow,
 ): number {
   return (
+    Number(right.potentialIncomeLoss > 0) -
+      Number(left.potentialIncomeLoss > 0) ||
+    Number(right.isCappedDemand) - Number(left.isCappedDemand) ||
+    Number(right.isGoldenProduct) - Number(left.isGoldenProduct) ||
     statusRank(left.statusColor) - statusRank(right.statusColor) ||
+    right.potentialIncomeLoss - left.potentialIncomeLoss ||
+    right.growthSuggestedQty - left.growthSuggestedQty ||
     right.calculatedSuggestedQty - left.calculatedSuggestedQty ||
     right.qtySold30Days - left.qtySold30Days ||
     left.itemName.localeCompare(right.itemName)
   );
+}
+
+function calculateEstimatedDemandConstraintDays(input: {
+  estimatedOutOfStockDays: number;
+  stockTotal: number;
+  averageDailySales: number;
+  estimatedDaysRemaining: number;
+  lookbackDays: number;
+  leadTimeLimit: number;
+  lastSoldAt: string | null;
+  lastKnownStockAfter: number | null;
+  now: Date;
+}): number {
+  if (input.estimatedOutOfStockDays > 0) {
+    return input.estimatedOutOfStockDays;
+  }
+
+  if (input.stockTotal <= 0 || input.averageDailySales <= 0) {
+    return 0;
+  }
+
+  const thinCoverageWindow = Math.min(2, Math.max(1, input.leadTimeLimit / 2));
+  const coverageShortfall = Math.max(
+    0,
+    thinCoverageWindow - input.estimatedDaysRemaining,
+  );
+  if (coverageShortfall <= 0) {
+    return 0;
+  }
+
+  const lastSoldTimestamp = input.lastSoldAt
+    ? Date.parse(input.lastSoldAt)
+    : NaN;
+  const daysSinceLastSale = Number.isNaN(lastSoldTimestamp)
+    ? input.leadTimeLimit
+    : Math.max(
+        0,
+        Math.floor((input.now.getTime() - lastSoldTimestamp) / 86_400_000),
+      );
+  const lowStockSignal =
+    input.lastKnownStockAfter !== null &&
+    input.lastKnownStockAfter <= Math.max(1, input.averageDailySales)
+      ? 0.5
+      : 0;
+  const recencySignal =
+    daysSinceLastSale <= Math.max(1, Math.ceil(input.leadTimeLimit / 2))
+      ? 0.5
+      : 0;
+
+  return Math.min(
+    input.lookbackDays,
+    Math.max(0.5, coverageShortfall + lowStockSignal + recencySignal),
+  );
+}
+
+function calculateGrowthSuggestedQty(input: {
+  averageDailySales: number;
+  trueVelocity: number;
+  estimatedDaysRemaining: number;
+  leadTimeLimit: number;
+  targetStock: number;
+  replenishSuggestedQty: number;
+  potentialSalesGrowthPercent: number;
+  stockTotal: number;
+  isDormant: boolean;
+}): number {
+  if (input.isDormant || input.averageDailySales <= 0) {
+    return 0;
+  }
+
+  const velocityGap = Math.max(0, input.trueVelocity - input.averageDailySales);
+  if (velocityGap <= 0 || input.potentialSalesGrowthPercent < 10) {
+    return 0;
+  }
+
+  const lowCoverage =
+    input.stockTotal <= 0 ||
+    input.estimatedDaysRemaining <= input.leadTimeLimit;
+  if (!lowCoverage) {
+    return 0;
+  }
+
+  const growthCoverageDays = Math.min(
+    3,
+    Math.max(1, Math.ceil(input.leadTimeLimit / 2)),
+  );
+  const incrementalDailyGrowth = Math.min(
+    velocityGap,
+    Math.max(0.2, input.averageDailySales * 0.25),
+  );
+  const severity =
+    input.stockTotal <= 0
+      ? 1
+      : clamp01(
+          (input.leadTimeLimit - Math.max(0, input.estimatedDaysRemaining)) /
+            Math.max(1, input.leadTimeLimit),
+        );
+  const proposedGrowthQty = Math.ceil(
+    incrementalDailyGrowth * growthCoverageDays * Math.max(0.35, severity),
+  );
+  const capByReplenish = Math.max(
+    1,
+    Math.ceil(input.replenishSuggestedQty * 0.5),
+  );
+  const capByTarget = Math.max(1, Math.ceil(input.targetStock * 0.25));
+
+  return Math.max(0, Math.min(proposedGrowthQty, capByReplenish, capByTarget));
+}
+
+function buildGrowthRecommendationNote(input: {
+  growthSuggestedQty: number;
+  replenishSuggestedQty: number;
+  potentialSalesGrowthPercent: number;
+  estimatedDaysRemaining: number;
+  leadTimeLimit: number;
+  isDeadStock: boolean;
+  isDormant: boolean;
+}): string {
+  if (input.isDormant || input.isDeadStock) {
+    return "Growth suggestion dimatikan untuk mencegah dead stock pada item lambat.";
+  }
+
+  if (input.growthSuggestedQty <= 0) {
+    return "Growth suggestion belum ditambahkan; fokus isi ulang permintaan dasar terlebih dahulu.";
+  }
+
+  return `Growth suggestion ${input.growthSuggestedQty} unit dibuat bertahap di atas replenish ${input.replenishSuggestedQty} unit karena coverage ${formatCompactNumber(input.estimatedDaysRemaining)} hari dan potensi growth ${formatCompactNumber(input.potentialSalesGrowthPercent)}%.`;
+}
+
+function resolveActiveDays(input: {
+  firstSoldAt: string | null;
+  lookbackDays: number;
+  now: Date;
+}): number {
+  if (!input.firstSoldAt) {
+    return Math.max(1, input.lookbackDays);
+  }
+
+  const timestamp = Date.parse(input.firstSoldAt);
+  if (Number.isNaN(timestamp)) {
+    return Math.max(1, input.lookbackDays);
+  }
+
+  const days = Math.floor((input.now.getTime() - timestamp) / 86_400_000) + 1;
+  return Math.max(1, Math.min(input.lookbackDays, days));
+}
+
+function calculateEstimatedOutOfStockDays(input: {
+  stockTotal: number;
+  qtySold30Days: number;
+  lookbackDays: number;
+  leadTimeLimit: number;
+  lastSoldAt: string | null;
+  lastKnownStockAfter: number | null;
+  now: Date;
+}): number {
+  if (input.stockTotal > 0) {
+    return 0;
+  }
+
+  if (input.qtySold30Days <= 0) {
+    return Math.min(input.lookbackDays, input.leadTimeLimit);
+  }
+
+  const lastSoldTimestamp = input.lastSoldAt
+    ? Date.parse(input.lastSoldAt)
+    : NaN;
+  const daysSinceLastSale = Number.isNaN(lastSoldTimestamp)
+    ? input.leadTimeLimit
+    : Math.max(
+        0,
+        Math.floor((input.now.getTime() - lastSoldTimestamp) / 86_400_000),
+      );
+  const gapEstimate = Math.max(0, input.leadTimeLimit - daysSinceLastSale);
+  const stockHint = input.lastKnownStockAfter === 0 ? daysSinceLastSale : 0;
+
+  return Math.min(input.lookbackDays, Math.max(1, gapEstimate, stockHint));
 }
 
 function calculateEstimatedDaysRemaining(
@@ -275,4 +615,12 @@ function normalizeNonNegativeNumber(
   }
 
   return value;
+}
+
+function formatCompactNumber(value: number): string {
+  return value >= 10 ? value.toFixed(0) : value.toFixed(1);
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }

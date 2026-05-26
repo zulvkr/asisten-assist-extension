@@ -97,6 +97,11 @@ export function getAssistShoppingSalesByDate(
       itemName: string;
       qtySold: number;
       observedUnits: Set<string>;
+      firstSoldAt: string | null;
+      lastSoldAt: string | null;
+      lastKnownStockBefore: number | null;
+      lastKnownStockAfter: number | null;
+      lastObservedStockAt: string | null;
     }
   >();
 
@@ -121,6 +126,10 @@ export function getAssistShoppingSalesByDate(
           ? (item.akhpId?.trim() ?? "")
           : (item.medicineId?.trim() ?? "");
       const key = assistItemId || `__noId__::${itemType}::${item.name}`;
+      const observedAt = normalizeObservedAt(
+        item.createdAt,
+        transaction.createdAt,
+      );
 
       if (!assistItemId) {
         missingItemId += 1;
@@ -133,6 +142,17 @@ export function getAssistShoppingSalesByDate(
         if (normalizedUnit) {
           existing.observedUnits.add(normalizedUnit);
         }
+        existing.firstSoldAt = minIsoDate(existing.firstSoldAt, observedAt);
+        existing.lastSoldAt = maxIsoDate(existing.lastSoldAt, observedAt);
+        const lastObservedStockAt = maxIsoDate(
+          existing.lastObservedStockAt,
+          observedAt,
+        );
+        if (lastObservedStockAt === observedAt) {
+          existing.lastObservedStockAt = observedAt;
+          existing.lastKnownStockBefore = toNullableNumber(item.stockBefore);
+          existing.lastKnownStockAfter = toNullableNumber(item.stockAfter);
+        }
         continue;
       }
 
@@ -142,6 +162,11 @@ export function getAssistShoppingSalesByDate(
         itemName: item.name,
         qtySold: item.quantity,
         observedUnits: new Set(normalizedUnit ? [normalizedUnit] : []),
+        firstSoldAt: observedAt,
+        lastSoldAt: observedAt,
+        lastKnownStockBefore: toNullableNumber(item.stockBefore),
+        lastKnownStockAfter: toNullableNumber(item.stockAfter),
+        lastObservedStockAt: observedAt,
       });
     }
   }
@@ -154,6 +179,11 @@ export function getAssistShoppingSalesByDate(
         itemName: aggregate.itemName,
         qtySold: aggregate.qtySold,
         observedUnits: Array.from(aggregate.observedUnits).sort(),
+        firstSoldAt: aggregate.firstSoldAt,
+        lastSoldAt: aggregate.lastSoldAt,
+        lastKnownStockBefore: aggregate.lastKnownStockBefore,
+        lastKnownStockAfter: aggregate.lastKnownStockAfter,
+        lastObservedStockAt: aggregate.lastObservedStockAt,
       }))
       .sort(
         (a, b) => b.qtySold - a.qtySold || a.itemName.localeCompare(b.itemName),
@@ -161,4 +191,43 @@ export function getAssistShoppingSalesByDate(
     skippedByType,
     missingItemId,
   };
+}
+
+function normalizeObservedAt(
+  itemCreatedAt: string | undefined,
+  transactionCreatedAt: string | undefined,
+): string | null {
+  const candidate = itemCreatedAt ?? transactionCreatedAt ?? "";
+  const timestamp = Date.parse(candidate);
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+
+  return new Date(timestamp).toISOString();
+}
+
+function minIsoDate(left: string | null, right: string | null): string | null {
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+
+  return left <= right ? left : right;
+}
+
+function maxIsoDate(left: string | null, right: string | null): string | null {
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+
+  return left >= right ? left : right;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

@@ -24,7 +24,7 @@
         </button>
         <button
           type="button"
-          :disabled="!draftRows.length"
+          :disabled="!draftRows.length || markingOrdered"
           @click="openDraftReview"
         >
           Generate Draft Belanja
@@ -166,6 +166,21 @@
         >
       </div>
 
+      <div class="quick-filter-row" role="tablist" aria-label="Quick filter">
+        <button
+          v-for="filterOption in quickFilterOptions"
+          :key="filterOption.key"
+          type="button"
+          :class="[
+            'chip-button',
+            { active: filters.quickFilter === filterOption.key },
+          ]"
+          @click="setQuickFilter(filterOption.key)"
+        >
+          {{ filterOption.label }}
+        </button>
+      </div>
+
       <div class="filter-grid">
         <div class="field">
           <label for="searchInput">Cari produk, kode, atau brand</label>
@@ -283,18 +298,25 @@
               <th>Produk</th>
               <th>Status</th>
               <th>Stok</th>
+              <th>Sedang Dipesan</th>
               <th>Terjual 30h</th>
               <th>Rata/Hari</th>
               <th>Sisa Hari</th>
               <th>Target</th>
-              <th>Saran Sistem</th>
+              <th>Replenish</th>
+              <th>Growth</th>
               <th>Buy Fee</th>
               <th>Draft Qty</th>
-              <th>Sisa Saran</th>
+              <th>Sisa Total</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in filteredRows" :key="row.itemId">
+            <tr
+              v-for="row in filteredRows"
+              :key="row.itemId"
+              :class="{ 'active-row': selectedInsightItemId === row.itemId }"
+              @click="handleRowClick(row, $event)"
+            >
               <td class="product-cell">
                 <strong>{{ row.itemName }}</strong>
                 <div class="product-meta">
@@ -312,6 +334,21 @@
                   <span v-if="row.isCovered" class="tag tag-covered"
                     >Sudah tercakup draft</span
                   >
+                  <span v-if="row.pendingOrderQty > 0" class="tag tag-covered"
+                    >PO {{ row.pendingOrderQty }}</span
+                  >
+                  <span v-if="row.potentialIncomeLoss > 0" class="tag tag-loss"
+                    >Rugi omzet</span
+                  >
+                  <span v-if="row.isCappedDemand" class="tag tag-capped"
+                    >Demand terhambat</span
+                  >
+                  <span v-if="row.isGoldenProduct" class="tag tag-golden"
+                    >Produk emas</span
+                  >
+                  <span v-if="row.isDeadStock" class="tag tag-dead"
+                    >Stok mati</span
+                  >
                 </div>
                 <div
                   v-if="row.notes.length"
@@ -327,14 +364,22 @@
                 </span>
               </td>
               <td>{{ row.stockTotal }}</td>
+              <td>{{ row.pendingOrderQty || "-" }}</td>
               <td>{{ row.qtySold30Days }}</td>
               <td>{{ formatDailySales(row.averageDailySales) }}</td>
               <td>{{ formatDays(row.estimatedDaysRemaining) }}</td>
               <td>{{ row.needsManualReview ? "Manual" : row.targetStock }}</td>
               <td>
-                {{
-                  row.needsManualReview ? "Manual" : row.calculatedSuggestedQty
-                }}
+                <strong>{{
+                  row.needsManualReview ? "Manual" : row.replenishSuggestedQty
+                }}</strong>
+                <div class="cell-note">Pulihkan demand dasar</div>
+              </td>
+              <td>
+                <strong>{{
+                  row.needsManualReview ? "Manual" : row.growthSuggestedQty
+                }}</strong>
+                <div class="cell-note">Tambahan bertahap</div>
               </td>
               <td>
                 <strong>{{ formatRupiah(row.buyFee) }}</strong>
@@ -376,6 +421,169 @@
       </div>
     </section>
 
+    <aside v-if="selectedInsightRow" class="insights-drawer">
+      <div class="insights-header">
+        <div>
+          <p class="eyebrow">Product Insights</p>
+          <h2>{{ selectedInsightRow.itemName }}</h2>
+          <p class="meta">
+            {{ selectedInsightRow.code || "Tanpa kode" }} •
+            {{ selectedInsightRow.brandName || "Tanpa brand" }} •
+            {{ selectedInsightRow.unit || "Tanpa unit" }}
+          </p>
+        </div>
+        <button type="button" class="ghost-button" @click="closeInsights">
+          Tutup
+        </button>
+      </div>
+
+      <div class="insights-badges">
+        <span
+          :class="['status-badge', `status-${selectedInsightRow.statusColor}`]"
+        >
+          {{ statusLabel(selectedInsightRow.statusColor) }}
+        </span>
+        <span v-if="selectedInsightRow.isCappedDemand" class="tag tag-capped"
+          >Demand terhambat</span
+        >
+        <span v-if="selectedInsightRow.isGoldenProduct" class="tag tag-golden"
+          >Produk emas</span
+        >
+        <span v-if="selectedInsightRow.isDeadStock" class="tag tag-dead"
+          >Stok mati</span
+        >
+      </div>
+
+      <div class="insight-card-grid">
+        <article class="insight-card emphasis-card">
+          <h3>Rekomendasi Belanja</h3>
+          <div class="metric-pair">
+            <span>Replenish</span>
+            <strong>{{ selectedInsightRow.replenishSuggestedQty }}</strong>
+          </div>
+          <div class="metric-pair">
+            <span>Growth</span>
+            <strong>{{ selectedInsightRow.growthSuggestedQty }}</strong>
+          </div>
+          <div class="metric-pair">
+            <span>Total sistem</span>
+            <strong>{{ selectedInsightRow.calculatedSuggestedQty }}</strong>
+          </div>
+          <p class="drawer-note">
+            {{ selectedInsightRow.growthRecommendationNote }}
+          </p>
+        </article>
+
+        <article class="insight-card">
+          <h3>Harga & Margin</h3>
+          <div class="metric-pair">
+            <span>Buy Fee</span>
+            <strong>{{ formatRupiah(selectedInsightRow.buyFee) }}</strong>
+          </div>
+          <div class="metric-pair">
+            <span>Selling Price</span>
+            <strong>{{
+              formatRupiah(selectedInsightRow.sellNormalFee)
+            }}</strong>
+          </div>
+          <div class="metric-pair">
+            <span>Margin/unit</span>
+            <strong>{{
+              formatRupiah(resolveUnitMargin(selectedInsightRow))
+            }}</strong>
+          </div>
+        </article>
+
+        <article class="insight-card">
+          <h3>Velocity</h3>
+          <div class="metric-pair">
+            <span>Standard</span>
+            <strong
+              >{{
+                formatDailySales(selectedInsightRow.averageDailySales)
+              }}/hari</strong
+            >
+          </div>
+          <div class="metric-pair">
+            <span>True velocity</span>
+            <strong
+              >{{
+                formatDailySales(selectedInsightRow.trueVelocity)
+              }}/hari</strong
+            >
+          </div>
+          <div class="metric-pair">
+            <span>Growth potential</span>
+            <strong>{{
+              formatPercent(selectedInsightRow.potentialSalesGrowthPercent)
+            }}</strong>
+          </div>
+        </article>
+
+        <article class="insight-card">
+          <h3>Coverage</h3>
+          <div class="metric-pair">
+            <span>Stok fisik</span>
+            <strong>{{ selectedInsightRow.stockTotal }}</strong>
+          </div>
+          <div class="metric-pair">
+            <span>Pending order</span>
+            <strong>{{ selectedInsightRow.pendingOrderQty }}</strong>
+          </div>
+          <div class="metric-pair">
+            <span>Coverage aktual</span>
+            <strong
+              >{{
+                formatDays(selectedInsightRow.estimatedDaysRemaining)
+              }}
+              hari</strong
+            >
+          </div>
+          <div class="metric-pair">
+            <span>Demand constrained</span>
+            <strong
+              >{{
+                formatDays(selectedInsightRow.estimatedDemandConstraintDays)
+              }}
+              hari</strong
+            >
+          </div>
+          <div class="meter">
+            <span
+              :style="{ width: `${constraintMeterWidth(selectedInsightRow)}%` }"
+            />
+          </div>
+        </article>
+
+        <article class="insight-card">
+          <h3>Peluang Bisnis</h3>
+          <div class="metric-pair">
+            <span>Potensi rugi omzet</span>
+            <strong>{{
+              formatRupiah(selectedInsightRow.potentialIncomeLoss)
+            }}</strong>
+          </div>
+          <div class="metric-pair">
+            <span>Sisa setelah draft</span>
+            <strong>{{ selectedInsightRow.remainingSuggestedQty }}</strong>
+          </div>
+          <div class="metric-pair">
+            <span>Active days</span>
+            <strong>{{ selectedInsightRow.activeDays }}</strong>
+          </div>
+        </article>
+
+        <article class="insight-card full-width-card">
+          <h3>Catatan Analitik</h3>
+          <ul class="drawer-list">
+            <li v-for="note in selectedInsightRow.notes" :key="note">
+              {{ note }}
+            </li>
+          </ul>
+        </article>
+      </div>
+    </aside>
+
     <section
       v-if="reviewOpen"
       class="review-backdrop"
@@ -394,6 +602,13 @@
           <div class="action-row">
             <button type="button" @click="copyDraftSummary">
               Copy Ringkasan
+            </button>
+            <button
+              type="button"
+              :disabled="markingOrdered || !draftRows.length"
+              @click="markDraftAsOrdered"
+            >
+              {{ markingOrdered ? "Menyimpan..." : "Tandai Sudah Dipesan" }}
             </button>
             <button
               type="button"
@@ -473,6 +688,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { requestAssistTokenFromOpenTabs } from "@/composables/assistTokenManager";
 import {
+  type MarkOutstandingOrderItem,
   type RecommendationStatusColor,
   type ShoppingCatalogItem,
   type ShoppingRecommendationRow,
@@ -495,8 +711,14 @@ interface FetchShoppingRecommendationsResponse {
   generatedAt: string;
 }
 
+interface MarkItemsAsOrderedResponse {
+  ok: true;
+  markedCount: number;
+}
+
 interface FiltersState {
   search: string;
+  quickFilter: QuickFilterKey;
   showRed: boolean;
   showYellow: boolean;
   showGreen: boolean;
@@ -504,6 +726,14 @@ interface FiltersState {
   showDormant: boolean;
   showCovered: boolean;
 }
+
+type QuickFilterKey =
+  | "all"
+  | "need-buy"
+  | "income-loss"
+  | "capped-demand"
+  | "golden-product"
+  | "dead-stock";
 
 interface EnhancedRecommendationRow extends ShoppingRecommendationRow {
   draftedQty: number;
@@ -513,6 +743,7 @@ interface EnhancedRecommendationRow extends ShoppingRecommendationRow {
 
 interface DraftSummaryRow {
   itemId: string;
+  itemType: MarkOutstandingOrderItem["itemType"];
   code: string;
   itemName: string;
   brandName: string;
@@ -529,6 +760,7 @@ const DRAFT_STORAGE_KEY = "shoppingRecommendation:draft";
 const FILTERS_STORAGE_KEY = "shoppingRecommendation:filters";
 const DEFAULT_FILTERS: FiltersState = {
   search: "",
+  quickFilter: "all",
   showRed: true,
   showYellow: true,
   showGreen: false,
@@ -536,6 +768,15 @@ const DEFAULT_FILTERS: FiltersState = {
   showDormant: false,
   showCovered: true,
 };
+
+const quickFilterOptions: Array<{ key: QuickFilterKey; label: string }> = [
+  { key: "all", label: "Semua" },
+  { key: "need-buy", label: "Butuh Beli" },
+  { key: "income-loss", label: "Potensi Rugi" },
+  { key: "capped-demand", label: "Permintaan Terhambat" },
+  { key: "golden-product", label: "Produk Emas" },
+  { key: "dead-stock", label: "Stok Mati" },
+];
 
 const rows = ref<ShoppingRecommendationRow[]>([]);
 const catalogItems = ref<ShoppingCatalogItem[]>([]);
@@ -548,6 +789,8 @@ const lookbackDays = ref(30);
 const reviewOpen = ref(false);
 const copyStatus = ref("");
 const manualSearch = ref("");
+const markingOrdered = ref(false);
+const selectedInsightItemId = ref("");
 
 const activeSettings =
   ref<ShoppingRecommendationSettings>(loadStoredSettings());
@@ -585,6 +828,18 @@ const rowById = computed(
 const catalogById = computed(
   () => new Map(catalogItems.value.map((item) => [item.itemId, item])),
 );
+
+const selectedInsightRow = computed(() => {
+  if (!selectedInsightItemId.value) {
+    return null;
+  }
+
+  return (
+    enhancedRows.value.find(
+      (row) => row.itemId === selectedInsightItemId.value,
+    ) ?? null
+  );
+});
 
 const enhancedRows = computed<EnhancedRecommendationRow[]>(() => {
   return [...rows.value]
@@ -636,7 +891,7 @@ const filteredRows = computed(() => {
       return false;
     }
 
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesQuickFilter(row);
   });
 });
 
@@ -653,6 +908,7 @@ const draftRows = computed<DraftSummaryRow[]>(() => {
       const baseName = row?.itemName ?? catalogItem?.itemName ?? "Unknown";
       return {
         itemId,
+        itemType: row?.itemType ?? catalogItem?.itemType ?? "prescription",
         code: row?.code ?? catalogItem?.code ?? "",
         itemName: baseName,
         brandName: row?.brandName ?? catalogItem?.brandName ?? "",
@@ -812,10 +1068,28 @@ function seedDraftFromRow(row: EnhancedRecommendationRow) {
     row.needsManualReview || row.isDormant
       ? row.draftedQty || 1
       : row.remainingSuggestedQty ||
+        row.replenishSuggestedQty + row.growthSuggestedQty ||
         row.calculatedSuggestedQty ||
         row.draftedQty ||
         1;
   setDraftQuantity(row.itemId, suggestedQuantity);
+}
+
+function setQuickFilter(filterKey: QuickFilterKey) {
+  filters.quickFilter = filterKey;
+}
+
+function handleRowClick(row: EnhancedRecommendationRow, event: MouseEvent) {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("button, input, label, a")) {
+    return;
+  }
+
+  selectedInsightItemId.value = row.itemId;
+}
+
+function closeInsights() {
+  selectedInsightItemId.value = "";
 }
 
 function seedDraftFromCatalog(item: ShoppingCatalogItem) {
@@ -861,6 +1135,57 @@ async function copyDraftSummary() {
   copyStatus.value = "Ringkasan draft berhasil disalin.";
 }
 
+async function markDraftAsOrdered() {
+  if (!draftRows.value.length || markingOrdered.value) {
+    return;
+  }
+
+  markingOrdered.value = true;
+  errorMessage.value = "";
+
+  try {
+    const response = (await browser.runtime.sendMessage({
+      type: "MARK_ITEMS_AS_ORDERED",
+      payload: {
+        items: draftRows.value.map(
+          (item) =>
+            ({
+              itemId: item.itemId,
+              itemType: item.itemType,
+              itemName: item.itemName,
+              code: item.code,
+              unit: item.unit,
+              quantity: item.quantity,
+              buyFee: item.buyFee,
+            }) satisfies MarkOutstandingOrderItem,
+        ),
+      },
+    })) as
+      | MarkItemsAsOrderedResponse
+      | { ok: false; error?: string }
+      | undefined;
+
+    if (!response?.ok) {
+      throw new Error(
+        response?.error ?? "Gagal menandai draft sebagai sudah dipesan.",
+      );
+    }
+
+    draftQuantities.value = {};
+    reviewOpen.value = false;
+    copyStatus.value = "";
+    infoMessage.value = `${response.markedCount} item ditandai sebagai sedang dipesan.`;
+    await refreshData();
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : "Terjadi kesalahan saat menyimpan outstanding order.";
+  } finally {
+    markingOrdered.value = false;
+  }
+}
+
 function downloadDraftCsv() {
   const rowsCsv = [
     ["code", "name", "quantity", "unit", "buyFee", "estimatedCost"],
@@ -899,6 +1224,24 @@ function statusLabel(status: RecommendationStatusColor): string {
   }
 }
 
+function matchesQuickFilter(row: EnhancedRecommendationRow): boolean {
+  switch (filters.quickFilter) {
+    case "need-buy":
+      return row.statusColor !== "green" || row.calculatedSuggestedQty > 0;
+    case "income-loss":
+      return row.potentialIncomeLoss > 0;
+    case "capped-demand":
+      return row.isCappedDemand || row.growthSuggestedQty > 0;
+    case "golden-product":
+      return row.isGoldenProduct;
+    case "dead-stock":
+      return row.isDeadStock;
+    case "all":
+    default:
+      return true;
+  }
+}
+
 function formatDailySales(value: number): string {
   return value >= 10
     ? value.toFixed(0)
@@ -913,6 +1256,32 @@ function formatDays(value: number): string {
   }
 
   return value >= 10 ? value.toFixed(0) : value.toFixed(1);
+}
+
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return `${value >= 0 ? "+" : ""}${value.toFixed(0)}%`;
+}
+
+function resolveUnitMargin(row: ShoppingRecommendationRow): number {
+  return Math.max(
+    0,
+    (row.sellNormalFee ?? 0) - (row.avgHpp ?? row.buyFee ?? 0),
+  );
+}
+
+function constraintMeterWidth(row: ShoppingRecommendationRow): number {
+  return Math.max(
+    8,
+    Math.min(
+      100,
+      (row.estimatedDemandConstraintDays / Math.max(1, row.leadTimeLimit)) *
+        100,
+    ),
+  );
 }
 
 function sanitizeQuantity(value: number | string | undefined): number {

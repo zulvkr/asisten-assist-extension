@@ -14,7 +14,13 @@ import {
 import { buildPemasukanRequest } from "@/utils/pemasukanApi";
 import { runtimeConfig } from "@/config/runtimeConfig";
 import { buildAssistHeaders } from "@/services/integration/assistRequest";
+import {
+  buildPendingOrderQuantityMap,
+  markItemsAsOrdered,
+  reconcileOutstandingOrdersWithCatalog,
+} from "@/services/shoppingRecommendationStorage";
 import type {
+  MarkOutstandingOrderItem,
   ShoppingCatalogItem,
   ShoppingItemType,
   ShoppingRecommendationRow,
@@ -39,6 +45,10 @@ interface FetchStockComparisonPayload {
 interface FetchShoppingRecommendationsPayload {
   assistToken?: string;
   settings?: Partial<ShoppingRecommendationSettings>;
+}
+
+interface MarkItemsAsOrderedPayload {
+  items?: MarkOutstandingOrderItem[];
 }
 
 interface MarginSkuRow {
@@ -68,6 +78,11 @@ interface ShoppingRecommendationResponse {
   settings: ShoppingRecommendationSettings;
   lookbackDays: number;
   generatedAt: string;
+}
+
+interface MarkItemsAsOrderedResponse {
+  ok: true;
+  markedCount: number;
 }
 
 async function fetchAssistPemasukan(
@@ -318,10 +333,15 @@ async function handleFetchShoppingRecommendations(
       ...buildShoppingCatalogItems(medicineStockItems, "prescription"),
       ...buildShoppingCatalogItems(bhpStockItems, "akhp"),
     ];
+    const reconciliation =
+      await reconcileOutstandingOrdersWithCatalog(catalogItems);
 
     const rows = buildShoppingRecommendationRows({
       catalogItems,
       salesAggregates: salesResult.salesAggregates,
+      pendingOrderQuantities: buildPendingOrderQuantityMap(
+        reconciliation.outstandingOrders,
+      ),
       settings,
       lookbackDays,
     });
@@ -344,6 +364,11 @@ async function handleFetchShoppingRecommendations(
         `${missingBuyFeeCount} item tidak memiliki buyFee dari payload stok Assist.`,
       );
     }
+    if (reconciliation.reconciledItemCount > 0) {
+      warnings.push(
+        `${reconciliation.reconciledItemCount} item outstanding order disesuaikan otomatis berdasarkan kenaikan stok terbaru.`,
+      );
+    }
 
     return {
       ok: true,
@@ -363,6 +388,28 @@ async function handleFetchShoppingRecommendations(
           : "Terjadi kesalahan saat menyiapkan rekomendasi belanja.",
     };
   }
+}
+
+async function handleMarkItemsAsOrdered(
+  payload: MarkItemsAsOrderedPayload,
+): Promise<MarkItemsAsOrderedResponse | { ok: false; error: string }> {
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const validItems = items.filter(
+    (item) => item?.itemId && Number(item.quantity ?? 0) > 0,
+  );
+  if (!validItems.length) {
+    return {
+      ok: false,
+      error: "Tidak ada item draft valid untuk ditandai sebagai sudah dipesan.",
+    };
+  }
+
+  await markItemsAsOrdered(validItems);
+
+  return {
+    ok: true,
+    markedCount: validItems.length,
+  };
 }
 
 async function handleFetchStockComparison(
@@ -546,6 +593,17 @@ export default defineBackground(() => {
       (async () => {
         const result = await handleFetchShoppingRecommendations(
           (message.payload ?? {}) as FetchShoppingRecommendationsPayload,
+        );
+        sendResponse(result);
+      })();
+
+      return true;
+    }
+
+    if (message.type === "MARK_ITEMS_AS_ORDERED") {
+      (async () => {
+        const result = await handleMarkItemsAsOrdered(
+          (message.payload ?? {}) as MarkItemsAsOrderedPayload,
         );
         sendResponse(result);
       })();
