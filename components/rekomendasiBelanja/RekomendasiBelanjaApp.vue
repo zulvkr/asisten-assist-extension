@@ -3,11 +3,14 @@
     <section class="hero">
       <div>
         <h1>Rekomendasi Belanja</h1>
-        <p>
-          Dashboard belanja mingguan berbasis Assist untuk melihat stok kritis,
-          item lambat bergerak, review unit, dan draft belanja aktif dalam satu
-          workspace.
-        </p>
+        <p>Ringkasan stok prioritas dan draft belanja aktif.</p>
+        <details class="help-disclosure">
+          <summary>Tentang tampilan ini</summary>
+          <p>
+            Memusatkan item kritis, review unit, dormant, dan draft belanja
+            dalam satu workspace.
+          </p>
+        </details>
       </div>
 
       <div class="hero-actions">
@@ -43,44 +46,48 @@
       <article class="kpi-card kpi-red">
         <h3>Merah</h3>
         <strong>{{ kpis.redCount }}</strong>
-        <p>Item kritis terhadap lead time.</p>
+        <p>Kritis</p>
       </article>
       <article class="kpi-card kpi-yellow">
         <h3>Kuning</h3>
         <strong>{{ kpis.yellowCount }}</strong>
-        <p>Butuh perhatian sebelum stok aman.</p>
+        <p>Waspada</p>
       </article>
       <article class="kpi-card kpi-green">
         <h3>Hijau</h3>
         <strong>{{ kpis.greenCount }}</strong>
-        <p>Masih aman untuk target stok saat ini.</p>
+        <p>Aman</p>
       </article>
       <article class="kpi-card kpi-review">
         <h3>Review Unit</h3>
         <strong>{{ kpis.manualReviewCount }}</strong>
-        <p>Terjual dengan lebih dari satu unit.</p>
+        <p>Cek unit</p>
       </article>
       <article class="kpi-card kpi-dormant">
         <h3>Dormant</h3>
         <strong>{{ kpis.dormantCount }}</strong>
-        <p>Tidak ada penjualan 30 hari terakhir.</p>
+        <p>30h sepi</p>
       </article>
       <article class="kpi-card kpi-budget">
         <h3>Budget Draft</h3>
         <strong>{{ formatRupiah(kpis.draftBudget) }}</strong>
-        <p>{{ kpis.draftItems }} item aktif di draft kerja.</p>
+        <p>{{ kpis.draftItems }} item</p>
       </article>
     </section>
 
     <section class="panel">
       <div class="panel-title">
-        <h2>Pengaturan Default</h2>
-        <span>Lookback terkunci 30 hari, simpan lokal di extension.</span>
+        <h2>Pengaturan</h2>
       </div>
+
+      <details class="help-disclosure panel-help">
+        <summary>Panduan pengaturan</summary>
+        <p>Lookback tetap 30 hari dan default disimpan lokal di extension.</p>
+      </details>
 
       <div class="settings-grid">
         <div class="field">
-          <label for="defaultLeadTime">Default lead time</label>
+          <label for="defaultLeadTime">Lead time</label>
           <input
             id="defaultLeadTime"
             v-model.number="formSettings.defaultLeadTime"
@@ -90,7 +97,7 @@
           />
         </div>
         <div class="field">
-          <label for="cheapProductMaxPrice">Batas produk murah</label>
+          <label for="cheapProductMaxPrice">Batas murah</label>
           <input
             id="cheapProductMaxPrice"
             v-model.number="formSettings.cheapProductMaxPrice"
@@ -100,7 +107,7 @@
           />
         </div>
         <div class="field">
-          <label for="fastMovingMinDailySales">Min sales/hari cepat laku</label>
+          <label for="fastMovingMinDailySales">Min/hari cepat</label>
           <input
             id="fastMovingMinDailySales"
             v-model.number="formSettings.fastMovingMinDailySales"
@@ -110,7 +117,7 @@
           />
         </div>
         <div class="field">
-          <label for="cheapFastMovingLeadTime">Lead time murah + cepat</label>
+          <label for="cheapFastMovingLeadTime">Lead cepat</label>
           <input
             id="cheapFastMovingLeadTime"
             v-model.number="formSettings.cheapFastMovingLeadTime"
@@ -120,7 +127,7 @@
           />
         </div>
         <div class="field">
-          <label for="targetStockDays">Target stok hari</label>
+          <label for="targetStockDays">Target hari</label>
           <input
             id="targetStockDays"
             v-model.number="formSettings.targetStockDays"
@@ -160,11 +167,16 @@
     <section class="panel">
       <div class="panel-title">
         <h2>Filter Kerja</h2>
-        <span
-          >{{ filteredRows.length }} dari {{ enhancedRows.length }} item
-          tampil</span
-        >
+        <span>{{ filteredRows.length }}/{{ enhancedRows.length }} item</span>
       </div>
+
+      <details class="help-disclosure panel-help">
+        <summary>Panduan filter</summary>
+        <p>
+          Gunakan chip untuk fokus cepat, lalu sempitkan hasil dengan status dan
+          pencarian.
+        </p>
+      </details>
 
       <div class="quick-filter-row" role="tablist" aria-label="Quick filter">
         <button
@@ -183,7 +195,7 @@
 
       <div class="filter-grid">
         <div class="field">
-          <label for="searchInput">Cari produk, kode, atau brand</label>
+          <label for="searchInput">Cari item</label>
           <input
             id="searchInput"
             v-model.trim="filters.search"
@@ -193,7 +205,7 @@
         </div>
 
         <div class="toggle-row">
-          <span>Status default</span>
+          <span>Status</span>
           <div class="toggle-list">
             <label
               ><input v-model="filters.showRed" type="checkbox" /> Merah</label
@@ -210,7 +222,7 @@
         </div>
 
         <div class="checkbox-stack">
-          <span>State tambahan</span>
+          <span>Tambahan</span>
           <label
             ><input v-model="filters.showManualReview" type="checkbox" /> Review
             unit</label
@@ -221,7 +233,7 @@
           >
           <label
             ><input v-model="filters.showCovered" type="checkbox" /> Tampilkan
-            yang sudah tercakup draft</label
+            tercakup draft</label
           >
         </div>
       </div>
@@ -229,12 +241,18 @@
 
     <section class="panel">
       <div class="panel-title">
-        <h2>Tambah dari Katalog Assist</h2>
-        <span>Tambah item spontan di luar red/yellow tanpa baris bebas.</span>
+        <h2>Tambah dari Katalog</h2>
       </div>
 
+      <details class="help-disclosure panel-help">
+        <summary>Kapan dipakai</summary>
+        <p>
+          Untuk menambah item di luar hasil merah atau kuning langsung ke draft.
+        </p>
+      </details>
+
       <div class="field">
-        <label for="manualSearch">Cari minimal 2 karakter</label>
+        <label for="manualSearch">Cari katalog</label>
         <input
           id="manualSearch"
           v-model.trim="manualSearch"
@@ -285,6 +303,21 @@
         <p class="meta">
           {{ generatedLabel }}
         </p>
+        <div class="indicator-legend" aria-label="Legend indikator item">
+          <span
+            v-for="indicator in indicatorLegend"
+            :key="indicator.key"
+            class="legend-item"
+          >
+            <span
+              :class="['indicator-icon', `indicator-${indicator.tone}`]"
+              aria-hidden="true"
+            >
+              {{ indicator.icon }}
+            </span>
+            <span>{{ indicator.label }}</span>
+          </span>
+        </div>
       </header>
 
       <div v-if="!filteredRows.length" class="empty-state">
@@ -325,37 +358,26 @@
                   {{ row.unit || "Tanpa unit" }}
                 </div>
                 <div class="table-actions" style="margin-top: 8px">
-                  <span v-if="row.needsManualReview" class="tag tag-review"
-                    >Perlu review unit</span
+                  <span
+                    v-for="indicator in getRowIndicators(row)"
+                    :key="indicator.key"
+                    :class="['indicator-icon', `indicator-${indicator.tone}`]"
+                    role="img"
+                    :aria-label="indicator.tooltip"
+                    :title="indicator.tooltip"
                   >
-                  <span v-if="row.isDormant" class="tag tag-dormant"
-                    >Dormant 30 hari</span
-                  >
-                  <span v-if="row.isCovered" class="tag tag-covered"
-                    >Sudah tercakup draft</span
-                  >
-                  <span v-if="row.pendingOrderQty > 0" class="tag tag-covered"
-                    >PO {{ row.pendingOrderQty }}</span
-                  >
-                  <span v-if="row.potentialIncomeLoss > 0" class="tag tag-loss"
-                    >Rugi omzet</span
-                  >
-                  <span v-if="row.isCappedDemand" class="tag tag-capped"
-                    >Demand terhambat</span
-                  >
-                  <span v-if="row.isGoldenProduct" class="tag tag-golden"
-                    >Produk emas</span
-                  >
-                  <span v-if="row.isDeadStock" class="tag tag-dead"
-                    >Stok mati</span
-                  >
+                    {{ indicator.icon }}
+                  </span>
                 </div>
                 <div
                   v-if="row.notes.length"
-                  class="cell-note"
+                  class="inline-disclosure-wrap"
                   style="margin-top: 8px"
                 >
-                  {{ row.notes.join(" | ") }}
+                  <details class="inline-disclosure">
+                    <summary>{{ row.notes.length }} catatan</summary>
+                    <div class="cell-note">{{ row.notes.join(" | ") }}</div>
+                  </details>
                 </div>
               </td>
               <td>
@@ -373,13 +395,35 @@
                 <strong>{{
                   row.needsManualReview ? "Manual" : row.replenishSuggestedQty
                 }}</strong>
+                <button
+                  v-if="!row.needsManualReview"
+                  type="button"
+                  class="cell-action-button"
+                  :disabled="row.replenishSuggestedQty <= 0"
+                  @click.stop="
+                    setDraftQuantity(row.itemId, row.replenishSuggestedQty)
+                  "
+                >
+                  Isi Replenish
+                </button>
                 <div class="cell-note">Pulihkan demand dasar</div>
               </td>
               <td>
                 <strong>{{
-                  row.needsManualReview ? "Manual" : row.growthSuggestedQty
+                  row.needsManualReview ? "Manual" : row.calculatedSuggestedQty
                 }}</strong>
-                <div class="cell-note">Tambahan bertahap</div>
+                <button
+                  v-if="!row.needsManualReview"
+                  type="button"
+                  class="cell-action-button"
+                  :disabled="row.calculatedSuggestedQty <= 0"
+                  @click.stop="
+                    setDraftQuantity(row.itemId, row.calculatedSuggestedQty)
+                  "
+                >
+                  Isi Growth
+                </button>
+                <div class="cell-note">Replenish + tambahan growth</div>
               </td>
               <td>
                 <strong>{{ formatRupiah(row.buyFee) }}</strong>
@@ -395,19 +439,6 @@
                     step="1"
                     @input="updateDraftQtyFromEvent(row.itemId, $event)"
                   />
-                  <button
-                    type="button"
-                    class="ghost-button"
-                    @click="seedDraftFromRow(row)"
-                  >
-                    {{
-                      row.draftedQty > 0
-                        ? "Isi Ulang"
-                        : row.needsManualReview || row.isDormant
-                          ? "Isi Manual"
-                          : "Isi Saran"
-                    }}
-                  </button>
                 </div>
               </td>
               <td>
@@ -469,9 +500,12 @@
             <span>Total sistem</span>
             <strong>{{ selectedInsightRow.calculatedSuggestedQty }}</strong>
           </div>
-          <p class="drawer-note">
-            {{ selectedInsightRow.growthRecommendationNote }}
-          </p>
+          <details class="inline-disclosure drawer-disclosure">
+            <summary>Alasan saran</summary>
+            <p class="drawer-note">
+              {{ selectedInsightRow.growthRecommendationNote }}
+            </p>
+          </details>
         </article>
 
         <article class="insight-card">
@@ -755,6 +789,23 @@ interface DraftSummaryRow {
   isDormant: boolean;
 }
 
+type IndicatorTone =
+  | "review"
+  | "dormant"
+  | "covered"
+  | "loss"
+  | "capped"
+  | "golden"
+  | "dead";
+
+interface ItemIndicator {
+  key: string;
+  icon: string;
+  label: string;
+  tooltip: string;
+  tone: IndicatorTone;
+}
+
 const SETTINGS_STORAGE_KEY = "shoppingRecommendation:settings";
 const DRAFT_STORAGE_KEY = "shoppingRecommendation:draft";
 const FILTERS_STORAGE_KEY = "shoppingRecommendation:filters";
@@ -776,6 +827,65 @@ const quickFilterOptions: Array<{ key: QuickFilterKey; label: string }> = [
   { key: "capped-demand", label: "Permintaan Terhambat" },
   { key: "golden-product", label: "Produk Emas" },
   { key: "dead-stock", label: "Stok Mati" },
+];
+
+const indicatorLegend: ItemIndicator[] = [
+  {
+    key: "manual-review",
+    icon: "R",
+    label: "Review unit",
+    tooltip: "Perlu review unit sebelum jumlah beli diputuskan.",
+    tone: "review",
+  },
+  {
+    key: "dormant",
+    icon: "D",
+    label: "Dormant",
+    tooltip: "Tidak bergerak dalam 30 hari terakhir.",
+    tone: "dormant",
+  },
+  {
+    key: "covered",
+    icon: "C",
+    label: "Covered",
+    tooltip: "Kebutuhan item ini sudah tercakup draft atau stok masuk.",
+    tone: "covered",
+  },
+  {
+    key: "pending-order",
+    icon: "P",
+    label: "PO aktif",
+    tooltip: "Ada purchase order outstanding untuk item ini.",
+    tone: "covered",
+  },
+  {
+    key: "loss",
+    icon: "L",
+    label: "Rugi omzet",
+    tooltip: "Potensi kehilangan omzet terdeteksi.",
+    tone: "loss",
+  },
+  {
+    key: "capped-demand",
+    icon: "T",
+    label: "Demand tertahan",
+    tooltip: "Permintaan kemungkinan tertahan oleh stok yang habis atau tipis.",
+    tone: "capped",
+  },
+  {
+    key: "golden-product",
+    icon: "G",
+    label: "Produk emas",
+    tooltip: "Produk dengan kontribusi profit tinggi.",
+    tone: "golden",
+  },
+  {
+    key: "dead-stock",
+    icon: "S",
+    label: "Stok mati",
+    tooltip: "Perputaran sangat lambat dan berisiko menjadi stok mati.",
+    tone: "dead",
+  },
 ];
 
 const rows = ref<ShoppingRecommendationRow[]>([]);
@@ -887,7 +997,7 @@ const filteredRows = computed(() => {
       (filters.showManualReview && row.needsManualReview) ||
       (filters.showDormant && row.isDormant);
 
-    if (!filters.showCovered && row.isCovered) {
+    if (!filters.showCovered && row.isCovered && row.draftedQty <= 0) {
       return false;
     }
 
@@ -1063,25 +1173,13 @@ function setDraftQuantity(itemId: string, value: number | string) {
   draftQuantities.value = { ...draftQuantities.value };
 }
 
-function seedDraftFromRow(row: EnhancedRecommendationRow) {
-  const suggestedQuantity =
-    row.needsManualReview || row.isDormant
-      ? row.draftedQty || 1
-      : row.remainingSuggestedQty ||
-        row.replenishSuggestedQty + row.growthSuggestedQty ||
-        row.calculatedSuggestedQty ||
-        row.draftedQty ||
-        1;
-  setDraftQuantity(row.itemId, suggestedQuantity);
-}
-
 function setQuickFilter(filterKey: QuickFilterKey) {
   filters.quickFilter = filterKey;
 }
 
 function handleRowClick(row: EnhancedRecommendationRow, event: MouseEvent) {
   const target = event.target as HTMLElement | null;
-  if (target?.closest("button, input, label, a")) {
+  if (target?.closest("button, input, label, a, summary, details")) {
     return;
   }
 
@@ -1222,6 +1320,96 @@ function statusLabel(status: RecommendationStatusColor): string {
     default:
       return status;
   }
+}
+
+function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
+  const indicators: ItemIndicator[] = [];
+
+  if (row.needsManualReview) {
+    indicators.push({
+      key: `${row.itemId}-manual-review`,
+      icon: "R",
+      label: "Review unit",
+      tooltip:
+        row.manualReviewReason ||
+        "Perlu review unit sebelum jumlah beli diputuskan.",
+      tone: "review",
+    });
+  }
+
+  if (row.isDormant) {
+    indicators.push({
+      key: `${row.itemId}-dormant`,
+      icon: "D",
+      label: "Dormant",
+      tooltip: "Tidak bergerak dalam 30 hari terakhir.",
+      tone: "dormant",
+    });
+  }
+
+  if (row.isCovered) {
+    indicators.push({
+      key: `${row.itemId}-covered`,
+      icon: "C",
+      label: "Covered",
+      tooltip: `Sudah tercakup draft. Draft saat ini: ${row.draftedQty}.`,
+      tone: "covered",
+    });
+  }
+
+  if (row.pendingOrderQty > 0) {
+    indicators.push({
+      key: `${row.itemId}-pending-order`,
+      icon: "P",
+      label: "PO aktif",
+      tooltip: `Ada purchase order outstanding sebanyak ${row.pendingOrderQty}.`,
+      tone: "covered",
+    });
+  }
+
+  if (row.potentialIncomeLoss > 0) {
+    indicators.push({
+      key: `${row.itemId}-loss`,
+      icon: "L",
+      label: "Rugi omzet",
+      tooltip: `Potensi rugi omzet ${formatRupiah(row.potentialIncomeLoss)}.`,
+      tone: "loss",
+    });
+  }
+
+  if (row.isCappedDemand) {
+    indicators.push({
+      key: `${row.itemId}-capped-demand`,
+      icon: "T",
+      label: "Demand tertahan",
+      tooltip:
+        row.growthRecommendationNote ||
+        "Permintaan kemungkinan tertahan oleh stok yang habis atau tipis.",
+      tone: "capped",
+    });
+  }
+
+  if (row.isGoldenProduct) {
+    indicators.push({
+      key: `${row.itemId}-golden-product`,
+      icon: "G",
+      label: "Produk emas",
+      tooltip: "Produk dengan kontribusi profit tinggi.",
+      tone: "golden",
+    });
+  }
+
+  if (row.isDeadStock) {
+    indicators.push({
+      key: `${row.itemId}-dead-stock`,
+      icon: "S",
+      label: "Stok mati",
+      tooltip: "Perputaran sangat lambat dan berisiko menjadi stok mati.",
+      tone: "dead",
+    });
+  }
+
+  return indicators;
 }
 
 function matchesQuickFilter(row: EnhancedRecommendationRow): boolean {
