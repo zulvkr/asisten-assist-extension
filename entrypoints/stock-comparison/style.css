@@ -188,6 +188,34 @@ button:hover {
   color: #374151;
 }
 
+.attention-label {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.attention-label--red {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.attention-label--yellow {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.attention-label--orange {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.attention-label--neutral {
+  background: #e2e8f0;
+  color: #475569;
+}
+
 .row-no-sku td {
   background: #fefce8;
 }

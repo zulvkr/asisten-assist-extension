@@ -51,6 +51,30 @@
       </button>
     </section>
 
+    <section v-if="attentionFilterOptions.length" class="label-filters">
+      <span class="label-filters__title">Filter tindakan</span>
+      <label
+        v-for="option in attentionFilterOptions"
+        :key="option"
+        class="label-filter-chip"
+      >
+        <input
+          :checked="activeAttentionFilters.includes(option)"
+          type="checkbox"
+          @change="toggleAttentionFilter(option)"
+        />
+        <span>{{ option }}</span>
+      </label>
+      <button
+        v-if="activeAttentionFilters.length"
+        type="button"
+        class="button-secondary"
+        @click="clearAttentionFilters"
+      >
+        Reset Tindakan
+      </button>
+    </section>
+
     <p :class="['state-msg', validationState]">{{ validationMessage }}</p>
 
     <ul v-if="warnings.length" class="warning-list">
@@ -85,6 +109,7 @@
             <th>Assist Stock</th>
             <th>Desty Stock</th>
             <th>Kesesuaian</th>
+            <th>Label</th>
           </tr>
         </thead>
         <tbody>
@@ -107,7 +132,21 @@
             <td>{{ row.itemName }}</td>
             <td>{{ row.qtySold }}</td>
             <td>{{ row.assistStock ?? "-" }}</td>
-            <td>{{ row.destyStock ?? "-" }}</td>
+            <td>
+              <template v-if="row.destyStockDetail">
+                <div>
+                  fisik: {{ formatStockValue(row.destyStockDetail.fisik) }}
+                </div>
+                <div>
+                  tersedia:
+                  {{ formatStockValue(row.destyStockDetail.tersedia) }}
+                </div>
+                <div>
+                  pesanan: {{ formatStockValue(row.destyStockDetail.pesanan) }}
+                </div>
+              </template>
+              <span v-else>-</span>
+            </td>
             <td>
               <span
                 :class="[
@@ -124,6 +163,20 @@
                 :title="row.notes.join(' | ')"
               >
                 {{ row.kesesuaian }}
+              </span>
+            </td>
+            <td>
+              <span
+                v-if="row.attentionLabel"
+                :class="[
+                  'attention-label',
+                  row.attentionTone && `attention-label--${row.attentionTone}`,
+                ]"
+              >
+                {{ row.attentionLabel }}
+              </span>
+              <span v-else class="attention-label attention-label--neutral">
+                -
               </span>
             </td>
           </tr>
@@ -150,10 +203,12 @@ type SortMode = "qtySold" | "kesesuaian";
 type ValidationState = "muted" | "ok" | "error";
 type DataSource = "assist" | "desty" | "both";
 
-const today = formatDateForInput(new Date());
+const todayDate = new Date();
+const lastWeekDate = new Date(todayDate);
+lastWeekDate.setDate(lastWeekDate.getDate() - 7);
 
-const startDate = ref(today);
-const endDate = ref(today);
+const startDate = ref(formatDateForInput(lastWeekDate));
+const endDate = ref(formatDateForInput(todayDate));
 const rows = ref<StockComparisonRow[]>([]);
 const currentSort = ref<SortMode>("qtySold");
 const validationMessage = ref("");
@@ -161,7 +216,8 @@ const validationState = ref<ValidationState>("muted");
 const warnings = ref<string[]>([]);
 const loading = ref(false);
 const source = ref<DataSource>("both");
-const activeKesesuaianFilters = ref<KesesuaianStock[]>([]);
+const activeKesesuaianFilters = ref<KesesuaianStock[]>(["Tidak sesuai"]);
+const activeAttentionFilters = ref<string[]>([]);
 
 const kesesuaianFilterOptions: KesesuaianStock[] = [
   "Tidak sesuai",
@@ -184,13 +240,30 @@ const sortedRows = computed(() => {
 });
 
 const filteredRows = computed(() => {
-  if (!activeKesesuaianFilters.value.length) {
-    return sortedRows.value;
-  }
+  const matchesKesesuaian = (row: StockComparisonRow) =>
+    !activeKesesuaianFilters.value.length ||
+    activeKesesuaianFilters.value.includes(row.kesesuaian);
 
-  return sortedRows.value.filter((row) =>
-    activeKesesuaianFilters.value.includes(row.kesesuaian),
+  const matchesAttention = (row: StockComparisonRow) =>
+    !activeAttentionFilters.value.length ||
+    (normalizeAttentionFilterLabel(row.attentionLabel) !== null &&
+      activeAttentionFilters.value.includes(
+        normalizeAttentionFilterLabel(row.attentionLabel) as string,
+      ));
+
+  return sortedRows.value.filter(
+    (row) => matchesKesesuaian(row) && matchesAttention(row),
   );
+});
+
+const attentionFilterOptions = computed(() => {
+  return Array.from(
+    new Set(
+      rows.value
+        .map((row) => normalizeAttentionFilterLabel(row.attentionLabel))
+        .filter((label): label is string => Boolean(label)),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
 });
 
 async function runComparison() {
@@ -292,6 +365,33 @@ function clearKesesuaianFilters() {
   activeKesesuaianFilters.value = [];
 }
 
+function toggleAttentionFilter(option: string) {
+  if (activeAttentionFilters.value.includes(option)) {
+    activeAttentionFilters.value = activeAttentionFilters.value.filter(
+      (value) => value !== option,
+    );
+    return;
+  }
+
+  activeAttentionFilters.value = [...activeAttentionFilters.value, option];
+}
+
+function clearAttentionFilters() {
+  activeAttentionFilters.value = [];
+}
+
+function normalizeAttentionFilterLabel(label: string | null): string | null {
+  if (!label) {
+    return null;
+  }
+
+  if (label.startsWith("Potensi kehilangan penjualan")) {
+    return "Potensi kehilangan penjualan";
+  }
+
+  return label;
+}
+
 function kesesuaianRank(kesesuaian: KesesuaianStock): number {
   switch (kesesuaian) {
     case "Tidak sesuai":
@@ -314,5 +414,11 @@ function formatDateForInput(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatStockValue(value: number | null | undefined): string {
+  return typeof value === "number" && !Number.isNaN(value)
+    ? String(value)
+    : "-";
 }
 </script>

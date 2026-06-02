@@ -494,6 +494,12 @@
         <span v-if="selectedInsightRow.isDeadStock" class="tag tag-dead"
           >Stok mati</span
         >
+        <span
+          v-if="selectedInsightRow.hasUnitHistoryWarning"
+          class="tag tag-review"
+          :title="selectedInsightRow.unitHistoryWarning"
+          >Riwayat unit campur</span
+        >
       </div>
 
       <div class="insight-card-grid">
@@ -694,13 +700,24 @@
                 <td>{{ formatRupiah(item.buyFee) }}</td>
                 <td>{{ formatRupiah(item.estimatedCost) }}</td>
                 <td>
+                  <span
+                    v-if="item.hasUnitHistoryWarning"
+                    class="tag tag-review"
+                    :title="item.unitHistoryWarning"
+                    >Riwayat unit</span
+                  >
                   <span v-if="item.needsManualReview" class="tag tag-review"
                     >Review unit</span
                   >
                   <span v-if="item.isDormant" class="tag tag-dormant"
                     >Dormant</span
                   >
-                  <span v-if="!item.needsManualReview && !item.isDormant"
+                  <span
+                    v-if="
+                      !item.hasUnitHistoryWarning &&
+                      !item.needsManualReview &&
+                      !item.isDormant
+                    "
                     >-</span
                   >
                 </td>
@@ -797,6 +814,8 @@ interface DraftSummaryRow {
   quantity: number;
   estimatedCost: number;
   needsManualReview: boolean;
+  hasUnitHistoryWarning: boolean;
+  unitHistoryWarning: string;
   isDormant: boolean;
 }
 
@@ -841,6 +860,14 @@ const quickFilterOptions: Array<{ key: QuickFilterKey; label: string }> = [
 ];
 
 const indicatorLegend: ItemIndicator[] = [
+  {
+    key: "unit-history",
+    icon: "U",
+    label: "Riwayat unit",
+    tooltip:
+      "Riwayat transaksi memakai lebih dari satu unit, tetapi kalkulasi tetap dijalankan.",
+    tone: "review",
+  },
   {
     key: "manual-review",
     icon: "R",
@@ -1046,6 +1073,8 @@ const draftRows = computed<DraftSummaryRow[]>(() => {
         quantity: safeQuantity,
         estimatedCost: safeQuantity * (row?.buyFee ?? catalogItem?.buyFee ?? 0),
         needsManualReview: row?.needsManualReview ?? false,
+        hasUnitHistoryWarning: row?.hasUnitHistoryWarning ?? false,
+        unitHistoryWarning: row?.unitHistoryWarning ?? "",
         isDormant: row?.isDormant ?? false,
       } satisfies DraftSummaryRow;
     })
@@ -1359,6 +1388,18 @@ function statusLabel(status: RecommendationStatusColor): string {
 
 function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
   const indicators: ItemIndicator[] = [];
+
+  if (row.hasUnitHistoryWarning) {
+    indicators.push({
+      key: `${row.itemId}-unit-history`,
+      icon: "U",
+      label: "Riwayat unit",
+      tooltip:
+        row.unitHistoryWarning ||
+        "Riwayat transaksi memakai lebih dari satu unit, tetapi kalkulasi tetap dijalankan.",
+      tone: "review",
+    });
+  }
 
   if (row.needsManualReview) {
     indicators.push({

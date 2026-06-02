@@ -130,10 +130,13 @@ export function buildShoppingRecommendationRows(
     const observedUnits = Array.from(
       new Set((salesAggregate?.observedUnits ?? []).filter(Boolean)),
     );
-    const needsManualReview = observedUnits.length > 1;
-    const manualReviewReason = needsManualReview
-      ? `Terjual dalam lebih dari satu unit: ${observedUnits.join(", ")}.`
+    const hasUnitHistoryWarning = observedUnits.length > 1;
+    const resolvedUnit = catalogItem?.unit ?? observedUnits[0] ?? "";
+    const unitHistoryWarning = hasUnitHistoryWarning
+      ? `Riwayat unit stok berbeda: ${observedUnits.join(", ")}. Kalkulasi tetap memakai unit ${resolvedUnit || "utama"}.`
       : "";
+    const needsManualReview = false;
+    const manualReviewReason = "";
     const isDormant = qtySold30Days <= 0;
     const activeDays = resolveActiveDays({
       firstSoldAt: salesAggregate?.firstSoldAt ?? null,
@@ -261,6 +264,9 @@ export function buildShoppingRecommendationRows(
     if (manualReviewReason) {
       notes.push(manualReviewReason);
     }
+    if (unitHistoryWarning) {
+      notes.push(unitHistoryWarning);
+    }
     if (isDormant) {
       notes.push("Tidak ada penjualan dalam 30 hari terakhir.");
     }
@@ -346,6 +352,8 @@ export function buildShoppingRecommendationRows(
       isGoldenProduct,
       isDeadStock,
       manualReviewReason,
+      hasUnitHistoryWarning,
+      unitHistoryWarning,
       observedTransactionUnits: observedUnits,
       notes,
     });

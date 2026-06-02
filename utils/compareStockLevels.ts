@@ -1,9 +1,14 @@
+import type { DestyStockBreakdown } from "@/composables/destyOmniStockApi";
+import { formatRupiah } from "@/utils/rupiahUtils";
+
 export type KesesuaianStock =
   | "Sesuai"
   | "Tidak sesuai"
   | "SKU belum diisi"
   | "Stok Assist tidak tersedia"
   | "Stok Desty tidak tersedia";
+
+export type StockAttentionTone = "red" | "yellow" | "orange" | null;
 
 /**
  * Aggregated item sold for a date range.
@@ -26,7 +31,10 @@ export interface StockComparisonRow {
   qtySold: number;
   assistStock: number | null;
   destyStock: number | null;
+  destyStockDetail: DestyStockBreakdown | null;
   kesesuaian: KesesuaianStock;
+  attentionLabel: string | null;
+  attentionTone: StockAttentionTone;
   notes: string[];
 }
 
@@ -34,10 +42,14 @@ export interface CompareStockLevelsInput {
   soldItems: SoldItemAggregate[];
   /** medicineId → stockTotal from KMedicineStocks */
   assistStockByMedicineId?: Record<string, number | null | undefined>;
+  /** medicineId → sellNormalFee from KMedicineStocks/KAKHPStocks */
+  sellNormalFeeByMedicineId?: Record<string, number | null | undefined>;
   /** medicineId → kodeObat (code field from KMedicineStocks) */
   kodeObatByMedicineId?: Record<string, string>;
   /** sku → stockTotal from Desty, for future use */
   destyStockBySku?: Record<string, number | null | undefined>;
+  /** sku → Desty stock breakdown for UI */
+  destyStockDetailBySku?: Record<string, DestyStockBreakdown | undefined>;
 }
 
 function normalizeStock(value: number | null | undefined): number | null {
@@ -65,6 +77,62 @@ function resolveKesesuaian(
     return "Tidak sesuai";
   }
   return "Sesuai";
+}
+
+function resolveAttention(input: {
+  assistStock: number | null;
+  destyStock: number | null;
+  hasSku: boolean;
+  sellNormalFee: number | null;
+}): { label: string | null; tone: StockAttentionTone; notes: string[] } {
+  const { assistStock, destyStock, hasSku, sellNormalFee } = input;
+
+  if (!hasSku || assistStock === null || destyStock === null) {
+    return {
+      label: null,
+      tone: null,
+      notes: [],
+    };
+  }
+
+  if (assistStock > destyStock) {
+    const stockGap = assistStock - destyStock;
+    if (destyStock === 0) {
+      const lostSalesValue = stockGap * Math.max(sellNormalFee ?? 0, 0);
+      const notes =
+        sellNormalFee === null
+          ? [
+              "Harga jual Assist tidak tersedia; estimasi kehilangan penjualan memakai Rp 0.",
+            ]
+          : [];
+
+      return {
+        label: `Potensi kehilangan penjualan ${formatRupiah(lostSalesValue)}`,
+        tone: "red",
+        notes,
+      };
+    }
+
+    return {
+      label: "Segera isi Desty",
+      tone: "yellow",
+      notes: [],
+    };
+  }
+
+  if (destyStock > assistStock) {
+    return {
+      label: "Risiko overselling",
+      tone: "orange",
+      notes: [],
+    };
+  }
+
+  return {
+    label: null,
+    tone: null,
+    notes: [],
+  };
 }
 
 export function compareStockLevels(
@@ -117,15 +185,31 @@ export function compareStockLevels(
     );
     const kodeObat = input.kodeObatByMedicineId?.[medicineId] ?? "";
     const sku = aggregate.sku ?? "";
-    const destyStock = sku
-      ? normalizeStock(input.destyStockBySku?.[sku])
+    const destyStockDetail = sku
+      ? (input.destyStockDetailBySku?.[sku] ?? null)
       : null;
+    const destyStock = sku
+      ? normalizeStock(
+          destyStockDetail?.tersedia ?? input.destyStockBySku?.[sku],
+        )
+      : null;
+    const sellNormalFee = normalizeStock(
+      input.sellNormalFeeByMedicineId?.[medicineId],
+    );
     const notes = [...aggregate.notes];
     if (!sku) {
       notes.push(
         "SKU belum diisi — lengkapi kode obat dan SKU di sheet margin.",
       );
     }
+
+    const attention = resolveAttention({
+      assistStock,
+      destyStock,
+      hasSku: Boolean(sku),
+      sellNormalFee,
+    });
+    notes.push(...attention.notes);
 
     rows.push({
       medicineId,
@@ -135,7 +219,10 @@ export function compareStockLevels(
       qtySold: aggregate.qtySold,
       assistStock,
       destyStock,
+      destyStockDetail,
       kesesuaian: resolveKesesuaian(assistStock, destyStock, Boolean(sku)),
+      attentionLabel: attention.label,
+      attentionTone: attention.tone,
       notes,
     });
   }

@@ -1,5 +1,6 @@
 import type { PemasukanData } from "@/types/PemasukanData";
 import {
+  buildDestyStockDetailBySku,
   buildDestyStockBySku,
   fetchDestyOmniStock,
 } from "@/composables/destyOmniStockApi";
@@ -245,6 +246,19 @@ function buildKodeObatByMedicineId(
   return result;
 }
 
+function buildSellNormalFeeByMedicineId(
+  stockItems: AssistStockItem[],
+): Record<string, number | null> {
+  const result: Record<string, number | null> = {};
+  for (const item of stockItems) {
+    const id = String(item.id ?? "").trim();
+    if (id) {
+      result[id] = toNullableNumber(item.sellNormalFee);
+    }
+  }
+  return result;
+}
+
 function buildShoppingCatalogItems(
   stockItems: AssistStockItem[],
   itemType: ShoppingItemType,
@@ -458,6 +472,8 @@ async function handleFetchStockComparison(
     });
 
     const assistStockByMedicineId = buildAssistStockByItemId(stockItems);
+    const sellNormalFeeByMedicineId =
+      buildSellNormalFeeByMedicineId(stockItems);
     const kodeObatByMedicineId = buildKodeObatByMedicineId(stockItems);
 
     // Kode Obat is Assist metadata and is used only as a bridge key to read SKU from marginData.
@@ -487,6 +503,12 @@ async function handleFetchStockComparison(
     }
 
     let destyStockBySku: Record<string, number | null> | undefined;
+    let destyStockDetailBySku:
+      | Record<
+          string,
+          import("@/composables/destyOmniStockApi").DestyStockBreakdown
+        >
+      | undefined;
     const warnings: string[] = [];
 
     const shouldUseDesty = source === "desty" || source === "both";
@@ -516,6 +538,7 @@ async function handleFetchStockComparison(
             masterWarehouseId: destyMasterWarehouseId,
           });
           destyStockBySku = buildDestyStockBySku(destyItems);
+          destyStockDetailBySku = buildDestyStockDetailBySku(destyItems);
         } catch (error) {
           warnings.push(
             error instanceof Error
@@ -529,8 +552,10 @@ async function handleFetchStockComparison(
     const rows = compareStockLevels({
       soldItems: soldResult.soldItems,
       assistStockByMedicineId,
+      sellNormalFeeByMedicineId,
       kodeObatByMedicineId,
       destyStockBySku,
+      destyStockDetailBySku,
     });
 
     if (soldResult.skippedByType > 0) {

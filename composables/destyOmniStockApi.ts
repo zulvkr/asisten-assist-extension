@@ -1,9 +1,16 @@
 // Desty Omni OpenAPI base URL
 const DESTY_API_BASE = "https://omni.desty.app";
 
+export interface DestyStockBreakdown {
+  fisik: number | null;
+  tersedia: number | null;
+  pesanan: number | null;
+}
+
 export interface DestyOmniStockItem {
   sku: string;
   stock: number | null;
+  breakdown: DestyStockBreakdown;
   productName?: string;
   raw?: unknown;
 }
@@ -26,6 +33,18 @@ export function buildDestyStockBySku(
     const sku = item.sku.trim();
     if (!sku) continue;
     output[sku] = item.stock;
+  }
+  return output;
+}
+
+export function buildDestyStockDetailBySku(
+  items: DestyOmniStockItem[],
+): Record<string, DestyStockBreakdown> {
+  const output: Record<string, DestyStockBreakdown> = {};
+  for (const item of items) {
+    const sku = item.sku.trim();
+    if (!sku) continue;
+    output[sku] = item.breakdown;
   }
   return output;
 }
@@ -69,6 +88,7 @@ function mapOmniInventoryRecord(
 
   const available = toNullableNumber(record.available);
   const onHand = toNullableNumber(record.onHand);
+  const reserved = toNullableNumber(record.reserved);
   const warehouseStocks = Array.isArray(record.warehouseStocks)
     ? sumWarehouseOnHand(
         record.warehouseStocks as Array<Record<string, unknown>>,
@@ -76,10 +96,16 @@ function mapOmniInventoryRecord(
     : null;
 
   const stock = available ?? onHand ?? warehouseStocks;
+  const fisik = onHand ?? warehouseStocks;
 
   return {
     sku,
     stock,
+    breakdown: {
+      fisik,
+      tersedia: available,
+      pesanan: reserved,
+    },
     productName: String(record.productName ?? "").trim() || undefined,
     raw: record,
   };
@@ -256,10 +282,28 @@ async function fetchStockBySkus(
       const found = page.items.find(
         (item) => item.sku.toLowerCase() === normalizedSku.toLowerCase(),
       );
-      results.push(found ?? { sku: normalizedSku, stock: null });
+      results.push(
+        found ?? {
+          sku: normalizedSku,
+          stock: null,
+          breakdown: {
+            fisik: null,
+            tersedia: null,
+            pesanan: null,
+          },
+        },
+      );
     } catch {
       // Non-fatal: record null stock for this SKU
-      results.push({ sku: normalizedSku, stock: null });
+      results.push({
+        sku: normalizedSku,
+        stock: null,
+        breakdown: {
+          fisik: null,
+          tersedia: null,
+          pesanan: null,
+        },
+      });
     }
   }
 

@@ -109,6 +109,8 @@ export interface ShoppingRecommendationRow {
   isGoldenProduct: boolean;
   isDeadStock: boolean;
   manualReviewReason: string;
+  hasUnitHistoryWarning: boolean;
+  unitHistoryWarning: string;
   observedTransactionUnits: string[];
   notes: string[];
 }
