@@ -60,6 +60,18 @@
                       {{ formatRupiah(summary.apotek.debit) }}
                     </td>
                     <td class="cell right">
+                      {{ formatRupiah(summary.apotek.shopee) }}
+                    </td>
+                    <td class="cell right">
+                      {{ formatRupiah(summary.apotek.tiktok) }}
+                    </td>
+                    <td class="cell right">
+                      {{ formatRupiah(summary.apotek.blibli) }}
+                    </td>
+                    <td class="cell right">
+                      {{ formatRupiah(summary.apotek.goApotik) }}
+                    </td>
+                    <td class="cell right">
                       {{ formatRupiah(summary.apotek.total) }}
                     </td>
                     <td class="cell right">
@@ -106,6 +118,26 @@
                             </span>
                             <span class="detail-section__debit">
                               Debit {{ formatRupiah(detail.apotek.debit) }}
+                            </span>
+                          </div>
+
+                          <div class="detail-section">
+                            <span class="detail-section__label">Channel:</span>
+                            <span
+                              >Shopee
+                              {{ formatRupiah(detail.apotek.shopee) }}</span
+                            >
+                            <span
+                              >TikTok
+                              {{ formatRupiah(detail.apotek.tiktok) }}</span
+                            >
+                            <span
+                              >Blibli
+                              {{ formatRupiah(detail.apotek.blibli) }}</span
+                            >
+                            <span>
+                              GoApotik
+                              {{ formatRupiah(detail.apotek.goApotik) }}
                             </span>
                           </div>
 
@@ -181,6 +213,10 @@ const tableHeaders = [
   { label: "Shift", align: "left" },
   { label: "Cash Apotek", align: "right" },
   { label: "Debit Apotek", align: "right" },
+  { label: "Shopee", align: "right" },
+  { label: "TikTok", align: "right" },
+  { label: "Blibli", align: "right" },
+  { label: "GoApotik", align: "right" },
   { label: "Total Apotek", align: "right" },
   { label: "Cash Klinik", align: "right" },
   { label: "Debit Klinik", align: "right" },
@@ -369,6 +405,10 @@ async function exportToExcel() {
       "Shift",
       "Cash Apotek",
       "Debit Apotek",
+      "Shopee",
+      "TikTok",
+      "Blibli",
+      "GoApotik",
       "Total Apotek",
       "Cash Klinik",
       "Debit Klinik",
@@ -379,6 +419,10 @@ async function exportToExcel() {
       summary.shift,
       summary.apotek.cash,
       summary.apotek.debit,
+      summary.apotek.shopee,
+      summary.apotek.tiktok,
+      summary.apotek.blibli,
+      summary.apotek.goApotik,
       summary.apotek.total,
       summary.klinik.cash,
       summary.klinik.debit,
@@ -389,6 +433,10 @@ async function exportToExcel() {
     (summaryWS as any)["!cols"] = [
       { wch: 12 },
       { wch: 10 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
       { wch: 14 },
       { wch: 14 },
       { wch: 14 },

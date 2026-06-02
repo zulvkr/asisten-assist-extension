@@ -10,11 +10,16 @@ const SHIFT_ORDER = SHIFT_CONFIG.map((config) => config.label);
 type ShiftLabel = (typeof SHIFT_CONFIG)[number]["label"];
 
 type PaymentCategory = "cash" | "debit";
+type MarketplaceCategory = "shopee" | "tiktok" | "blibli" | "goApotik";
 
 interface SectionTotals {
   cash: number;
   debit: number;
   total: number;
+  shopee: number;
+  tiktok: number;
+  blibli: number;
+  goApotik: number;
 }
 
 interface ShiftDetailItem {
@@ -54,6 +59,7 @@ interface ShiftSummaryRow {
 export type {
   ShiftLabel,
   PaymentCategory,
+  MarketplaceCategory,
   SectionTotals,
   ShiftDetailItem,
   ShiftDetailPayment,
@@ -72,7 +78,15 @@ function getShiftLabel(date: Date): ShiftLabel | null {
 }
 
 function createEmptyTotals(): SectionTotals {
-  return { cash: 0, debit: 0, total: 0 };
+  return {
+    cash: 0,
+    debit: 0,
+    total: 0,
+    shopee: 0,
+    tiktok: 0,
+    blibli: 0,
+    goApotik: 0,
+  };
 }
 
 function normalisePaymentCategory(payment: Payment): PaymentCategory {
@@ -97,10 +111,43 @@ function normalisePaymentCategory(payment: Payment): PaymentCategory {
   return "cash";
 }
 
+function getMarketplaceCategory(
+  payment: Payment | undefined,
+): MarketplaceCategory | null {
+  if (!payment) {
+    return null;
+  }
+
+  const raw = [payment.type, payment.name, payment.intent, payment.reason]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const compact = raw.replace(/[^a-z0-9]/g, "");
+
+  if (compact.includes("shopee")) {
+    return "shopee";
+  }
+  if (compact.includes("tiktok") || compact.includes("tiktokshop")) {
+    return "tiktok";
+  }
+  if (compact.includes("blibli")) {
+    return "blibli";
+  }
+  if (compact.includes("goapotik")) {
+    return "goApotik";
+  }
+
+  return null;
+}
+
 function addSectionTotals(target: SectionTotals, addition: SectionTotals) {
   target.cash += addition.cash;
   target.debit += addition.debit;
   target.total += addition.total;
+  target.shopee += addition.shopee;
+  target.tiktok += addition.tiktok;
+  target.blibli += addition.blibli;
+  target.goApotik += addition.goApotik;
 }
 
 function createShiftSummaryRow(
@@ -129,7 +176,9 @@ function calculateTransactionTotals(tx: PemasukanData): {
     apotek: createEmptyTotals(),
     klinik: createEmptyTotals(),
   };
-  const paymentCategory = normalisePaymentCategory(tx.Payments[0]);
+  const primaryPayment = tx.Payments[0];
+  const paymentCategory = normalisePaymentCategory(primaryPayment);
+  const marketplaceCategory = getMarketplaceCategory(primaryPayment);
 
   const detailItems: ShiftDetailItem[] = (tx.Items ?? []).map((item) => ({
     id: item._id,
@@ -143,7 +192,9 @@ function calculateTransactionTotals(tx: PemasukanData): {
     const incomeType = item.incomeType;
     const amount = item.type === "scourPrescription" ? 0 : (item.totalFee ?? 0);
     if (incomeType === "apotek") {
-      if (paymentCategory === "cash") {
+      if (marketplaceCategory) {
+        detailTotals.apotek[marketplaceCategory] += amount;
+      } else if (paymentCategory === "cash") {
         detailTotals.apotek.cash += amount;
       } else {
         detailTotals.apotek.debit += amount;
@@ -158,7 +209,12 @@ function calculateTransactionTotals(tx: PemasukanData): {
   }
 
   detailTotals.apotek.total =
-    detailTotals.apotek.cash + detailTotals.apotek.debit;
+    detailTotals.apotek.cash +
+    detailTotals.apotek.debit +
+    detailTotals.apotek.shopee +
+    detailTotals.apotek.tiktok +
+    detailTotals.apotek.blibli +
+    detailTotals.apotek.goApotik;
   detailTotals.klinik.total =
     detailTotals.klinik.cash + detailTotals.klinik.debit;
 

@@ -4,6 +4,8 @@ export interface DateRangeValidationResult {
   days: number;
 }
 
+export const DEFAULT_MAX_DATE_RANGE_DAYS = 30;
+
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 function toStartOfDay(date: Date): Date {
@@ -13,7 +15,7 @@ function toStartOfDay(date: Date): Date {
 export function validateDateRangeLimit(
   startDate: Date,
   endDate: Date,
-  maxDays = 7,
+  maxDays = DEFAULT_MAX_DATE_RANGE_DAYS,
 ): DateRangeValidationResult {
   const start = toStartOfDay(startDate);
   const end = toStartOfDay(endDate);

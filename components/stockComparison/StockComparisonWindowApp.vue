@@ -27,6 +27,30 @@
       </button>
     </section>
 
+    <section class="label-filters">
+      <span class="label-filters__title">Filter label</span>
+      <label
+        v-for="option in kesesuaianFilterOptions"
+        :key="option"
+        class="label-filter-chip"
+      >
+        <input
+          :checked="activeKesesuaianFilters.includes(option)"
+          type="checkbox"
+          @change="toggleKesesuaianFilter(option)"
+        />
+        <span>{{ option }}</span>
+      </label>
+      <button
+        v-if="activeKesesuaianFilters.length"
+        type="button"
+        class="button-secondary"
+        @click="clearKesesuaianFilters"
+      >
+        Reset Filter
+      </button>
+    </section>
+
     <p :class="['state-msg', validationState]">{{ validationMessage }}</p>
 
     <ul v-if="warnings.length" class="warning-list">
@@ -47,6 +71,10 @@
         Belum ada hasil. Klik "Jalankan Perbandingan".
       </p>
 
+      <p v-else-if="!filteredRows.length" class="empty">
+        Tidak ada hasil yang cocok dengan filter label aktif.
+      </p>
+
       <table v-else class="result-table">
         <thead>
           <tr>
@@ -61,7 +89,7 @@
         </thead>
         <tbody>
           <tr
-            v-for="row in sortedRows"
+            v-for="row in filteredRows"
             :key="`${row.medicineId}-${row.sku ?? ''}-${row.itemName}`"
             :class="{
               'row-no-sku': row.kesesuaian === 'SKU belum diisi',
@@ -113,7 +141,10 @@ import {
   type KesesuaianStock,
   type StockComparisonRow,
 } from "@/utils/compareStockLevels";
-import { validateDateRangeLimit } from "@/utils/validateDateRangeLimit";
+import {
+  DEFAULT_MAX_DATE_RANGE_DAYS,
+  validateDateRangeLimit,
+} from "@/utils/validateDateRangeLimit";
 
 type SortMode = "qtySold" | "kesesuaian";
 type ValidationState = "muted" | "ok" | "error";
@@ -130,6 +161,15 @@ const validationState = ref<ValidationState>("muted");
 const warnings = ref<string[]>([]);
 const loading = ref(false);
 const source = ref<DataSource>("both");
+const activeKesesuaianFilters = ref<KesesuaianStock[]>([]);
+
+const kesesuaianFilterOptions: KesesuaianStock[] = [
+  "Tidak sesuai",
+  "SKU belum diisi",
+  "Stok Assist tidak tersedia",
+  "Stok Desty tidak tersedia",
+  "Sesuai",
+];
 
 const sortedRows = computed(() => {
   const data = [...rows.value];
@@ -143,11 +183,21 @@ const sortedRows = computed(() => {
   );
 });
 
+const filteredRows = computed(() => {
+  if (!activeKesesuaianFilters.value.length) {
+    return sortedRows.value;
+  }
+
+  return sortedRows.value.filter((row) =>
+    activeKesesuaianFilters.value.includes(row.kesesuaian),
+  );
+});
+
 async function runComparison() {
   const validation = validateDateRangeLimit(
     new Date(startDate.value),
     new Date(endDate.value),
-    7,
+    DEFAULT_MAX_DATE_RANGE_DAYS,
   );
 
   if (!validation.valid) {
@@ -213,7 +263,7 @@ async function runComparison() {
     rows.value = response.data;
     warnings.value = response.warnings ?? [];
     validationState.value = "ok";
-    validationMessage.value = `Rentang valid: ${validation.days} hari.`;
+    validationMessage.value = `Rentang valid: ${validation.days} hari dari batas ${DEFAULT_MAX_DATE_RANGE_DAYS} hari.`;
   } catch (error) {
     rows.value = [];
     warnings.value = [];
@@ -225,6 +275,21 @@ async function runComparison() {
   } finally {
     loading.value = false;
   }
+}
+
+function toggleKesesuaianFilter(option: KesesuaianStock) {
+  if (activeKesesuaianFilters.value.includes(option)) {
+    activeKesesuaianFilters.value = activeKesesuaianFilters.value.filter(
+      (value) => value !== option,
+    );
+    return;
+  }
+
+  activeKesesuaianFilters.value = [...activeKesesuaianFilters.value, option];
+}
+
+function clearKesesuaianFilters() {
+  activeKesesuaianFilters.value = [];
 }
 
 function kesesuaianRank(kesesuaian: KesesuaianStock): number {
