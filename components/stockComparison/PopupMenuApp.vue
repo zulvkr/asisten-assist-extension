@@ -29,6 +29,19 @@
       }}
     </button>
 
+    <button
+      type="button"
+      class="button-secondary"
+      :disabled="Boolean(openingTarget)"
+      @click="openDestyHelperWindow"
+    >
+      {{
+        openingTarget === "destyHelper"
+          ? "Membuka..."
+          : "Buka PLDMP"
+      }}
+    </button>
+
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
   </main>
 </template>
@@ -36,7 +49,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 
-type OpeningTarget = "comparison" | "recommendation" | null;
+type OpeningTarget = "comparison" | "recommendation" | "destyHelper" | null;
 
 const openingTarget = ref<OpeningTarget>(null);
 const errorMessage = ref("");
@@ -87,6 +100,33 @@ async function openRecommendationWindow() {
       error instanceof Error
         ? error.message
         : "Gagal membuka jendela rekomendasi.";
+  } finally {
+    openingTarget.value = null;
+  }
+}
+
+async function openDestyHelperWindow() {
+  openingTarget.value = "destyHelper";
+  errorMessage.value = "";
+
+  try {
+    const url = new URL(
+      "./desty-helper.html",
+      browser.runtime.getURL("/popup.html"),
+    ).toString();
+    await browser.windows.create({
+      url,
+      type: "popup",
+      width: 1320,
+      height: 860,
+    });
+
+    window.close();
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : "Gagal membuka jendela PLDMP.";
   } finally {
     openingTarget.value = null;
   }

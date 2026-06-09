@@ -636,6 +636,85 @@ export default defineBackground(() => {
       return true;
     }
 
+    if (message.type === "FETCH_ASSIST_SKU_BUY_FEES") {
+      (async () => {
+        try {
+          const assistToken = message.payload?.assistToken?.trim() ?? "";
+          if (!assistToken) {
+            sendResponse({ ok: false, error: "Token Assist tidak tersedia." });
+            return;
+          }
+
+          const [marginRows, medicineStockItems, bhpStockItems] =
+            await Promise.all([
+              fetchMarginSkuRows(),
+              fetchAssistMedicineStockItems(assistToken),
+              fetchAssistBhpStockItems(assistToken),
+            ]);
+
+          const stockItems = [...medicineStockItems, ...bhpStockItems];
+
+          // Build maps of code (kodeObat) to buyFee and unit
+          const buyFeeByCode = new Map<string, number>();
+          const unitByCode = new Map<string, string>();
+          for (const item of stockItems) {
+            const code = String(item.code ?? "").trim().toUpperCase();
+            if (code) {
+              if (typeof item.buyFee === "number") {
+                buyFeeByCode.set(code, item.buyFee);
+              }
+              if (item.unit) {
+                unitByCode.set(code, String(item.unit).trim().toUpperCase());
+              }
+            }
+          }
+
+          // Build sku -> value maps
+          const buyFeeBySku: Record<string, number> = {};
+          const unitBySku: Record<string, string> = {};
+
+          // 1. Map via Google Sheet margins mapping (sku -> kodeObat -> values)
+          for (const row of marginRows) {
+            const sku = String(row.sku ?? "").trim().toUpperCase();
+            const code = String(row.kodeObat ?? "").trim().toUpperCase();
+            if (sku && code) {
+              const buyFee = buyFeeByCode.get(code);
+              if (buyFee !== undefined) {
+                buyFeeBySku[sku] = buyFee;
+              }
+              const unit = unitByCode.get(code);
+              if (unit !== undefined) {
+                unitBySku[sku] = unit;
+              }
+            }
+          }
+
+          // 2. Fallback: Map directly (if SKU matches Assist code directly)
+          for (const item of stockItems) {
+            const code = String(item.code ?? "").trim().toUpperCase();
+            if (code) {
+              if (typeof item.buyFee === "number" && buyFeeBySku[code] === undefined) {
+                buyFeeBySku[code] = item.buyFee;
+              }
+              if (item.unit && unitBySku[code] === undefined) {
+                unitBySku[code] = String(item.unit).trim().toUpperCase();
+              }
+            }
+          }
+
+          sendResponse({ ok: true, buyFeeBySku, unitBySku });
+        } catch (error) {
+          console.error("Gagal memuat data stock Assist:", error);
+          sendResponse({
+            ok: false,
+            error: error instanceof Error ? error.message : "Gagal memuat data stock.",
+          });
+        }
+      })();
+
+      return true;
+    }
+
     if (message.type !== "FETCH_PEMASUKAN_DATA") {
       return;
     }
