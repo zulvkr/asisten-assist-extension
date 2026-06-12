@@ -2,7 +2,7 @@
   "name": "asisten-assist",
   "description": "Asisten Assist Extension",
   "private": true,
-  "version": "1.1.9",
+  "version": "1.1.10",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "date-fns": "^4.1.0",
+    "echarts": "^6.1.0",
     "vue": "^3.5.25",
     "xlsx": "^0.18.5"
   }

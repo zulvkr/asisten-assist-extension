@@ -213,6 +213,7 @@ export function buildShoppingRecommendationRows(
       averageDailySales,
     );
     const targetStock = Math.ceil(averageDailySales * settings.targetStockDays);
+    const rop = Math.ceil(averageDailySales * leadTimeLimit);
     const replenishSuggestedQty = needsManualReview
       ? 0
       : Math.max(0, targetStock - effectiveStockTotal);
@@ -281,7 +282,7 @@ export function buildShoppingRecommendationRows(
     }
     if (estimatedDemandConstraintDays > 0) {
       notes.push(
-        `Permintaan terhambat sekitar ${formatCompactNumber(estimatedDemandConstraintDays)} hari dari stock-out atau coverage yang terlalu tipis.`,
+        `Permintaan terhambat sekitar ${formatCompactNumber(estimatedDemandConstraintDays)} hari dari stock-out or coverage yang terlalu tipis.`,
       );
     }
     if (potentialIncomeLoss > 0) {
@@ -356,6 +357,7 @@ export function buildShoppingRecommendationRows(
       unitHistoryWarning,
       observedTransactionUnits: observedUnits,
       notes,
+      rop,
     });
   }
 

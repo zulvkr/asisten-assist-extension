@@ -15,6 +15,8 @@ export default defineConfig({
       "https://api-clinica.assist.id/*",
       "https://omni.desty.app/*",
       "https://*.desty.app/*",
+      "http://localhost/*",
+      "https://localhost/*",
     ],
   },
 });

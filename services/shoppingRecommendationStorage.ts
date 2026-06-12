@@ -70,18 +70,24 @@ export async function markItemsAsOrdered(
       continue;
     }
 
-    const existing = nextOrders[item.itemId];
+    const leadTimeLimit = item.leadTimeLimit ?? 3;
+    const expiresDate = new Date(
+      new Date(now).getTime() + (leadTimeLimit + 1) * 24 * 60 * 60 * 1000
+    );
+
     nextOrders[item.itemId] = {
       itemId: item.itemId,
       itemName: item.itemName,
       itemType: item.itemType,
       code: item.code,
       unit: item.unit,
-      quantity: quantity + (existing?.quantity ?? 0),
+      quantity,
       buyFee: item.buyFee,
-      orderedAt: existing?.orderedAt ?? now,
+      orderedAt: now,
       updatedAt: now,
-      lastReconciledAt: existing?.lastReconciledAt ?? null,
+      lastReconciledAt: null,
+      leadTimeLimit,
+      expiresAt: expiresDate.toISOString(),
     };
   }
 
@@ -94,6 +100,24 @@ export async function markItemsAsOrdered(
   return nextOrders;
 }
 
+export async function removeOutstandingOrder(
+  itemId: string,
+): Promise<Record<string, StoredOutstandingOrder>> {
+  const storageLocal = browser?.storage?.local;
+  const nextOrders = { ...(await loadOutstandingOrders()) };
+  
+  if (nextOrders[itemId]) {
+    delete nextOrders[itemId];
+    if (storageLocal) {
+      await storageLocal.set({
+        [OUTSTANDING_ORDERS_STORAGE_KEY]: nextOrders,
+      });
+    }
+  }
+
+  return nextOrders;
+}
+
 export async function reconcileOutstandingOrdersWithCatalog(
   catalogItems: ShoppingCatalogItem[],
 ): Promise<ReconcileOutstandingOrdersResult> {
@@ -101,44 +125,27 @@ export async function reconcileOutstandingOrdersWithCatalog(
   const previousSnapshots = await loadStockSnapshots();
   const nextOrders = { ...(await loadOutstandingOrders()) };
   const nextSnapshots: Record<string, StoredStockSnapshot> = {};
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   let reconciledItemCount = 0;
 
+  // 1. Remove expired orders (past expiresAt)
+  for (const [itemId, order] of Object.entries(nextOrders)) {
+    if (order.expiresAt) {
+      const expiresDate = new Date(order.expiresAt);
+      if (now > expiresDate) {
+        delete nextOrders[itemId];
+        reconciledItemCount++;
+      }
+    }
+  }
+
+  // 2. Keep track of stock snapshots but do NOT reconcile outstanding order quantities based on stock increase.
   for (const item of catalogItems) {
     nextSnapshots[item.itemId] = {
       itemId: item.itemId,
       stockTotal: Math.max(0, Number(item.stockTotal ?? 0)),
-      recordedAt: now,
-    };
-
-    const previousStock = previousSnapshots[item.itemId]?.stockTotal;
-    const outstandingOrder = nextOrders[item.itemId];
-    if (
-      typeof previousStock !== "number" ||
-      !outstandingOrder ||
-      outstandingOrder.quantity <= 0
-    ) {
-      continue;
-    }
-
-    const stockIncrease = Math.max(0, item.stockTotal - previousStock);
-    if (stockIncrease <= 0) {
-      continue;
-    }
-
-    const nextQuantity = Math.max(0, outstandingOrder.quantity - stockIncrease);
-    reconciledItemCount += Number(nextQuantity !== outstandingOrder.quantity);
-
-    if (nextQuantity <= 0) {
-      delete nextOrders[item.itemId];
-      continue;
-    }
-
-    nextOrders[item.itemId] = {
-      ...outstandingOrder,
-      quantity: nextQuantity,
-      updatedAt: now,
-      lastReconciledAt: now,
+      recordedAt: nowIso,
     };
   }
 
@@ -180,7 +187,7 @@ function normalizeOutstandingOrders(
 
   return Object.fromEntries(
     Object.entries(value)
-      .map(([itemId, order]) => {
+      .map(([itemId, order]): [string, StoredOutstandingOrder] | null => {
         if (!order || typeof order !== "object") {
           return null;
         }
@@ -205,6 +212,8 @@ function normalizeOutstandingOrders(
             lastReconciledAt: order.lastReconciledAt
               ? normalizeIsoDate(order.lastReconciledAt)
               : null,
+            leadTimeLimit: typeof order.leadTimeLimit === "number" ? order.leadTimeLimit : undefined,
+            expiresAt: order.expiresAt ? normalizeIsoDate(order.expiresAt) : undefined,
           } satisfies StoredOutstandingOrder,
         ];
       })

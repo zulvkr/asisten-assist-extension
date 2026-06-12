@@ -4,6 +4,8 @@ import {
   buildDestyStockBySku,
   fetchDestyOmniStock,
 } from "@/composables/destyOmniStockApi";
+import { resolveDestyToken } from "@/composables/destyOmniTokenManager";
+import { fetchAllDestyOrders } from "@/composables/destyOmniOrderApi";
 import {
   compareStockLevels,
   type StockComparisonRow,
@@ -19,6 +21,7 @@ import {
   buildPendingOrderQuantityMap,
   markItemsAsOrdered,
   reconcileOutstandingOrdersWithCatalog,
+  removeOutstandingOrder,
 } from "@/services/shoppingRecommendationStorage";
 import type {
   MarkOutstandingOrderItem,
@@ -426,6 +429,24 @@ async function handleMarkItemsAsOrdered(
   };
 }
 
+async function handleRemoveOutstandingOrder(
+  payload: { itemId: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const itemId = payload.itemId?.trim() ?? "";
+  if (!itemId) {
+    return {
+      ok: false,
+      error: "Item ID tidak tersedia.",
+    };
+  }
+
+  await removeOutstandingOrder(itemId);
+
+  return {
+    ok: true,
+  };
+}
+
 async function handleFetchStockComparison(
   payload: FetchStockComparisonPayload,
 ): Promise<
@@ -603,6 +624,46 @@ export default defineBackground(() => {
       return;
     }
 
+    if (message.type === "GET_DESTY_TOKEN") {
+      (async () => {
+        try {
+          const res = await resolveDestyToken();
+          sendResponse(res);
+        } catch (err) {
+          sendResponse({ token: "", tenantId: "", masterWarehouseId: "", warnings: [String(err)] });
+        }
+      })();
+      return true;
+    }
+
+    if (message.type === "FETCH_DESTY_ORDERS") {
+      (async () => {
+        try {
+          const { token, tenantId, status } = message.payload || {};
+          if (!token) throw new Error("Token Desty tidak tersedia.");
+          const allRecords = await fetchAllDestyOrders({ token, tenantId, status });
+          sendResponse({ ok: true, records: allRecords });
+        } catch (err) {
+          sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      })();
+      return true;
+    }
+
+    if (message.type === "FETCH_DESTY_STOCK") {
+      (async () => {
+        try {
+          const { token, tenantId, masterWarehouseId, skus } = message.payload || {};
+          if (!token) throw new Error("Token Desty tidak tersedia.");
+          const items = await fetchDestyOmniStock({ token, tenantId, masterWarehouseId, skus });
+          sendResponse({ ok: true, items });
+        } catch (err) {
+          sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      })();
+      return true;
+    }
+
     if (message.type === "FETCH_STOCK_COMPARISON") {
       (async () => {
         const result = await handleFetchStockComparison(
@@ -631,6 +692,31 @@ export default defineBackground(() => {
           (message.payload ?? {}) as MarkItemsAsOrderedPayload,
         );
         sendResponse(result);
+      })();
+
+      return true;
+    }
+
+    if (message.type === "REMOVE_OUTSTANDING_ORDER") {
+      (async () => {
+        const result = await handleRemoveOutstandingOrder(
+          (message.payload ?? {}) as { itemId: string },
+        );
+        sendResponse(result);
+      })();
+
+      return true;
+    }
+
+    if (message.type === "CLEAR_ALL_OUTSTANDING_ORDERS") {
+      (async () => {
+        const storageLocal = browser?.storage?.local;
+        if (storageLocal) {
+          await storageLocal.set({
+            "shoppingRecommendation:outstandingOrders": {},
+          });
+        }
+        sendResponse({ ok: true });
       })();
 
       return true;
@@ -715,6 +801,29 @@ export default defineBackground(() => {
       return true;
     }
 
+    if (message.type === "FETCH_ASSIST_EXPIRED_STOCKS") {
+        (async () => {
+          try {
+            const assistToken = message.payload?.assistToken?.trim() ?? "";
+            if (!assistToken) {
+              sendResponse({ ok: false, error: "Token Assist tidak tersedia." });
+              return;
+            }
+
+            const data = await fetchAssistExpiredStocks(assistToken);
+            sendResponse({ ok: true, data });
+          } catch (error) {
+            console.error("Gagal memuat data expired stock Assist:", error);
+            sendResponse({
+              ok: false,
+              error: error instanceof Error ? error.message : "Gagal memuat data kesehatan inventori.",
+            });
+          }
+        })();
+
+        return true;
+      }
+
     if (message.type !== "FETCH_PEMASUKAN_DATA") {
       return;
     }
@@ -775,3 +884,49 @@ export default defineBackground(() => {
     return true;
   });
 });
+
+async function fetchAssistExpiredStocks(
+  token: string,
+): Promise<any[]> {
+  const allItems: any[] = [];
+  const pageSize = 1000;
+  let skip = 0;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (skip < total) {
+    const url = new URL(`${runtimeConfig.assistApiBase}/KMedicineStocks/getItemsWithExpiredDate`);
+    url.searchParams.append("hospitalId", runtimeConfig.assistHospitalId);
+    url.searchParams.append("skip", String(skip));
+    url.searchParams.append("limit", String(pageSize));
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      credentials: "include",
+      headers: buildAssistHeaders(token),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Gagal mengambil data kesehatan inventori: ${response.status}`,
+      );
+    }
+
+    const payload = (await response.json()) as {
+      total?: number;
+      data?: any[];
+    };
+    const items = payload.data ?? [];
+    allItems.push(...items);
+
+    const resolvedTotal = Number(payload.total ?? allItems.length);
+    total = Number.isFinite(resolvedTotal) ? resolvedTotal : allItems.length;
+
+    if (items.length < pageSize) {
+      break;
+    }
+
+    skip += pageSize;
+  }
+
+  return allItems;
+}

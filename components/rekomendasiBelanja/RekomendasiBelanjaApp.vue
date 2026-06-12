@@ -1,263 +1,294 @@
 <template>
   <main class="recommendation-root">
-    <section class="hero">
-      <div>
-        <h1>Rekomendasi Belanja</h1>
-        <p>Ringkasan stok prioritas dan draft belanja aktif.</p>
-        <details class="help-disclosure">
-          <summary>Tentang tampilan ini</summary>
-          <p>
-            Memusatkan item kritis, review unit, dormant, dan draft belanja
-            dalam satu workspace.
-          </p>
-        </details>
+    <!-- Header Section -->
+    <header class="dashboard-header">
+      <div class="header-title-area">
+        <div class="title-with-icon">
+          <span class="icon-logo">📊</span>
+          <h1>Rekomendasi Belanja</h1>
+        </div>
+        <p class="subtitle">Optimalkan perputaran modal menggunakan visualisasi status lampu lalu lintas.</p>
       </div>
+      <button 
+        type="button" 
+        class="settings-toggle-btn"
+        @click="showSettingsPanel = !showSettingsPanel"
+      >
+        <span class="gear-icon">⚙️</span>
+        Konfigurasi Parameter
+      </button>
+    </header>
 
-      <div class="hero-actions">
-        <button
-          type="button"
-          class="ghost-button"
-          :disabled="loading"
-          @click="refreshData"
-        >
-          {{ loading ? "Memuat..." : "Refresh Data" }}
-        </button>
-        <button type="button" class="ghost-button" @click="clearDraft">
-          Kosongkan Draft
-        </button>
-        <button
-          type="button"
-          :disabled="!draftRows.length || markingOrdered"
-          @click="openDraftReview"
-        >
-          Generate Draft Belanja
-        </button>
-      </div>
+    <!-- Settings Panel (Collapsible) -->
+    <transition name="slide">
+      <section v-show="showSettingsPanel" class="panel settings-panel">
+        <div class="panel-title">
+          <h2>Pengaturan Parameter</h2>
+        </div>
+        <p class="panel-desc">Lookback tetap 30 hari. Default disimpan lokal di extension.</p>
+        
+        <div class="settings-grid">
+          <div class="field">
+            <label for="defaultLeadTime">Lead time (hari)</label>
+            <input
+              id="defaultLeadTime"
+              v-model.number="formSettings.defaultLeadTime"
+              type="number"
+              min="1"
+              step="1"
+            />
+          </div>
+          <div class="field">
+            <label for="cheapProductMaxPrice">Batas harga murah (Rp)</label>
+            <input
+              id="cheapProductMaxPrice"
+              v-model.number="formSettings.cheapProductMaxPrice"
+              type="number"
+              min="0"
+              step="100"
+            />
+          </div>
+          <div class="field">
+            <label for="fastMovingMinDailySales">Min/hari cepat</label>
+            <input
+              id="fastMovingMinDailySales"
+              v-model.number="formSettings.fastMovingMinDailySales"
+              type="number"
+              min="0"
+              step="0.1"
+            />
+          </div>
+          <div class="field">
+            <label for="cheapFastMovingLeadTime">Lead cepat (hari)</label>
+            <input
+              id="cheapFastMovingLeadTime"
+              v-model.number="formSettings.cheapFastMovingLeadTime"
+              type="number"
+              min="1"
+              step="1"
+            />
+          </div>
+          <div class="field">
+            <label for="targetStockDays">Target hari stok</label>
+            <input
+              id="targetStockDays"
+              v-model.number="formSettings.targetStockDays"
+              type="number"
+              min="1"
+              step="1"
+            />
+          </div>
+        </div>
+
+        <div class="action-row" style="margin-top: 18px">
+          <button
+            type="button"
+            class="primary-btn"
+            :disabled="loading || !settingsDirty"
+            @click="applySettings"
+          >
+            Terapkan &amp; Simpan Default
+          </button>
+          <button
+            type="button"
+            class="ghost-button"
+            :disabled="!settingsDirty"
+            @click="resetSettingsForm"
+          >
+            Reset Form
+          </button>
+          <span class="meta-status">
+            {{
+              settingsDirty
+                ? "Ada perubahan yang belum diterapkan."
+                : "Form sinkron dengan default tersimpan."
+            }}
+          </span>
+        </div>
+
+        <!-- Ignored Products List -->
+        <div class="ignored-list-section" style="margin-top: 18px; border-top: 1px dashed #e2e8f0; padding-top: 14px;">
+          <h3 style="font-size: 13.5px; font-weight: 700; margin: 0 0 8px 0; color: var(--color-slate-900);">Produk Diabaikan ({{ Object.keys(ignoredItemIds).length }})</h3>
+          <div v-if="Object.keys(ignoredItemIds).length === 0" class="meta-status">
+            Tidak ada produk yang diabaikan.
+          </div>
+          <div v-else class="ignored-items-list" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+            <div v-for="(ignored, itemId) in ignoredItemIds" :key="itemId" class="ignored-item-row" style="display: flex; justify-content: space-between; align-items: center; background: var(--color-slate-50); padding: 6px 12px; border-radius: 8px; font-size: 12px; border: 1px solid #e2e8f0;">
+              <div>
+                <strong style="color: var(--color-slate-900);">{{ getProductName(itemId) }}</strong>
+                <small style="color: var(--color-slate-600); margin-left: 8px;">{{ getProductCode(itemId) }}</small>
+              </div>
+              <button type="button" class="primary-btn sm-btn" style="padding: 4px 8px; font-size: 11px;" @click="restoreItem(itemId)">Restore</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </transition>
+
+    <!-- KPI Summary Section -->
+    <section class="kpi-grid">
+      <article class="kpi-card kpi-red">
+        <div class="kpi-header">
+          <h3>MERAH (KRITIS - &lt; 3 HARI)</h3>
+          <span class="kpi-icon text-red">⚠️</span>
+        </div>
+        <strong class="kpi-value text-red">{{ kpis.redCount }}</strong>
+        <p class="kpi-footer">Harus diorder hari ini juga</p>
+      </article>
+
+      <article class="kpi-card kpi-yellow">
+        <div class="kpi-header">
+          <h3>KUNING (PERINGATAN - 4..30 HARI)</h3>
+          <span class="kpi-icon text-yellow">⚠️</span>
+        </div>
+        <strong class="kpi-value text-yellow">{{ kpis.yellowCount }}</strong>
+        <p class="kpi-footer">Zona aman belanja mingguan</p>
+      </article>
+
+      <article class="kpi-card kpi-green">
+        <div class="kpi-header">
+          <h3>HIJAU (AMAN - &gt; 30 HARI)</h3>
+          <span class="kpi-icon text-green">✔️</span>
+        </div>
+        <strong class="kpi-value text-green">{{ kpis.greenCount }}</strong>
+        <p class="kpi-footer">Lewati dulu untuk hemat modal</p>
+      </article>
+
+      <article class="kpi-card kpi-budget">
+        <div class="kpi-header">
+          <h3>ESTIMASI MODAL BELANJA</h3>
+          <span class="kpi-icon text-blue">💵</span>
+        </div>
+        <strong class="kpi-value text-blue">{{ formatRupiah(kpis.estimatedBudget) }}</strong>
+        <p class="kpi-footer">Berdasarkan data merah &amp; kuning</p>
+      </article>
     </section>
 
     <p v-if="errorMessage" class="state-banner error">{{ errorMessage }}</p>
     <p v-else-if="infoMessage" class="state-banner info">{{ infoMessage }}</p>
 
-    <ul v-if="warnings.length" class="warning-list">
-      <li v-for="warning in warnings" :key="warning">{{ warning }}</li>
-    </ul>
-
-    <section class="kpi-grid">
-      <article class="kpi-card kpi-red">
-        <h3>Merah</h3>
-        <strong>{{ kpis.redCount }}</strong>
-        <p>Kritis</p>
-      </article>
-      <article class="kpi-card kpi-yellow">
-        <h3>Kuning</h3>
-        <strong>{{ kpis.yellowCount }}</strong>
-        <p>Waspada</p>
-      </article>
-      <article class="kpi-card kpi-green">
-        <h3>Hijau</h3>
-        <strong>{{ kpis.greenCount }}</strong>
-        <p>Aman</p>
-      </article>
-      <article class="kpi-card kpi-review">
-        <h3>Review Unit</h3>
-        <strong>{{ kpis.manualReviewCount }}</strong>
-        <p>Cek unit</p>
-      </article>
-      <article class="kpi-card kpi-dormant">
-        <h3>Dormant</h3>
-        <strong>{{ kpis.dormantCount }}</strong>
-        <p>30h sepi</p>
-      </article>
-      <article class="kpi-card kpi-budget">
-        <h3>Budget Draft</h3>
-        <strong>{{ formatRupiah(kpis.draftBudget) }}</strong>
-        <p>{{ kpis.draftItems }} item</p>
-      </article>
-    </section>
-
-    <section class="panel">
-      <div class="panel-title">
-        <h2>Pengaturan</h2>
-      </div>
-
-      <details class="help-disclosure panel-help">
-        <summary>Panduan pengaturan</summary>
-        <p>Lookback tetap 30 hari dan default disimpan lokal di extension.</p>
-      </details>
-
-      <div class="settings-grid">
-        <div class="field">
-          <label for="defaultLeadTime">Lead time</label>
-          <input
-            id="defaultLeadTime"
-            v-model.number="formSettings.defaultLeadTime"
-            type="number"
-            min="1"
-            step="1"
-          />
-        </div>
-        <div class="field">
-          <label for="cheapProductMaxPrice">Batas murah</label>
-          <input
-            id="cheapProductMaxPrice"
-            v-model.number="formSettings.cheapProductMaxPrice"
-            type="number"
-            min="0"
-            step="100"
-          />
-        </div>
-        <div class="field">
-          <label for="fastMovingMinDailySales">Min/hari cepat</label>
-          <input
-            id="fastMovingMinDailySales"
-            v-model.number="formSettings.fastMovingMinDailySales"
-            type="number"
-            min="0"
-            step="0.1"
-          />
-        </div>
-        <div class="field">
-          <label for="cheapFastMovingLeadTime">Lead cepat</label>
-          <input
-            id="cheapFastMovingLeadTime"
-            v-model.number="formSettings.cheapFastMovingLeadTime"
-            type="number"
-            min="1"
-            step="1"
-          />
-        </div>
-        <div class="field">
-          <label for="targetStockDays">Target hari</label>
-          <input
-            id="targetStockDays"
-            v-model.number="formSettings.targetStockDays"
-            type="number"
-            min="1"
-            step="1"
-          />
-        </div>
-      </div>
-
-      <div class="action-row" style="margin-top: 14px">
-        <button
-          type="button"
-          :disabled="loading || !settingsDirty"
-          @click="applySettings"
-        >
-          Terapkan &amp; Simpan Default
-        </button>
-        <button
-          type="button"
-          class="ghost-button"
-          :disabled="!settingsDirty"
-          @click="resetSettingsForm"
-        >
-          Reset Form
-        </button>
-        <span class="meta">
-          {{
-            settingsDirty
-              ? "Ada perubahan yang belum diterapkan."
-              : "Form sinkron dengan default tersimpan."
-          }}
-        </span>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-title">
-        <h2>Filter Kerja</h2>
-        <span>{{ filteredRows.length }}/{{ enhancedRows.length }} item</span>
-      </div>
-
-      <details class="help-disclosure panel-help">
-        <summary>Panduan filter</summary>
-        <p>
-          Gunakan chip untuk fokus cepat, lalu sempitkan hasil dengan status dan
-          pencarian.
-        </p>
-      </details>
-
-      <div class="quick-filter-row" role="tablist" aria-label="Quick filter">
-        <button
-          v-for="filterOption in quickFilterOptions"
-          :key="filterOption.key"
-          type="button"
-          :class="[
-            'chip-button',
-            { active: filters.quickFilter === filterOption.key },
-          ]"
-          @click="setQuickFilter(filterOption.key)"
-        >
-          {{ filterOption.label }}
-        </button>
-      </div>
-
-      <div class="filter-grid">
-        <div class="field">
-          <label for="searchInput">Cari item</label>
+    <!-- Filter Panel -->
+    <section class="panel filter-panel">
+      <div class="filter-main-row">
+        <!-- Search -->
+        <div class="filter-search-box">
+          <span class="search-icon">🔍</span>
           <input
             id="searchInput"
             v-model.trim="filters.search"
             type="search"
-            placeholder="Contoh: paracetamol, MS001217, Dexa"
+            placeholder="Cari obat atau SKU..."
           />
         </div>
 
-        <div class="toggle-row">
-          <span>Status</span>
-          <div class="toggle-list">
-            <label
-              ><input v-model="filters.showRed" type="checkbox" /> Merah</label
+        <!-- Status Filter Chips -->
+        <div class="filter-group">
+          <span class="filter-label">Status:</span>
+          <div class="chip-group">
+            <button 
+              type="button" 
+              class="chip-btn" 
+              :class="{ active: filters.statusGroup === 'all' }"
+              @click="filters.statusGroup = 'all'"
             >
-            <label
-              ><input v-model="filters.showYellow" type="checkbox" />
-              Kuning</label
+              Semua
+            </button>
+            <button 
+              type="button" 
+              class="chip-btn" 
+              :class="{ active: filters.statusGroup === 'red-yellow' }"
+              @click="filters.statusGroup = 'red-yellow'"
             >
-            <label
-              ><input v-model="filters.showGreen" type="checkbox" />
-              Hijau</label
+              <span class="status-dots"><span class="dot red"></span><span class="dot yellow"></span></span>
+            </button>
+            <button 
+              type="button" 
+              class="chip-btn" 
+              :class="{ active: filters.statusGroup === 'red' }"
+              @click="filters.statusGroup = 'red'"
             >
+              Kritis
+            </button>
+            <button 
+              type="button" 
+              class="chip-btn" 
+              :class="{ active: filters.statusGroup === 'yellow' }"
+              @click="filters.statusGroup = 'yellow'"
+            >
+              Peringatan
+            </button>
+            <button 
+              type="button" 
+              class="chip-btn" 
+              :class="{ active: filters.statusGroup === 'green' }"
+              @click="filters.statusGroup = 'green'"
+            >
+              Aman
+            </button>
           </div>
         </div>
 
-        <div class="checkbox-stack">
-          <span>Tambahan</span>
-          <label
-            ><input v-model="filters.showManualReview" type="checkbox" /> Review
-            unit</label
+        <!-- Pesanan Filter Chips -->
+        <div class="filter-group">
+          <span class="filter-label">Pesanan:</span>
+          <div class="chip-group">
+            <button 
+              type="button" 
+              class="chip-btn" 
+              :class="{ active: filters.orderedFilter === 'all' }"
+              @click="filters.orderedFilter = 'all'"
+            >
+              Semua
+            </button>
+            <button 
+              type="button" 
+              class="chip-btn" 
+              :class="{ active: filters.orderedFilter === 'ordered' }"
+              @click="filters.orderedFilter = 'ordered'"
+            >
+              📦 Dipesan
+            </button>
+            <button 
+              type="button" 
+              class="chip-btn" 
+              :class="{ active: filters.orderedFilter === 'not-ordered' }"
+              @click="filters.orderedFilter = 'not-ordered'"
+            >
+              🛒 Belum
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Opportunity Analysis Tabs -->
+      <div class="tab-filters-row">
+        <span class="tab-label">Analisis Peluang:</span>
+        <div class="tabs-group">
+          <button
+            v-for="filterOption in quickFilterOptions"
+            :key="filterOption.key"
+            type="button"
+            class="tab-btn"
+            :class="{ active: filters.quickFilter === filterOption.key }"
+            @click="filters.quickFilter = filterOption.key"
           >
-          <label
-            ><input v-model="filters.showDormant" type="checkbox" />
-            Dormant</label
-          >
-          <label
-            ><input v-model="filters.showCovered" type="checkbox" /> Tampilkan
-            tercakup draft</label
-          >
+            {{ filterOption.label }}
+          </button>
         </div>
       </div>
     </section>
 
-    <section class="panel">
+    <!-- Catalog Quick Add Section -->
+    <section class="panel catalog-panel">
       <div class="panel-title">
         <h2>Tambah dari Katalog</h2>
       </div>
-
-      <details class="help-disclosure panel-help">
-        <summary>Kapan dipakai</summary>
-        <p>
-          Untuk menambah item di luar hasil merah atau kuning langsung ke draft.
-        </p>
-      </details>
-
       <div class="field">
-        <label for="manualSearch">Cari katalog</label>
         <input
           id="manualSearch"
           v-model.trim="manualSearch"
           type="search"
-          placeholder="Cari item katalog penuh Assist"
+          placeholder="Cari item katalog penuh Assist untuk ditambahkan ke pesanan..."
         />
       </div>
 
@@ -267,7 +298,7 @@
           :key="item.itemId"
           class="catalog-item"
         >
-          <div>
+          <div class="catalog-info">
             <h3>{{ item.itemName }}</h3>
             <p>
               {{ item.code || "Tanpa kode" }} •
@@ -275,63 +306,63 @@
               {{ item.unit || "Tanpa unit" }} • {{ formatRupiah(item.buyFee) }}
             </p>
           </div>
-
-          <div class="catalog-result-actions">
-            <button
-              type="button"
-              class="ghost-button"
-              @click="seedDraftFromCatalog(item)"
-            >
-              Tambah ke Draft
-            </button>
-          </div>
+          <button
+            type="button"
+            class="primary-btn sm-btn"
+            @click="seedDraftFromCatalog(item)"
+          >
+            Tandai Dipesan
+          </button>
         </article>
       </div>
-
-      <p v-else class="empty-state">
-        {{
-          manualSearch.length < 2
-            ? "Ketik 2 karakter untuk mulai mencari katalog."
-            : "Tidak ada produk katalog yang cocok."
-        }}
+      <p v-else-if="manualSearch.length >= 2" class="empty-state">
+        Tidak ada produk katalog yang cocok.
       </p>
     </section>
 
+    <!-- Recommendations Table Section -->
     <section class="table-panel">
-      <header>
-        <div>
+      <header class="table-header">
+        <div class="table-title-area">
           <h2>Tabel Rekomendasi</h2>
-          <p class="meta">
-            {{ generatedLabel }}
-          </p>
+          <p class="meta-info">{{ generatedLabel }}</p>
         </div>
-        <button
-          type="button"
-          class="ghost-button"
-          :disabled="!bulkReplenishCount"
-          @click="fillReplenishForFilteredRows"
-        >
-          Isi Replenish All
-          {{ bulkReplenishCount ? `(${bulkReplenishCount})` : "" }}
-        </button>
-        <div class="indicator-legend" aria-label="Legend indikator item">
-          <span
-            v-for="indicator in indicatorLegend"
-            :key="indicator.key"
-            class="legend-item"
+        
+        <div class="table-actions-area">
+          <button
+            type="button"
+            class="ghost-button"
+            :disabled="!filteredRowsToOrder.length"
+            @click="orderAllFilteredRows"
           >
-            <span
-              :class="['indicator-icon', `indicator-${indicator.tone}`]"
-              aria-hidden="true"
-            >
-              {{ indicator.icon }}
-            </span>
-            <span>{{ indicator.label }}</span>
-          </span>
+            Tandai Semua Dipesan ({{ filteredRowsToOrder.length }})
+          </button>
+          
+          <button
+            type="button"
+            class="ghost-button"
+            :disabled="!draftRows.length"
+            @click="clearAllOrders"
+          >
+            Kosongkan Pesanan
+          </button>
+
+          <button
+            type="button"
+            class="primary-btn"
+            :disabled="!draftRows.length"
+            @click="openDraftReview"
+          >
+            Generate Draft Belanja
+          </button>
         </div>
       </header>
 
-      <div v-if="!filteredRows.length" class="empty-state">
+      <div v-if="loading" class="empty-state">
+        Memuat rekomendasi belanja...
+      </div>
+
+      <div v-else-if="!filteredRows.length" class="empty-state">
         Belum ada baris yang cocok dengan filter aktif.
       </div>
 
@@ -339,19 +370,15 @@
         <table>
           <thead>
             <tr>
-              <th>Produk</th>
-              <th>Status</th>
-              <th>Stok</th>
-              <th>Sedang Dipesan</th>
-              <th>Terjual 30h</th>
-              <th>Rata/Hari</th>
-              <th>Sisa Hari</th>
-              <th>Target</th>
-              <th>Replenish</th>
-              <th>Growth</th>
-              <th>Buy Fee</th>
-              <th>Draft Qty</th>
-              <th>Sisa Total</th>
+              <th>NAMA OBAT</th>
+              <th>STOK SAAT INI</th>
+              <th>ROP (UNIT)</th>
+              <th class="text-center">SEDANG DIPESAN</th>
+              <th>KECEPATAN JUAL (30 HARI)</th>
+              <th>HARI TERSISA</th>
+              <th>STATUS</th>
+              <th>RESTOK DASAR</th>
+              <th>RESTOK EXTRA</th>
             </tr>
           </thead>
           <tbody>
@@ -362,13 +389,11 @@
               @click="handleRowClick(row, $event)"
             >
               <td class="product-cell">
-                <strong>{{ row.itemName }}</strong>
+                <strong class="product-name">{{ row.itemName }}</strong>
                 <div class="product-meta">
-                  {{ row.code || "Tanpa kode" }} •
-                  {{ row.brandName || "Tanpa brand" }} •
-                  {{ row.unit || "Tanpa unit" }}
+                  {{ row.code || "Tanpa kode" }}
                 </div>
-                <div class="table-actions" style="margin-top: 8px">
+                <div class="table-indicators" style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
                   <span
                     v-for="indicator in getRowIndicators(row)"
                     :key="indicator.key"
@@ -379,83 +404,44 @@
                   >
                     {{ indicator.icon }}
                   </span>
+                  <button
+                    type="button"
+                    class="ignore-link-btn"
+                    title="Abaikan produk ini"
+                    @click.stop="ignoreItem(row.itemId)"
+                    style="background: none; border: none; padding: 0; color: #ef4444; font-size: 11px; cursor: pointer; text-decoration: underline;"
+                  >
+                    Abaikan
+                  </button>
                 </div>
-                <div
-                  v-if="row.notes.length"
-                  class="inline-disclosure-wrap"
-                  style="margin-top: 8px"
-                >
-                  <details class="inline-disclosure">
-                    <summary>{{ row.notes.length }} catatan</summary>
-                    <div class="cell-note">{{ row.notes.join(" | ") }}</div>
-                  </details>
-                </div>
+              </td>
+              <td class="stock-cell">{{ row.stockTotal }} {{ row.unit }}</td>
+              <td class="rop-cell">{{ row.rop }} {{ row.unit }}</td>
+              <td class="text-center checkbox-cell">
+                <input
+                  type="checkbox"
+                  class="pending-checkbox"
+                  :checked="row.pendingOrderQty > 0"
+                  @change="togglePendingOrder(row)"
+                  @click.stop
+                />
+              </td>
+              <td>{{ formatDailySales(row.averageDailySales) }}/hari</td>
+              <td>
+                <span :class="['days-left', { 'critical': row.estimatedDaysRemaining <= row.leadTimeLimit }]">
+                  {{ formatDays(row.estimatedDaysRemaining) }} hari
+                </span>
               </td>
               <td>
                 <span :class="['status-badge', `status-${row.statusColor}`]">
                   {{ statusLabel(row.statusColor) }}
                 </span>
               </td>
-              <td>{{ row.stockTotal }}</td>
-              <td>{{ row.pendingOrderQty || "-" }}</td>
-              <td>{{ row.qtySold30Days }}</td>
-              <td>{{ formatDailySales(row.averageDailySales) }}</td>
-              <td>{{ formatDays(row.estimatedDaysRemaining) }}</td>
-              <td>{{ row.needsManualReview ? "Manual" : row.targetStock }}</td>
-              <td>
-                <strong>{{
-                  row.needsManualReview ? "Manual" : row.replenishSuggestedQty
-                }}</strong>
-                <button
-                  v-if="!row.needsManualReview"
-                  type="button"
-                  class="cell-action-button"
-                  :disabled="row.replenishSuggestedQty <= 0"
-                  @click.stop="
-                    setDraftQuantity(row.itemId, row.replenishSuggestedQty)
-                  "
-                >
-                  Isi Replenish
-                </button>
-                <div class="cell-note">Pulihkan demand dasar</div>
+              <td class="restock-cell">
+                <strong>{{ row.replenishSuggestedQty }} {{ row.unit }}</strong>
               </td>
-              <td>
-                <strong>{{
-                  row.needsManualReview ? "Manual" : row.calculatedSuggestedQty
-                }}</strong>
-                <button
-                  v-if="!row.needsManualReview"
-                  type="button"
-                  class="cell-action-button"
-                  :disabled="row.calculatedSuggestedQty <= 0"
-                  @click.stop="
-                    setDraftQuantity(row.itemId, row.calculatedSuggestedQty)
-                  "
-                >
-                  Isi Growth
-                </button>
-                <div class="cell-note">Replenish + tambahan growth</div>
-              </td>
-              <td>
-                <strong>{{ formatRupiah(row.buyFee) }}</strong>
-                <div class="cell-note">avgHPP: {{ row.avgHpp ?? "-" }}</div>
-              </td>
-              <td>
-                <div class="draft-controls">
-                  <input
-                    class="draft-input"
-                    :value="row.draftedQty || ''"
-                    type="number"
-                    min="0"
-                    step="1"
-                    @input="updateDraftQtyFromEvent(row.itemId, $event)"
-                  />
-                </div>
-              </td>
-              <td>
-                {{
-                  row.needsManualReview ? "Manual" : row.remainingSuggestedQty
-                }}
+              <td class="restock-cell extra">
+                {{ row.growthSuggestedQty > 0 ? `${row.growthSuggestedQty} ${row.unit}` : "-" }}
               </td>
             </tr>
           </tbody>
@@ -463,6 +449,7 @@
       </div>
     </section>
 
+    <!-- Product Insights Drawer -->
     <aside v-if="selectedInsightRow" class="insights-drawer">
       <div class="insights-header">
         <div>
@@ -635,6 +622,7 @@
       </div>
     </aside>
 
+    <!-- Review Draft Modal -->
     <section
       v-if="reviewOpen"
       class="review-backdrop"
@@ -645,21 +633,14 @@
           <h2>Review Draft Belanja</h2>
           <p class="meta">
             {{ draftRows.length }} item • Estimasi total
-            {{ formatRupiah(kpis.draftBudget) }}
+            {{ formatRupiah(kpis.estimatedBudget) }}
           </p>
         </header>
 
         <div class="review-actions">
           <div class="action-row">
-            <button type="button" @click="copyDraftSummary">
+            <button type="button" class="primary-btn" @click="copyDraftSummary">
               Copy Ringkasan
-            </button>
-            <button
-              type="button"
-              :disabled="markingOrdered || !draftRows.length"
-              @click="markDraftAsOrdered"
-            >
-              {{ markingOrdered ? "Menyimpan..." : "Tandai Sudah Dipesan" }}
             </button>
             <button
               type="button"
@@ -669,7 +650,7 @@
               Unduh CSV
             </button>
           </div>
-          <span class="meta">{{
+          <span class="meta-status">{{
             copyStatus || "Siap untuk diekspor atau disalin."
           }}</span>
         </div>
@@ -690,10 +671,7 @@
               <tr v-for="item in draftRows" :key="item.itemId">
                 <td class="draft-entry">
                   <strong>{{ item.itemName }}</strong>
-                  <small
-                    >{{ item.code || "Tanpa kode" }} •
-                    {{ item.brandName || "Tanpa brand" }}</small
-                  >
+                  <small>{{ item.code || "Tanpa kode" }} • {{ item.brandName || "Tanpa brand" }}</small>
                 </td>
                 <td>{{ item.quantity }}</td>
                 <td>{{ item.unit || "-" }}</td>
@@ -727,9 +705,8 @@
         </div>
 
         <div class="review-footer">
-          <div class="meta">
-            Draft ini adalah workspace lokal extension. Belum mengirim PO ke
-            Assist.
+          <div class="meta-note">
+            Draft ini disesuaikan berdasarkan item-item yang Anda tandai "Sedang Dipesan".
           </div>
           <div class="action-row">
             <button
@@ -773,29 +750,20 @@ interface FetchShoppingRecommendationsResponse {
   generatedAt: string;
 }
 
-interface MarkItemsAsOrderedResponse {
-  ok: true;
-  markedCount: number;
-}
-
 interface FiltersState {
   search: string;
   quickFilter: QuickFilterKey;
-  showRed: boolean;
-  showYellow: boolean;
-  showGreen: boolean;
+  statusGroup: "all" | "red-yellow" | "red" | "yellow" | "green";
+  orderedFilter: "all" | "ordered" | "not-ordered";
   showManualReview: boolean;
   showDormant: boolean;
-  showCovered: boolean;
 }
 
 type QuickFilterKey =
   | "all"
-  | "need-buy"
   | "income-loss"
   | "capped-demand"
-  | "golden-product"
-  | "dead-stock";
+  | "golden-product";
 
 interface EnhancedRecommendationRow extends ShoppingRecommendationRow {
   draftedQty: number;
@@ -837,93 +805,23 @@ interface ItemIndicator {
 }
 
 const SETTINGS_STORAGE_KEY = "shoppingRecommendation:settings";
-const DRAFT_STORAGE_KEY = "shoppingRecommendation:draft";
 const FILTERS_STORAGE_KEY = "shoppingRecommendation:filters";
+const IGNORED_STORAGE_KEY = "shoppingRecommendation:ignoredItems";
+
 const DEFAULT_FILTERS: FiltersState = {
   search: "",
   quickFilter: "all",
-  showRed: true,
-  showYellow: true,
-  showGreen: false,
+  statusGroup: "red-yellow",
+  orderedFilter: "not-ordered",
   showManualReview: true,
-  showDormant: false,
-  showCovered: true,
+  showDormant: true,
 };
 
 const quickFilterOptions: Array<{ key: QuickFilterKey; label: string }> = [
   { key: "all", label: "Semua" },
-  { key: "need-buy", label: "Butuh Beli" },
   { key: "income-loss", label: "Potensi Rugi" },
   { key: "capped-demand", label: "Permintaan Terhambat" },
   { key: "golden-product", label: "Produk Emas" },
-  { key: "dead-stock", label: "Stok Mati" },
-];
-
-const indicatorLegend: ItemIndicator[] = [
-  {
-    key: "unit-history",
-    icon: "U",
-    label: "Riwayat unit",
-    tooltip:
-      "Riwayat transaksi memakai lebih dari satu unit, tetapi kalkulasi tetap dijalankan.",
-    tone: "review",
-  },
-  {
-    key: "manual-review",
-    icon: "R",
-    label: "Review unit",
-    tooltip: "Perlu review unit sebelum jumlah beli diputuskan.",
-    tone: "review",
-  },
-  {
-    key: "dormant",
-    icon: "D",
-    label: "Dormant",
-    tooltip: "Tidak bergerak dalam 30 hari terakhir.",
-    tone: "dormant",
-  },
-  {
-    key: "covered",
-    icon: "C",
-    label: "Covered",
-    tooltip: "Kebutuhan item ini sudah tercakup draft atau stok masuk.",
-    tone: "covered",
-  },
-  {
-    key: "pending-order",
-    icon: "P",
-    label: "PO aktif",
-    tooltip: "Ada purchase order outstanding untuk item ini.",
-    tone: "covered",
-  },
-  {
-    key: "loss",
-    icon: "L",
-    label: "Rugi omzet",
-    tooltip: "Potensi kehilangan omzet terdeteksi.",
-    tone: "loss",
-  },
-  {
-    key: "capped-demand",
-    icon: "T",
-    label: "Demand tertahan",
-    tooltip: "Permintaan kemungkinan tertahan oleh stok yang habis atau tipis.",
-    tone: "capped",
-  },
-  {
-    key: "golden-product",
-    icon: "G",
-    label: "Produk emas",
-    tooltip: "Produk dengan kontribusi profit tinggi.",
-    tone: "golden",
-  },
-  {
-    key: "dead-stock",
-    icon: "S",
-    label: "Stok mati",
-    tooltip: "Perputaran sangat lambat dan berisiko menjadi stok mati.",
-    tone: "dead",
-  },
 ];
 
 const rows = ref<ShoppingRecommendationRow[]>([]);
@@ -937,24 +835,15 @@ const lookbackDays = ref(30);
 const reviewOpen = ref(false);
 const copyStatus = ref("");
 const manualSearch = ref("");
-const markingOrdered = ref(false);
 const selectedInsightItemId = ref("");
+const showSettingsPanel = ref(false);
 
-const activeSettings =
-  ref<ShoppingRecommendationSettings>(loadStoredSettings());
+const activeSettings = ref<ShoppingRecommendationSettings>(loadStoredSettings());
 const formSettings = ref<ShoppingRecommendationSettings>({
   ...activeSettings.value,
 });
-const draftQuantities = ref<Record<string, number>>(loadStoredDraft());
-const filters = reactive<FiltersState>(loadStoredFilters());
-
-watch(
-  draftQuantities,
-  (value) => {
-    saveStorage(DRAFT_STORAGE_KEY, value);
-  },
-  { deep: true },
-);
+const filters = reactive<FiltersState>({ ...DEFAULT_FILTERS });
+const ignoredItemIds = ref<Record<string, boolean>>(loadStoredIgnoredItems());
 
 watch(
   filters,
@@ -967,14 +856,6 @@ watch(
 const settingsDirty = computed(
   () =>
     JSON.stringify(formSettings.value) !== JSON.stringify(activeSettings.value),
-);
-
-const rowById = computed(
-  () => new Map(rows.value.map((row) => [row.itemId, row])),
-);
-
-const catalogById = computed(
-  () => new Map(catalogItems.value.map((item) => [item.itemId, item])),
 );
 
 const selectedInsightRow = computed(() => {
@@ -992,7 +873,7 @@ const selectedInsightRow = computed(() => {
 const enhancedRows = computed<EnhancedRecommendationRow[]>(() => {
   return [...rows.value]
     .map((row) => {
-      const draftedQty = sanitizeQuantity(draftQuantities.value[row.itemId]);
+      const draftedQty = row.pendingOrderQty;
       const remainingSuggestedQty = Math.max(
         0,
         row.calculatedSuggestedQty - draftedQty,
@@ -1010,10 +891,10 @@ const enhancedRows = computed<EnhancedRecommendationRow[]>(() => {
       };
     })
     .sort((left, right) => {
-      return (
-        compareShoppingRecommendationRows(left, right) ||
-        right.remainingSuggestedQty - left.remainingSuggestedQty
-      );
+      if (left.estimatedDaysRemaining !== right.estimatedDaysRemaining) {
+        return left.estimatedDaysRemaining - right.estimatedDaysRemaining;
+      }
+      return left.itemName.localeCompare(right.itemName);
     });
 });
 
@@ -1021,6 +902,11 @@ const filteredRows = computed(() => {
   const search = filters.search.trim().toLowerCase();
 
   return enhancedRows.value.filter((row) => {
+    // Exclude ignored items
+    if (ignoredItemIds.value[row.itemId]) {
+      return false;
+    }
+
     const matchesSearch = !search
       ? true
       : [row.itemName, row.code, row.brandName]
@@ -1028,57 +914,59 @@ const filteredRows = computed(() => {
           .toLowerCase()
           .includes(search);
 
-    const matchesStatus =
-      (filters.showRed && row.statusColor === "red") ||
-      (filters.showYellow && row.statusColor === "yellow") ||
-      (filters.showGreen && row.statusColor === "green") ||
-      (filters.showManualReview && row.needsManualReview) ||
-      (filters.showDormant && row.isDormant);
+    let matchesStatus = true;
+    if (filters.statusGroup === "red-yellow") {
+      matchesStatus = row.statusColor === "red" || row.statusColor === "yellow";
+    } else if (filters.statusGroup === "red") {
+      matchesStatus = row.statusColor === "red";
+    } else if (filters.statusGroup === "yellow") {
+      matchesStatus = row.statusColor === "yellow";
+    } else if (filters.statusGroup === "green") {
+      matchesStatus = row.statusColor === "green";
+    }
 
-    if (!filters.showCovered && row.isCovered && row.draftedQty <= 0) {
+    let matchesOrdered = true;
+    if (filters.orderedFilter === "ordered") {
+      matchesOrdered = row.pendingOrderQty > 0;
+    } else if (filters.orderedFilter === "not-ordered") {
+      matchesOrdered = row.pendingOrderQty <= 0;
+    }
+
+    if (!filters.showManualReview && row.needsManualReview) {
+      return false;
+    }
+    if (!filters.showDormant && row.isDormant) {
       return false;
     }
 
-    return matchesSearch && matchesStatus && matchesQuickFilter(row);
+    return matchesSearch && matchesStatus && matchesOrdered && matchesQuickFilter(row);
   });
 });
 
-const bulkReplenishRows = computed(() => {
+const filteredRowsToOrder = computed(() => {
   return filteredRows.value.filter(
-    (row) => !row.needsManualReview && row.replenishSuggestedQty > 0,
+    (row) => row.pendingOrderQty <= 0 && (row.statusColor === "red" || row.statusColor === "yellow"),
   );
 });
 
-const bulkReplenishCount = computed(() => bulkReplenishRows.value.length);
-
 const draftRows = computed<DraftSummaryRow[]>(() => {
-  return Object.entries(draftQuantities.value)
-    .map(([itemId, quantity]) => {
-      const safeQuantity = sanitizeQuantity(quantity);
-      if (safeQuantity <= 0) {
-        return null;
-      }
-
-      const row = rowById.value.get(itemId);
-      const catalogItem = catalogById.value.get(itemId);
-      const baseName = row?.itemName ?? catalogItem?.itemName ?? "Unknown";
-      return {
-        itemId,
-        itemType: row?.itemType ?? catalogItem?.itemType ?? "prescription",
-        code: row?.code ?? catalogItem?.code ?? "",
-        itemName: baseName,
-        brandName: row?.brandName ?? catalogItem?.brandName ?? "",
-        unit: row?.unit ?? catalogItem?.unit ?? "",
-        buyFee: row?.buyFee ?? catalogItem?.buyFee ?? null,
-        quantity: safeQuantity,
-        estimatedCost: safeQuantity * (row?.buyFee ?? catalogItem?.buyFee ?? 0),
-        needsManualReview: row?.needsManualReview ?? false,
-        hasUnitHistoryWarning: row?.hasUnitHistoryWarning ?? false,
-        unitHistoryWarning: row?.unitHistoryWarning ?? "",
-        isDormant: row?.isDormant ?? false,
-      } satisfies DraftSummaryRow;
-    })
-    .filter((item): item is DraftSummaryRow => Boolean(item))
+  return enhancedRows.value
+    .filter((row) => row.pendingOrderQty > 0)
+    .map((row) => ({
+      itemId: row.itemId,
+      itemType: row.itemType,
+      code: row.code,
+      itemName: row.itemName,
+      brandName: row.brandName,
+      unit: row.unit,
+      buyFee: row.buyFee,
+      quantity: row.pendingOrderQty,
+      estimatedCost: row.pendingOrderQty * (row.buyFee ?? 0),
+      needsManualReview: row.needsManualReview,
+      hasUnitHistoryWarning: row.hasUnitHistoryWarning,
+      unitHistoryWarning: row.unitHistoryWarning,
+      isDormant: row.isDormant,
+    }))
     .sort((left, right) => left.itemName.localeCompare(right.itemName));
 });
 
@@ -1098,15 +986,21 @@ const catalogSearchResults = computed(() => {
     .slice(0, 8);
 });
 
-const kpis = computed(() => ({
-  redCount: rows.value.filter((row) => row.statusColor === "red").length,
-  yellowCount: rows.value.filter((row) => row.statusColor === "yellow").length,
-  greenCount: rows.value.filter((row) => row.statusColor === "green").length,
-  manualReviewCount: rows.value.filter((row) => row.needsManualReview).length,
-  dormantCount: rows.value.filter((row) => row.isDormant).length,
-  draftBudget: draftRows.value.reduce((sum, row) => sum + row.estimatedCost, 0),
-  draftItems: draftRows.value.length,
-}));
+const kpis = computed(() => {
+  const redCount = rows.value.filter((row) => row.statusColor === "red").length;
+  const yellowCount = rows.value.filter((row) => row.statusColor === "yellow").length;
+  const greenCount = rows.value.filter((row) => row.statusColor === "green").length;
+  const estimatedBudget = rows.value
+    .filter((row) => row.statusColor === "red" || row.statusColor === "yellow")
+    .reduce((sum, row) => sum + (row.buyFee ?? 0) * row.replenishSuggestedQty, 0);
+
+  return {
+    redCount,
+    yellowCount,
+    greenCount,
+    estimatedBudget,
+  };
+});
 
 const generatedLabel = computed(() => {
   if (!generatedAt.value) {
@@ -1139,6 +1033,7 @@ async function applySettings() {
   formSettings.value = { ...resolved };
   saveStorage(SETTINGS_STORAGE_KEY, activeSettings.value);
   infoMessage.value = "Pengaturan tersimpan. Memuat ulang rekomendasi...";
+  showSettingsPanel.value = false;
   await loadRecommendations(activeSettings.value);
 }
 
@@ -1200,77 +1095,159 @@ async function loadRecommendations(settings: ShoppingRecommendationSettings) {
   }
 }
 
-function updateDraftQtyFromEvent(itemId: string, event: Event) {
-  const target = event.target as HTMLInputElement | null;
-  setDraftQuantity(itemId, target?.value ?? "0");
-}
-
-function setDraftQuantity(itemId: string, value: number | string) {
-  const quantity = sanitizeQuantity(value);
-  draftQuantities.value = {
-    ...draftQuantities.value,
-  };
-
-  if (quantity <= 0) {
-    delete draftQuantities.value[itemId];
-    draftQuantities.value = { ...draftQuantities.value };
-    return;
-  }
-
-  draftQuantities.value[itemId] = quantity;
-  draftQuantities.value = { ...draftQuantities.value };
-}
-
-function fillReplenishForFilteredRows() {
-  if (!bulkReplenishRows.value.length) {
-    return;
-  }
-
-  const nextDraftQuantities = { ...draftQuantities.value };
-
-  for (const row of bulkReplenishRows.value) {
-    nextDraftQuantities[row.itemId] = row.replenishSuggestedQty;
-  }
-
-  draftQuantities.value = nextDraftQuantities;
-  infoMessage.value = `${bulkReplenishRows.value.length} item diisi ke draft dengan qty replenish.`;
+async function togglePendingOrder(row: EnhancedRecommendationRow) {
   errorMessage.value = "";
+  infoMessage.value = "";
+  const isCurrentlyPending = row.pendingOrderQty > 0;
+  const qty = row.calculatedSuggestedQty || row.replenishSuggestedQty || row.targetStock || 1;
+
+  // Optimistic local update
+  const localRow = rows.value.find((r) => r.itemId === row.itemId);
+  if (localRow) {
+    localRow.pendingOrderQty = isCurrentlyPending ? 0 : qty;
+  }
+
+  try {
+    if (isCurrentlyPending) {
+      await browser.runtime.sendMessage({
+        type: "REMOVE_OUTSTANDING_ORDER",
+        payload: { itemId: row.itemId },
+      });
+      infoMessage.value = `${row.itemName} dihapus dari daftar sedang dipesan.`;
+    } else {
+      await browser.runtime.sendMessage({
+        type: "MARK_ITEMS_AS_ORDERED",
+        payload: {
+          items: [
+            {
+              itemId: row.itemId,
+              itemType: row.itemType,
+              itemName: row.itemName,
+              code: row.code,
+              unit: row.unit,
+              quantity: qty,
+              buyFee: row.buyFee,
+              leadTimeLimit: row.leadTimeLimit,
+            } satisfies MarkOutstandingOrderItem,
+          ],
+        },
+      });
+      infoMessage.value = `${row.itemName} ditandai sebagai sedang dipesan (${qty} ${row.unit}).`;
+    }
+  } catch (error) {
+    // Revert local state on error
+    if (localRow) {
+      localRow.pendingOrderQty = isCurrentlyPending ? qty : 0;
+    }
+    errorMessage.value = "Gagal mengubah status sedang dipesan.";
+  }
 }
 
-function setQuickFilter(filterKey: QuickFilterKey) {
-  filters.quickFilter = filterKey;
-}
-
-function handleRowClick(row: EnhancedRecommendationRow, event: MouseEvent) {
-  const target = event.target as HTMLElement | null;
-  if (target?.closest("button, input, label, a, summary, details")) {
+async function orderAllFilteredRows() {
+  if (!filteredRowsToOrder.value.length) {
     return;
   }
 
-  selectedInsightItemId.value = row.itemId;
+  const items = filteredRowsToOrder.value.map((row) => {
+    const qty = row.calculatedSuggestedQty || row.replenishSuggestedQty || row.targetStock || 1;
+    return {
+      itemId: row.itemId,
+      itemType: row.itemType,
+      itemName: row.itemName,
+      code: row.code,
+      unit: row.unit,
+      quantity: qty,
+      buyFee: row.buyFee,
+      leadTimeLimit: row.leadTimeLimit,
+    };
+  });
+
+  // Optimistic local update
+  for (const item of items) {
+    const localRow = rows.value.find((r) => r.itemId === item.itemId);
+    if (localRow) {
+      localRow.pendingOrderQty = item.quantity;
+    }
+  }
+
+  try {
+    await browser.runtime.sendMessage({
+      type: "MARK_ITEMS_AS_ORDERED",
+      payload: { items },
+    });
+    infoMessage.value = `${items.length} item ditandai sebagai sedang dipesan.`;
+  } catch (error) {
+    // Revert local state on error
+    for (const item of items) {
+      const localRow = rows.value.find((r) => r.itemId === item.itemId);
+      if (localRow) {
+        localRow.pendingOrderQty = 0;
+      }
+    }
+    errorMessage.value = "Gagal menandai item.";
+  }
 }
 
-function closeInsights() {
-  selectedInsightItemId.value = "";
+async function clearAllOrders() {
+  if (!confirm("Apakah Anda yakin ingin mengosongkan semua pesanan aktif?")) {
+    return;
+  }
+
+  // Backup original values in case of error rollback
+  const backups = rows.value.map((row) => ({ itemId: row.itemId, qty: row.pendingOrderQty }));
+
+  // Optimistic local update
+  for (const row of rows.value) {
+    row.pendingOrderQty = 0;
+  }
+
+  try {
+    await browser.runtime.sendMessage({
+      type: "CLEAR_ALL_OUTSTANDING_ORDERS",
+    });
+    infoMessage.value = "Semua pesanan berhasil dikosongkan.";
+  } catch (error) {
+    // Revert local state on error
+    for (const backup of backups) {
+      const localRow = rows.value.find((r) => r.itemId === backup.itemId);
+      if (localRow) {
+        localRow.pendingOrderQty = backup.qty;
+      }
+    }
+    errorMessage.value = "Gagal mengosongkan pesanan.";
+  }
 }
 
-function seedDraftFromCatalog(item: ShoppingCatalogItem) {
-  setDraftQuantity(item.itemId, draftQuantities.value[item.itemId] || 1);
-  manualSearch.value = "";
-  infoMessage.value = `${item.itemName} ditambahkan ke draft aktif.`;
-}
-
-function clearDraft() {
-  draftQuantities.value = {};
-  reviewOpen.value = false;
-  copyStatus.value = "";
-  infoMessage.value = "Draft kerja dikosongkan.";
+async function seedDraftFromCatalog(item: ShoppingCatalogItem) {
+  try {
+    await browser.runtime.sendMessage({
+      type: "MARK_ITEMS_AS_ORDERED",
+      payload: {
+        items: [
+          {
+            itemId: item.itemId,
+            itemType: item.itemType,
+            itemName: item.itemName,
+            code: item.code,
+            unit: item.unit,
+            quantity: 1,
+            buyFee: item.buyFee,
+            leadTimeLimit: 3,
+          } satisfies MarkOutstandingOrderItem,
+        ],
+      },
+    });
+    manualSearch.value = "";
+    infoMessage.value = `${item.itemName} berhasil ditambahkan sebagai dipesan.`;
+    await refreshData();
+  } catch (error) {
+    errorMessage.value = "Gagal menambahkan item dari katalog.";
+  }
 }
 
 function openDraftReview() {
   if (!draftRows.value.length) {
-    errorMessage.value =
-      "Tambahkan minimal satu item ke draft terlebih dahulu.";
+    errorMessage.value = "Tandai minimal satu item sebagai sedang dipesan terlebih dahulu.";
     return;
   }
 
@@ -1295,57 +1272,6 @@ async function copyDraftSummary() {
 
   await navigator.clipboard.writeText(lines.join("\n"));
   copyStatus.value = "Ringkasan draft berhasil disalin.";
-}
-
-async function markDraftAsOrdered() {
-  if (!draftRows.value.length || markingOrdered.value) {
-    return;
-  }
-
-  markingOrdered.value = true;
-  errorMessage.value = "";
-
-  try {
-    const response = (await browser.runtime.sendMessage({
-      type: "MARK_ITEMS_AS_ORDERED",
-      payload: {
-        items: draftRows.value.map(
-          (item) =>
-            ({
-              itemId: item.itemId,
-              itemType: item.itemType,
-              itemName: item.itemName,
-              code: item.code,
-              unit: item.unit,
-              quantity: item.quantity,
-              buyFee: item.buyFee,
-            }) satisfies MarkOutstandingOrderItem,
-        ),
-      },
-    })) as
-      | MarkItemsAsOrderedResponse
-      | { ok: false; error?: string }
-      | undefined;
-
-    if (!response?.ok) {
-      throw new Error(
-        response?.error ?? "Gagal menandai draft sebagai sudah dipesan.",
-      );
-    }
-
-    draftQuantities.value = {};
-    reviewOpen.value = false;
-    copyStatus.value = "";
-    infoMessage.value = `${response.markedCount} item ditandai sebagai sedang dipesan.`;
-    await refreshData();
-  } catch (error) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : "Terjadi kesalahan saat menyimpan outstanding order.";
-  } finally {
-    markingOrdered.value = false;
-  }
 }
 
 function downloadDraftCsv() {
@@ -1376,14 +1302,27 @@ function downloadDraftCsv() {
 function statusLabel(status: RecommendationStatusColor): string {
   switch (status) {
     case "red":
-      return "Kritis";
+      return "MERAH";
     case "yellow":
-      return "Warning";
+      return "KUNING";
     case "green":
-      return "Aman";
+      return "HIJAU";
     default:
       return status;
   }
+}
+
+function handleRowClick(row: EnhancedRecommendationRow, event: MouseEvent) {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("button, input, label, a, summary, details")) {
+    return;
+  }
+
+  selectedInsightItemId.value = row.itemId;
+}
+
+function closeInsights() {
+  selectedInsightItemId.value = "";
 }
 
 function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
@@ -1490,22 +1429,19 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
 
 function matchesQuickFilter(row: EnhancedRecommendationRow): boolean {
   switch (filters.quickFilter) {
-    case "need-buy":
-      return row.statusColor !== "green" || row.calculatedSuggestedQty > 0;
     case "income-loss":
       return row.potentialIncomeLoss > 0;
     case "capped-demand":
       return row.isCappedDemand || row.growthSuggestedQty > 0;
     case "golden-product":
       return row.isGoldenProduct;
-    case "dead-stock":
-      return row.isDeadStock;
     case "all":
     default:
       return true;
   }
 }
 
+// Format daily sales
 function formatDailySales(value: number): string {
   return value >= 10
     ? value.toFixed(0)
@@ -1514,6 +1450,7 @@ function formatDailySales(value: number): string {
       : value.toFixed(2);
 }
 
+// Format days remaining
 function formatDays(value: number): string {
   if (value >= 9999) {
     return "Dormant";
@@ -1522,6 +1459,7 @@ function formatDays(value: number): string {
   return value >= 10 ? value.toFixed(0) : value.toFixed(1);
 }
 
+// Format percent value
 function formatPercent(value: number): string {
   if (!Number.isFinite(value)) {
     return "-";
@@ -1530,6 +1468,7 @@ function formatPercent(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(0)}%`;
 }
 
+// Resolve unit margin
 function resolveUnitMargin(row: ShoppingRecommendationRow): number {
   return Math.max(
     0,
@@ -1537,6 +1476,7 @@ function resolveUnitMargin(row: ShoppingRecommendationRow): number {
   );
 }
 
+// Constraint meter width
 function constraintMeterWidth(row: ShoppingRecommendationRow): number {
   return Math.max(
     8,
@@ -1548,6 +1488,7 @@ function constraintMeterWidth(row: ShoppingRecommendationRow): number {
   );
 }
 
+// Sanitize quantity
 function sanitizeQuantity(value: number | string | undefined): number {
   const numericValue = typeof value === "number" ? value : Number(value ?? 0);
   if (!Number.isFinite(numericValue) || numericValue <= 0) {
@@ -1557,6 +1498,51 @@ function sanitizeQuantity(value: number | string | undefined): number {
   return Math.ceil(numericValue);
 }
 
+// Ignored items storage helpers
+function loadStoredIgnoredItems(): Record<string, boolean> {
+  return loadStorage<Record<string, boolean>>(IGNORED_STORAGE_KEY, {});
+}
+
+function saveStoredIgnoredItems(value: Record<string, boolean>) {
+  saveStorage(IGNORED_STORAGE_KEY, value);
+}
+
+function ignoreItem(itemId: string) {
+  if (confirm("Abaikan produk ini dari rekomendasi belanja?")) {
+    ignoredItemIds.value = {
+      ...ignoredItemIds.value,
+      [itemId]: true,
+    };
+    saveStoredIgnoredItems(ignoredItemIds.value);
+    infoMessage.value = "Produk berhasil diabaikan.";
+  }
+}
+
+function restoreItem(itemId: string) {
+  const nextIgnored = { ...ignoredItemIds.value };
+  delete nextIgnored[itemId];
+  ignoredItemIds.value = nextIgnored;
+  saveStoredIgnoredItems(ignoredItemIds.value);
+  infoMessage.value = "Produk berhasil dikembalikan.";
+}
+
+function getProductName(itemId: string): string {
+  const row = rows.value.find((r) => r.itemId === itemId);
+  if (row) return row.itemName;
+  const cat = catalogItems.value.find((c) => c.itemId === itemId);
+  if (cat) return cat.itemName;
+  return "Produk " + itemId;
+}
+
+function getProductCode(itemId: string): string {
+  const row = rows.value.find((r) => r.itemId === itemId);
+  if (row) return row.code;
+  const cat = catalogItems.value.find((c) => c.itemId === itemId);
+  if (cat) return cat.code;
+  return "";
+}
+
+// Load settings
 function loadStoredSettings(): ShoppingRecommendationSettings {
   const parsed = loadStorage<Partial<ShoppingRecommendationSettings>>(
     SETTINGS_STORAGE_KEY,
@@ -1565,16 +1551,7 @@ function loadStoredSettings(): ShoppingRecommendationSettings {
   return resolveShoppingRecommendationSettings(parsed);
 }
 
-function loadStoredDraft(): Record<string, number> {
-  const parsed = loadStorage<Record<string, number>>(DRAFT_STORAGE_KEY, {});
-  return Object.fromEntries(
-    Object.entries(parsed).map(([key, value]) => [
-      key,
-      sanitizeQuantity(value),
-    ]),
-  );
-}
-
+// Load filters
 function loadStoredFilters(): FiltersState {
   return {
     ...DEFAULT_FILTERS,
@@ -1582,6 +1559,7 @@ function loadStoredFilters(): FiltersState {
   };
 }
 
+// Local storage helpers
 function loadStorage<T>(key: string, fallback: T): T {
   try {
     const rawValue = localStorage.getItem(key);
@@ -1599,6 +1577,7 @@ function saveStorage(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+// CSV escape
 function escapeCsvValue(value: string): string {
   const normalized = String(value ?? "");
   if (/[",\n]/.test(normalized)) {
@@ -1608,3 +1587,7 @@ function escapeCsvValue(value: string): string {
   return normalized;
 }
 </script>
+
+<style>
+/* Style loaded from styles.css */
+</style>

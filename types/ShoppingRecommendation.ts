@@ -55,6 +55,8 @@ export interface StoredOutstandingOrder {
   orderedAt: string;
   updatedAt: string;
   lastReconciledAt: string | null;
+  leadTimeLimit?: number;
+  expiresAt?: string;
 }
 
 export interface StoredStockSnapshot {
@@ -71,6 +73,7 @@ export interface MarkOutstandingOrderItem {
   unit: string;
   quantity: number;
   buyFee: number | null;
+  leadTimeLimit?: number;
 }
 
 export interface ShoppingRecommendationRow {
@@ -113,6 +116,7 @@ export interface ShoppingRecommendationRow {
   unitHistoryWarning: string;
   observedTransactionUnits: string[];
   notes: string[];
+  rop: number;
 }
 
 export interface ShoppingRecommendationSettingsValidation {
