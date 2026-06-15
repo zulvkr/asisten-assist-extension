@@ -44,6 +44,7 @@ interface FetchStockComparisonPayload {
   destyToken?: string;
   destyTenantId?: string;
   destyMasterWarehouseId?: string;
+  comparisonMode?: "dates" | "all";
 }
 
 interface FetchShoppingRecommendationsPayload {
@@ -453,6 +454,7 @@ async function handleFetchStockComparison(
   | { ok: true; data: StockComparisonRow[]; warnings: string[] }
   | { ok: false; error: string }
 > {
+  const comparisonMode = payload.comparisonMode ?? "dates";
   const startDate =
     typeof payload.startDate === "string" ? payload.startDate : "";
   const endDate = typeof payload.endDate === "string" ? payload.endDate : "";
@@ -462,7 +464,7 @@ async function handleFetchStockComparison(
   const destyTenantId = payload.destyTenantId?.trim() ?? "";
   const destyMasterWarehouseId = payload.destyMasterWarehouseId?.trim() ?? "";
 
-  if (!startDate || !endDate) {
+  if (comparisonMode !== "all" && (!startDate || !endDate)) {
     return {
       ok: false,
       error: "Rentang tanggal wajib diisi.",
@@ -480,7 +482,9 @@ async function handleFetchStockComparison(
   try {
     const [pemasukanData, marginRows, medicineStockItems, bhpStockItems] =
       await Promise.all([
-        fetchAssistPemasukan(startDate, endDate, assistToken),
+        comparisonMode === "all"
+          ? Promise.resolve([])
+          : fetchAssistPemasukan(startDate, endDate, assistToken),
         fetchMarginSkuRows(),
         fetchAssistMedicineStockItems(assistToken),
         fetchAssistBhpStockItems(assistToken),
@@ -488,9 +492,30 @@ async function handleFetchStockComparison(
 
     const stockItems = [...medicineStockItems, ...bhpStockItems];
 
-    const soldResult = getAssistSoldItemsByDate(pemasukanData, {
-      includeOnlyPaidOff: true,
-    });
+    let soldItems: SoldItemAggregate[];
+    let skippedByType = 0;
+    let missingItemId = 0;
+
+    if (comparisonMode === "all") {
+      soldItems = stockItems
+        .map((item) => {
+          const id = String(item.id ?? "").trim();
+          return {
+            medicineId: id,
+            itemName: String(item.medName ?? item.itemName ?? "").trim(),
+            qtySold: 0,
+            source: "assist" as const,
+          };
+        })
+        .filter((item) => Boolean(item.medicineId));
+    } else {
+      const soldResult = getAssistSoldItemsByDate(pemasukanData, {
+        includeOnlyPaidOff: true,
+      });
+      soldItems = soldResult.soldItems;
+      skippedByType = soldResult.skippedByType;
+      missingItemId = soldResult.missingItemId;
+    }
 
     const assistStockByMedicineId = buildAssistStockByItemId(stockItems);
     const sellNormalFeeByMedicineId =
@@ -508,7 +533,7 @@ async function handleFetchStockComparison(
 
     let missingSkuMappingCount = 0;
     let missingKodeObatCount = 0;
-    for (const item of soldResult.soldItems) {
+    for (const item of soldItems) {
       const kodeObat = kodeObatByMedicineId[item.medicineId] ?? "";
       if (!kodeObat) {
         missingKodeObatCount += 1;
@@ -533,10 +558,12 @@ async function handleFetchStockComparison(
     const warnings: string[] = [];
 
     const shouldUseDesty = source === "desty" || source === "both";
+    let destyItems: import("@/composables/destyOmniStockApi").DestyOmniStockItem[] = [];
+
     if (shouldUseDesty) {
-      const skus = Array.from(
+      const skus = comparisonMode === "all" ? undefined : Array.from(
         new Set(
-          soldResult.soldItems
+          soldItems
             .map((item) => item.sku?.trim() ?? "")
             .filter((sku) => Boolean(sku)),
         ),
@@ -546,13 +573,13 @@ async function handleFetchStockComparison(
         warnings.push(
           "Token Desty tidak tersedia. Hasil tetap ditampilkan dari Assist.",
         );
-      } else if (skus.length === 0) {
+      } else if (skus !== undefined && skus.length === 0) {
         warnings.push(
           "Tidak ada SKU yang bisa dipakai untuk sinkronisasi Desty pada rentang ini.",
         );
       } else {
         try {
-          const destyItems = await fetchDestyOmniStock({
+          destyItems = await fetchDestyOmniStock({
             token: destyToken,
             skus,
             tenantId: destyTenantId,
@@ -570,8 +597,30 @@ async function handleFetchStockComparison(
       }
     }
 
+    if (shouldUseDesty && destyItems.length > 0) {
+      const mappedSkus = new Set<string>();
+      for (const item of soldItems) {
+        if (item.sku) {
+          mappedSkus.add(item.sku.trim().toUpperCase());
+        }
+      }
+
+      for (const destyItem of destyItems) {
+        const destySkuUpper = destyItem.sku.trim().toUpperCase();
+        if (destySkuUpper && !mappedSkus.has(destySkuUpper)) {
+          soldItems.push({
+            medicineId: "",
+            itemName: destyItem.productName || destyItem.sku,
+            qtySold: 0,
+            source: "desty",
+            sku: destyItem.sku,
+          });
+        }
+      }
+    }
+
     const rows = compareStockLevels({
-      soldItems: soldResult.soldItems,
+      soldItems,
       assistStockByMedicineId,
       sellNormalFeeByMedicineId,
       kodeObatByMedicineId,
@@ -579,14 +628,14 @@ async function handleFetchStockComparison(
       destyStockDetailBySku,
     });
 
-    if (soldResult.skippedByType > 0) {
+    if (skippedByType > 0) {
       warnings.push(
-        `${soldResult.skippedByType} item dilewati karena tipe transaksi tidak termasuk perhitungan stok.`,
+        `${skippedByType} item dilewati karena tipe transaksi tidak termasuk perhitungan stok.`,
       );
     }
-    if (soldResult.missingItemId > 0) {
+    if (missingItemId > 0) {
       warnings.push(
-        `${soldResult.missingItemId} item tanpa id Assist (medicineId/akhpId) tidak bisa dicocokkan ke stok Assist dan ditandai unknown.`,
+        `${missingItemId} item tanpa id Assist (medicineId/akhpId) tidak bisa dicocokkan ke stok Assist dan ditandai unknown.`,
       );
     }
     if (missingKodeObatCount > 0) {

@@ -1,58 +1,94 @@
 <template>
   <main class="comparison-root">
-    <header class="comparison-header">
-      <h1>Stock Comparison</h1>
-      <p>Versi Vue untuk validasi alur perbandingan stok.</p>
-    </header>
+    <!-- Mode Selector: Date vs All Items -->
+    <section class="mode-selector-section">
+      <div class="mode-selector-pill">
+        <button
+          type="button"
+          :class="['mode-btn', comparisonMode === 'dates' && 'active']"
+          @click="setComparisonMode('dates')"
+        >
+          Berdasarkan Tanggal
+        </button>
+        <button
+          type="button"
+          :class="['mode-btn', comparisonMode === 'all' && 'active']"
+          @click="setComparisonMode('all')"
+        >
+          Semua Item
+        </button>
+      </div>
+    </section>
 
-    <section class="filters">
-      <label>
-        Mulai
+    <!-- Date Filters (Only shown if comparisonMode is 'dates') -->
+    <section v-if="comparisonMode === 'dates'" class="filters-row date-filters">
+      <div class="filter-group">
+        <label>Mulai</label>
         <input v-model="startDate" type="date" />
-      </label>
-      <label>
-        Akhir
+      </div>
+      <div class="filter-group">
+        <label>Akhir</label>
         <input v-model="endDate" type="date" />
-      </label>
-      <label>
-        Sumber
+      </div>
+      <div class="filter-group">
+        <label>Sumber</label>
         <select v-model="source">
           <option value="both">Both</option>
           <option value="assist">Assist</option>
           <option value="desty">Desty Omni</option>
         </select>
-      </label>
-      <button type="button" :disabled="loading" @click="runComparison">
+      </div>
+    </section>
+
+    <!-- Main Control Bar (Search, Dropdown Status, Run Button) -->
+    <section class="controls-bar">
+      <!-- Search Input -->
+      <div class="search-wrapper">
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Cari SKU atau nama produk..."
+          class="search-input"
+        />
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+
+      <!-- Custom Dropdown Selector for Status Kesesuaian -->
+      <div ref="selectContainerRef" class="custom-select-container">
+        <span class="custom-select-label">Status Kesesuaian</span>
+        <div class="custom-select-trigger" @click="toggleDropdown">
+          <span class="selected-text">{{ selectedKesesuaian }}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div v-if="dropdownOpen" class="custom-select-options">
+          <div
+            v-for="opt in kesesuaianDropdownOptions"
+            :key="opt"
+            class="custom-select-option"
+            :class="{ active: selectedKesesuaian === opt }"
+            @click="selectKesesuaian(opt)"
+          >
+            {{ opt }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Run Button -->
+      <button
+        type="button"
+        class="btn-run"
+        :disabled="loading"
+        @click="runComparison"
+      >
+        <svg v-if="!loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        <span v-else class="spinner"></span>
         {{ loading ? "Memuat..." : "Jalankan Perbandingan" }}
       </button>
     </section>
 
-    <section class="label-filters">
-      <span class="label-filters__title">Filter label</span>
-      <label
-        v-for="option in kesesuaianFilterOptions"
-        :key="option"
-        class="label-filter-chip"
-      >
-        <input
-          :checked="activeKesesuaianFilters.includes(option)"
-          type="checkbox"
-          @change="toggleKesesuaianFilter(option)"
-        />
-        <span>{{ option }}</span>
-      </label>
-      <button
-        v-if="activeKesesuaianFilters.length"
-        type="button"
-        class="button-secondary"
-        @click="clearKesesuaianFilters"
-      >
-        Reset Filter
-      </button>
-    </section>
-
+    <!-- Additional Filters: Tindakan (Shown if there are options) -->
     <section v-if="attentionFilterOptions.length" class="label-filters">
-      <span class="label-filters__title">Filter tindakan</span>
+      <span class="label-filters__title">Filter tindakan:</span>
       <label
         v-for="option in attentionFilterOptions"
         :key="option"
@@ -81,35 +117,25 @@
       <li v-for="warning in warnings" :key="warning">{{ warning }}</li>
     </ul>
 
-    <section class="table-controls">
-      <button type="button" @click="currentSort = 'qtySold'">
-        Sort Qty Sold
-      </button>
-      <button type="button" @click="currentSort = 'kesesuaian'">
-        Sort Kesesuaian
-      </button>
-    </section>
-
     <section class="table-wrap">
       <p v-if="!rows.length" class="empty">
         Belum ada hasil. Klik "Jalankan Perbandingan".
       </p>
 
       <p v-else-if="!filteredRows.length" class="empty">
-        Tidak ada hasil yang cocok dengan filter label aktif.
+        Tidak ada hasil yang cocok dengan filter aktif.
       </p>
 
       <table v-else class="result-table">
         <thead>
           <tr>
-            <th>Kode Obat</th>
-            <th>SKU</th>
-            <th>Nama Item</th>
-            <th>Qty Sold</th>
-            <th>Assist Stock</th>
-            <th>Desty Stock</th>
-            <th>Kesesuaian</th>
-            <th>Label</th>
+            <th class="col-sku">SKU</th>
+            <th class="col-name"></th>
+            <th class="col-stock">Stok Apotek</th>
+            <th class="col-stock">Stok Desty</th>
+            <th class="col-status-desty">Status Desty</th>
+            <th class="col-kesesuaian">Status Kesesuaian</th>
+            <th class="col-action">Tindakan</th>
           </tr>
         </thead>
         <tbody>
@@ -118,54 +144,45 @@
             :key="`${row.medicineId}-${row.sku ?? ''}-${row.itemName}`"
             :class="{
               'row-no-sku': row.kesesuaian === 'SKU belum diisi',
-              'row-mismatch': row.kesesuaian === 'Tidak sesuai',
+              'row-mismatch': row.kesesuaian === 'Tidak Sesuai',
             }"
           >
-            <td>{{ row.kodeObat }}</td>
-            <td>
-              <template v-if="row.sku">{{ row.sku }}</template>
-              <span v-else class="sku-missing"
-                >Belum diisi — lengkapi kode obat &amp; SKU di sheet
-                margin</span
-              >
+            <td class="cell-sku">
+              {{ row.sku || "-" }}
             </td>
-            <td>{{ row.itemName }}</td>
-            <td>{{ row.qtySold }}</td>
-            <td>{{ row.assistStock ?? "-" }}</td>
-            <td>
+            <td class="cell-name">
+              {{ row.itemName }}
+              <div v-if="row.kodeObat" class="sub-code">Kode: {{ row.kodeObat }}</div>
+            </td>
+            <td class="cell-stock text-right">
+              {{ row.assistStock !== null ? row.assistStock : "-" }}
+            </td>
+            <td class="cell-stock text-right">
+              {{ row.destyStock !== null ? row.destyStock : "-" }}
+            </td>
+            <td class="cell-status-desty">
               <template v-if="row.destyStockDetail">
-                <div>
-                  fisik: {{ formatStockValue(row.destyStockDetail.fisik) }}
+                <div class="desty-detail-item">
+                  Fisik: {{ formatStockValue(row.destyStockDetail.fisik) }}
                 </div>
-                <div>
-                  tersedia:
-                  {{ formatStockValue(row.destyStockDetail.tersedia) }}
-                </div>
-                <div>
-                  pesanan: {{ formatStockValue(row.destyStockDetail.pesanan) }}
+                <div class="desty-detail-item">
+                  Tersedia: {{ formatStockValue(row.destyStockDetail.tersedia) }}
                 </div>
               </template>
-              <span v-else>-</span>
+              <span v-else class="text-muted">-</span>
             </td>
-            <td>
+            <td class="cell-kesesuaian">
               <span
                 :class="[
-                  'kesesuaian',
-                  row.kesesuaian === 'Sesuai' && 'kesesuaian--sesuai',
-                  row.kesesuaian === 'Tidak sesuai' &&
-                    'kesesuaian--tidak-sesuai',
-                  row.kesesuaian === 'SKU belum diisi' && 'kesesuaian--no-sku',
-                  row.kesesuaian === 'Stok Assist tidak tersedia' &&
-                    'kesesuaian--assist-kosong',
-                  row.kesesuaian === 'Stok Desty tidak tersedia' &&
-                    'kesesuaian--desty-kosong',
+                  'badge-kesesuaian',
+                  getKesesuaianClass(row.kesesuaian)
                 ]"
                 :title="row.notes.join(' | ')"
               >
                 {{ row.kesesuaian }}
               </span>
             </td>
-            <td>
+            <td class="cell-action">
               <span
                 v-if="row.attentionLabel"
                 :class="[
@@ -175,9 +192,7 @@
               >
                 {{ row.attentionLabel }}
               </span>
-              <span v-else class="attention-label attention-label--neutral">
-                -
-              </span>
+              <span v-else class="attention-label-none">-</span>
             </td>
           </tr>
         </tbody>
@@ -187,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { requestAssistTokenFromOpenTabs } from "@/composables/assistTokenManager";
 import { requestDestyTokenFromOpenTabs } from "@/composables/destyOmniTokenManager";
 import {
@@ -199,7 +214,6 @@ import {
   validateDateRangeLimit,
 } from "@/utils/validateDateRangeLimit";
 
-type SortMode = "qtySold" | "kesesuaian";
 type ValidationState = "muted" | "ok" | "error";
 type DataSource = "assist" | "desty" | "both";
 
@@ -207,52 +221,68 @@ const todayDate = new Date();
 const lastWeekDate = new Date(todayDate);
 lastWeekDate.setDate(lastWeekDate.getDate() - 7);
 
+const comparisonMode = ref<"dates" | "all">("dates");
 const startDate = ref(formatDateForInput(lastWeekDate));
 const endDate = ref(formatDateForInput(todayDate));
+const searchQuery = ref("");
+const selectedKesesuaian = ref<string>("All");
+const dropdownOpen = ref(false);
+const selectContainerRef = ref<HTMLElement | null>(null);
+
 const rows = ref<StockComparisonRow[]>([]);
-const currentSort = ref<SortMode>("qtySold");
 const validationMessage = ref("");
 const validationState = ref<ValidationState>("muted");
 const warnings = ref<string[]>([]);
 const loading = ref(false);
 const source = ref<DataSource>("both");
-const activeKesesuaianFilters = ref<KesesuaianStock[]>(["Tidak sesuai"]);
 const activeAttentionFilters = ref<string[]>([]);
 
-const kesesuaianFilterOptions: KesesuaianStock[] = [
-  "Tidak sesuai",
-  "SKU belum diisi",
-  "Stok Assist tidak tersedia",
-  "Stok Desty tidak tersedia",
+const kesesuaianDropdownOptions = [
+  "All",
   "Sesuai",
+  "Tidak Sesuai",
+  "Hanya di Assist",
+  "Hanya di Desty",
 ];
 
 const sortedRows = computed(() => {
   const data = [...rows.value];
-
-  if (currentSort.value === "qtySold") {
-    return data.sort((a, b) => b.qtySold - a.qtySold);
-  }
-
-  return data.sort(
-    (a, b) => kesesuaianRank(a.kesesuaian) - kesesuaianRank(b.kesesuaian),
-  );
+  // Prioritize mismatched and one-sided items, then by item name
+  return data.sort((a, b) => {
+    const rankA = kesesuaianRank(a.kesesuaian);
+    const rankB = kesesuaianRank(b.kesesuaian);
+    if (rankA !== rankB) {
+      return rankA - rankB;
+    }
+    return a.itemName.localeCompare(b.itemName);
+  });
 });
 
 const filteredRows = computed(() => {
-  const matchesKesesuaian = (row: StockComparisonRow) =>
-    !activeKesesuaianFilters.value.length ||
-    activeKesesuaianFilters.value.includes(row.kesesuaian);
+  const query = searchQuery.value.trim().toLowerCase();
+  
+  const matchesSearch = (row: StockComparisonRow) => {
+    if (!query) return true;
+    return (
+      row.itemName.toLowerCase().includes(query) ||
+      (row.sku && row.sku.toLowerCase().includes(query)) ||
+      (row.kodeObat && row.kodeObat.toLowerCase().includes(query))
+    );
+  };
 
-  const matchesAttention = (row: StockComparisonRow) =>
-    !activeAttentionFilters.value.length ||
-    (normalizeAttentionFilterLabel(row.attentionLabel) !== null &&
-      activeAttentionFilters.value.includes(
-        normalizeAttentionFilterLabel(row.attentionLabel) as string,
-      ));
+  const matchesKesesuaian = (row: StockComparisonRow) => {
+    if (selectedKesesuaian.value === "All") return true;
+    return row.kesesuaian === selectedKesesuaian.value;
+  };
+
+  const matchesAttention = (row: StockComparisonRow) => {
+    if (!activeAttentionFilters.value.length) return true;
+    const norm = normalizeAttentionFilterLabel(row.attentionLabel);
+    return norm !== null && activeAttentionFilters.value.includes(norm);
+  };
 
   return sortedRows.value.filter(
-    (row) => matchesKesesuaian(row) && matchesAttention(row),
+    (row) => matchesSearch(row) && matchesKesesuaian(row) && matchesAttention(row)
   );
 });
 
@@ -266,20 +296,45 @@ const attentionFilterOptions = computed(() => {
   ).sort((left, right) => left.localeCompare(right));
 });
 
-async function runComparison() {
-  const validation = validateDateRangeLimit(
-    new Date(startDate.value),
-    new Date(endDate.value),
-    DEFAULT_MAX_DATE_RANGE_DAYS,
-  );
+function setComparisonMode(mode: "dates" | "all") {
+  comparisonMode.value = mode;
+}
 
-  if (!validation.valid) {
-    validationState.value = "error";
-    validationMessage.value =
-      validation.reason ?? "Rentang tanggal tidak valid.";
-    rows.value = [];
-    warnings.value = [];
-    return;
+function toggleDropdown() {
+  dropdownOpen.value = !dropdownOpen.value;
+}
+
+function selectKesesuaian(option: string) {
+  selectedKesesuaian.value = option;
+  dropdownOpen.value = false;
+}
+
+function handleDocumentClick(e: MouseEvent) {
+  if (selectContainerRef.value && !selectContainerRef.value.contains(e.target as Node)) {
+    dropdownOpen.value = false;
+  }
+}
+
+function refreshExtension() {
+  window.location.reload();
+}
+
+async function runComparison() {
+  if (comparisonMode.value !== "all") {
+    const validation = validateDateRangeLimit(
+      new Date(startDate.value),
+      new Date(endDate.value),
+      DEFAULT_MAX_DATE_RANGE_DAYS,
+    );
+
+    if (!validation.valid) {
+      validationState.value = "error";
+      validationMessage.value =
+        validation.reason ?? "Rentang tanggal tidak valid.";
+      rows.value = [];
+      warnings.value = [];
+      return;
+    }
   }
 
   loading.value = true;
@@ -316,6 +371,7 @@ async function runComparison() {
     const response = (await browser.runtime.sendMessage({
       type: "FETCH_STOCK_COMPARISON",
       payload: {
+        comparisonMode: comparisonMode.value,
         startDate: startDate.value,
         endDate: endDate.value,
         source: source.value,
@@ -336,7 +392,17 @@ async function runComparison() {
     rows.value = response.data;
     warnings.value = response.warnings ?? [];
     validationState.value = "ok";
-    validationMessage.value = `Rentang valid: ${validation.days} hari dari batas ${DEFAULT_MAX_DATE_RANGE_DAYS} hari.`;
+
+    if (comparisonMode.value === "all") {
+      validationMessage.value = `Berhasil memuat perbandingan semua item (${rows.value.length} item).`;
+    } else {
+      const validation = validateDateRangeLimit(
+        new Date(startDate.value),
+        new Date(endDate.value),
+        DEFAULT_MAX_DATE_RANGE_DAYS,
+      );
+      validationMessage.value = `Rentang valid: ${validation.days} hari dari batas ${DEFAULT_MAX_DATE_RANGE_DAYS} hari.`;
+    }
   } catch (error) {
     rows.value = [];
     warnings.value = [];
@@ -348,21 +414,6 @@ async function runComparison() {
   } finally {
     loading.value = false;
   }
-}
-
-function toggleKesesuaianFilter(option: KesesuaianStock) {
-  if (activeKesesuaianFilters.value.includes(option)) {
-    activeKesesuaianFilters.value = activeKesesuaianFilters.value.filter(
-      (value) => value !== option,
-    );
-    return;
-  }
-
-  activeKesesuaianFilters.value = [...activeKesesuaianFilters.value, option];
-}
-
-function clearKesesuaianFilters() {
-  activeKesesuaianFilters.value = [];
 }
 
 function toggleAttentionFilter(option: string) {
@@ -392,13 +443,30 @@ function normalizeAttentionFilterLabel(label: string | null): string | null {
   return label;
 }
 
+function getKesesuaianClass(kesesuaian: KesesuaianStock): string {
+  switch (kesesuaian) {
+    case "Sesuai":
+      return "badge-kesesuaian--sesuai";
+    case "Tidak Sesuai":
+      return "badge-kesesuaian--tidak-sesuai";
+    case "SKU belum diisi":
+      return "badge-kesesuaian--no-sku";
+    case "Hanya di Assist":
+      return "badge-kesesuaian--hanya-assist";
+    case "Hanya di Desty":
+      return "badge-kesesuaian--hanya-desty";
+    default:
+      return "";
+  }
+}
+
 function kesesuaianRank(kesesuaian: KesesuaianStock): number {
   switch (kesesuaian) {
-    case "Tidak sesuai":
+    case "Tidak Sesuai":
       return 1;
-    case "Stok Assist tidak tersedia":
+    case "Hanya di Assist":
       return 2;
-    case "Stok Desty tidak tersedia":
+    case "Hanya di Desty":
       return 3;
     case "SKU belum diisi":
       return 4;
@@ -421,4 +489,475 @@ function formatStockValue(value: number | null | undefined): string {
     ? String(value)
     : "-";
 }
+
+onMounted(() => {
+  document.addEventListener("click", handleDocumentClick);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("click", handleDocumentClick);
+});
 </script>
+
+<style>
+/* Base Overrides and Custom Premium Styling */
+.comparison-root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+  background-color: #fafbfc;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  color: #1e293b;
+}
+
+/* Header styling */
+.comparison-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.comparison-header h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.comparison-header p {
+  font-size: 14px;
+  color: #64748b;
+  margin: 4px 0 0;
+}
+
+.btn-refresh-ext {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #ffffff;
+  color: #0ea5e9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.btn-refresh-ext:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0284c7;
+}
+
+/* Tab Header styled navigation link */
+.tabs-nav {
+  display: flex;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 24px;
+}
+
+.tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #00afcc;
+  border-bottom: 2px solid #00afcc;
+  cursor: default;
+}
+
+.tab-icon {
+  stroke: #00afcc;
+}
+
+/* Mode Selector Section */
+.mode-selector-section {
+  display: flex;
+  margin-bottom: 20px;
+}
+
+.mode-selector-pill {
+  display: inline-flex;
+  background-color: #f1f5f9;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.mode-btn {
+  border: none;
+  background: transparent;
+  color: #475569;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn.active {
+  background-color: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Filters Row */
+.filters-row.date-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.filter-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.filter-group input[type="date"],
+.filter-group select {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background-color: #ffffff;
+  outline: none;
+}
+
+/* Control Bar (Search, Dropdown, Button) */
+.controls-bar {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 24px;
+}
+
+/* Search Wrapper */
+.search-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.search-input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 16px 10px 38px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  border-color: #00afcc;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+/* Custom Dropdown select */
+.custom-select-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 200px;
+  user-select: none;
+}
+
+.custom-select-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00afcc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.custom-select-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #00afcc;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background-color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+.custom-select-trigger:hover {
+  background-color: #f0fdfa;
+}
+
+.custom-select-options {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.custom-select-option {
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.custom-select-option:hover {
+  background-color: #f1f5f9;
+}
+
+.custom-select-option.active {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  font-weight: 600;
+}
+
+/* Button Run perbandingan */
+.btn-run {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: #00afcc;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+.btn-run:hover:not(:disabled) {
+  background-color: #00839a;
+}
+
+.btn-run:disabled {
+  background-color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  stroke: #ffffff;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #ffffff;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Result Table Styling */
+.table-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  background-color: #ffffff;
+}
+
+.result-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.result-table th {
+  background-color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+.result-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+  vertical-align: middle;
+  color: #334155;
+}
+
+.result-table tbody tr:hover td {
+  background-color: #f8fafc;
+}
+
+/* Specific columns */
+.col-sku { width: 18%; }
+.col-name { width: 32%; }
+.col-stock { width: 10%; text-align: right; }
+.col-status-desty { width: 16%; }
+.col-kesesuaian { width: 14%; }
+.col-action { width: 10%; }
+
+.cell-sku {
+  font-family: monospace;
+  font-weight: 600;
+  color: #475569;
+}
+
+.cell-name {
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.sub-code {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 3px;
+  font-family: monospace;
+}
+
+.text-right {
+  text-align: right !important;
+}
+
+.desty-detail-item {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* Badges for status kesesuaian */
+.badge-kesesuaian {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.badge-kesesuaian--sesuai {
+  background-color: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #dcfce7;
+}
+
+.badge-kesesuaian--tidak-sesuai {
+  background-color: #fffbeb;
+  color: #d97706;
+  border: 1px solid #fef3c7;
+}
+
+.badge-kesesuaian--no-sku {
+  background-color: #fff7ed;
+  color: #ea580c;
+  border: 1px solid #ffedd5;
+}
+
+.badge-kesesuaian--hanya-assist {
+  background-color: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.badge-kesesuaian--hanya-desty {
+  background-color: #fdf2f8;
+  color: #db2777;
+  border: 1px solid #fbcfe8;
+}
+
+/* Action Labels */
+.attention-label {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.attention-label--red {
+  background-color: #fef2f2;
+  color: #ef4444;
+  border: 1px solid #fee2e2;
+}
+
+.attention-label--yellow {
+  background-color: #fffbeb;
+  color: #d97706;
+  border: 1px solid #fef3c7;
+}
+
+.attention-label--orange {
+  background-color: #fff7ed;
+  color: #ea580c;
+  border: 1px solid #ffedd5;
+}
+
+.attention-label-none {
+  color: #94a3b8;
+}
+
+/* Row states */
+.row-no-sku td {
+  background-color: #fffbeb;
+}
+.row-mismatch td {
+  background-color: #fffbeb;
+}
+
+@media (max-width: 1024px) {
+  .controls-bar {
+    grid-template-columns: 1fr auto;
+  }
+  .btn-run {
+    grid-column: span 2;
+  }
+}
+</style>

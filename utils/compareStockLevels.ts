@@ -3,10 +3,10 @@ import { formatRupiah } from "@/utils/rupiahUtils";
 
 export type KesesuaianStock =
   | "Sesuai"
-  | "Tidak sesuai"
+  | "Tidak Sesuai"
   | "SKU belum diisi"
-  | "Stok Assist tidak tersedia"
-  | "Stok Desty tidak tersedia";
+  | "Hanya di Desty"
+  | "Hanya di Assist";
 
 export type StockAttentionTone = "red" | "yellow" | "orange" | null;
 
@@ -68,13 +68,13 @@ function resolveKesesuaian(
     return "SKU belum diisi";
   }
   if (assistStock === null) {
-    return "Stok Assist tidak tersedia";
+    return "Hanya di Desty";
   }
   if (destyStock === null) {
-    return "Stok Desty tidak tersedia";
+    return "Hanya di Assist";
   }
   if (destyStock !== assistStock) {
-    return "Tidak sesuai";
+    return "Tidak Sesuai";
   }
   return "Sesuai";
 }
