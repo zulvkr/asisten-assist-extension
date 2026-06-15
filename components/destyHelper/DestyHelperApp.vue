@@ -173,11 +173,14 @@ const statusVariant = ref<"muted" | "success" | "error">("muted");
 const orders = ref<DestyOrderRecord[]>([]);
 const fetchedCount = ref(0);
 const totalCount = ref(0);
+const progressPhase = ref<"list" | "detail">("list");
 
 const progressText = computed(() => {
-  if (totalCount.value === 0) return `${fetchedCount.value}`;
-  return `${fetchedCount.value}/${totalCount.value}`;
+  const suffix = progressPhase.value === "detail" ? " detail" : "";
+  if (totalCount.value === 0) return `${fetchedCount.value}${suffix}`;
+  return `${fetchedCount.value}/${totalCount.value}${suffix}`;
 });
+
 
 const probeStatusClass = computed(() => {
   if (!destyToken.value) return "danger";
@@ -264,7 +267,7 @@ const flattenedItems = computed<FlattenedOrderItem[]>(() => {
         inputKeAssist: "",
         quantity: item?.quantity ?? 0,
         satuan,
-        totalPrice: record.totalPrice ?? 0,
+        totalPrice: record.totalSales ?? record.totalPrice ?? 0,
         hargaModalSatuan,
         totalHargaModalFormula: `=E${excelRow}*H${excelRow}`,
         totalHargaModalCalculated,
@@ -357,6 +360,7 @@ async function fetchOrders() {
   orders.value = [];
   fetchedCount.value = 0;
   totalCount.value = 0;
+  progressPhase.value = "list";
 
   try {
     // Quietly probe/re-probe token first if we don't have one
@@ -376,7 +380,8 @@ async function fetchOrders() {
       token: destyToken.value,
       tenantId: destyTenantId.value,
       status: selectedStatus.value,
-      onProgress: (fetched, total) => {
+      onProgress: (fetched, total, phase) => {
+        progressPhase.value = phase;
         fetchedCount.value = fetched;
         totalCount.value = total;
       },
