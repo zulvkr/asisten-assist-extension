@@ -267,7 +267,7 @@ const flattenedItems = computed<FlattenedOrderItem[]>(() => {
         inputKeAssist: "",
         quantity: item?.quantity ?? 0,
         satuan,
-        totalPrice: record.totalSales ?? record.totalPrice ?? 0,
+        totalPrice: record.totalSales ?? 0,
         hargaModalSatuan,
         totalHargaModalFormula: `=E${excelRow}*H${excelRow}`,
         totalHargaModalCalculated,
