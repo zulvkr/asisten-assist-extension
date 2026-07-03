@@ -861,7 +861,7 @@ async function loadRecommendations(settings: ShoppingRecommendationSettings) {
 
   const token = store.assistToken;
   if (!token) {
-    errorMessage.value = "Token Authorization belum diisi. Silakan pergi ke menu Pengaturan terlebih dahulu.";
+    errorMessage.value = "Token Assist belum terdeteksi. Silakan klik label 'Token Assist Belum Diisi' di bagian atas (header) untuk memuat token dari tab clinica.assist.id yang aktif.";
     loading.value = false;
     return;
   }

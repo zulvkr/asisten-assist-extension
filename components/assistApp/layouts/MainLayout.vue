@@ -11,27 +11,56 @@
           <span class="q-ml-sm text-subtitle2 text-teal-2 font-mono">v1.1</span>
         </q-toolbar-title>
 
-        <!-- Token Status Indicator -->
-        <div class="q-mr-md">
-          <q-badge v-if="store.assistToken" color="positive" text-color="white" class="q-py-xs q-px-sm">
+        <!-- Token Status Indicators -->
+        <div class="row items-center q-gutter-x-sm">
+          <!-- Assist Token Badge -->
+          <q-badge 
+            v-if="store.assistToken" 
+            color="positive" 
+            text-color="white" 
+            class="q-py-xs q-px-sm cursor-pointer"
+            @click="handleReloadAssist"
+          >
             <q-icon name="check_circle" class="q-mr-xs" />
             Terhubung ke Assist
+            <q-tooltip>Klik untuk reload token Assist</q-tooltip>
           </q-badge>
-          <q-badge v-else color="negative" text-color="white" class="q-py-xs q-px-sm cursor-pointer" @click="emitPage('settings')">
+          <q-badge 
+            v-else 
+            color="negative" 
+            text-color="white" 
+            class="q-py-xs q-px-sm cursor-pointer"
+            @click="handleReloadAssist"
+          >
             <q-icon name="warning" class="q-mr-xs" />
-            Token Belum Diisi
+            Token Assist Belum Diisi
+            <q-tooltip>Klik untuk reload token Assist</q-tooltip>
+          </q-badge>
+
+          <!-- Desty Token Badge -->
+          <q-badge 
+            v-if="store.destyToken" 
+            color="positive" 
+            text-color="white" 
+            class="q-py-xs q-px-sm cursor-pointer"
+            @click="handleReloadDesty"
+          >
+            <q-icon name="check_circle" class="q-mr-xs" />
+            Terhubung ke Desty
+            <q-tooltip>Klik untuk reload token Desty</q-tooltip>
+          </q-badge>
+          <q-badge 
+            v-else 
+            color="negative" 
+            text-color="white" 
+            class="q-py-xs q-px-sm cursor-pointer"
+            @click="handleReloadDesty"
+          >
+            <q-icon name="warning" class="q-mr-xs" />
+            Token Desty Belum Diisi
+            <q-tooltip>Klik untuk reload token Desty</q-tooltip>
           </q-badge>
         </div>
-
-        <!-- Dark Mode Toggle -->
-        <q-btn
-          flat
-          round
-          dense
-          :icon="isDark ? 'light_mode' : 'dark_mode'"
-          @click="toggleDarkMode"
-          :title="isDark ? 'Mode Terang' : 'Mode Gelap'"
-        />
       </q-toolbar>
     </q-header>
 
@@ -174,6 +203,26 @@
           </q-item-section>
         </q-item>
 
+        <!-- Kesehatan Inventori Tab -->
+        <q-item
+          clickable
+          v-ripple
+          :active="page === 'kesehatanInventori'"
+          active-class="bg-teal-1 text-teal text-weight-bold"
+          @click="emitPage('kesehatanInventori')"
+        >
+          <q-item-section avatar>
+            <q-icon name="health_and_safety" />
+            <q-tooltip v-if="miniState" anchor="center right" self="center left">
+              Kesehatan Inventori
+            </q-tooltip>
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>Kesehatan Inventori</q-item-label>
+            <q-item-label caption>Analisis risiko & ED obat</q-item-label>
+          </q-item-section>
+        </q-item>
+
         <!-- Hitungan Harian Tab -->
         <q-item
           clickable
@@ -193,28 +242,6 @@
             <q-item-label caption>Pemasukan harian klinik</q-item-label>
           </q-item-section>
         </q-item>
-
-        <q-separator class="q-my-md" />
-
-        <!-- Settings Tab -->
-        <q-item
-          clickable
-          v-ripple
-          :active="page === 'settings'"
-          active-class="bg-teal-1 text-teal text-weight-bold"
-          @click="emitPage('settings')"
-        >
-          <q-item-section avatar>
-            <q-icon name="settings" />
-            <q-tooltip v-if="miniState" anchor="center right" self="center left">
-              Pengaturan
-            </q-tooltip>
-          </q-item-section>
-          <q-item-section>
-            <q-item-label>Pengaturan</q-item-label>
-            <q-item-label caption>Atur token & hospital ID</q-item-label>
-          </q-item-section>
-        </q-item>
       </q-list>
     </q-drawer>
 
@@ -228,7 +255,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, onMounted } from "vue";
 import { useQuasar } from "quasar";
 import { useAssistStore } from "../stores/assistStore";
 
@@ -245,7 +272,6 @@ const store = useAssistStore();
 
 const leftDrawerOpen = ref(false);
 const miniState = ref(true);
-const isDark = computed(() => $q.dark.isActive);
 
 function toggleLeftDrawer() {
   if ($q.screen.gt.sm) {
@@ -255,26 +281,51 @@ function toggleLeftDrawer() {
   }
 }
 
-function toggleDarkMode() {
-  $q.dark.toggle();
-  localStorage.setItem("quasar_dark_mode", String($q.dark.isActive));
-}
-
 function emitPage(pageName: string) {
   emit("update:page", pageName);
 }
 
-// Restore dark mode from local storage
-onMounted(() => {
-  const storedDark = localStorage.getItem("quasar_dark_mode");
-  if (storedDark === "true") {
-    $q.dark.set(true);
-  } else if (storedDark === "false") {
-    $q.dark.set(false);
+async function handleReloadAssist() {
+  $q.loading.show({ message: "Memuat ulang token Assist..." });
+  const res = await store.reloadAssistToken();
+  $q.loading.hide();
+  if (res.success) {
+    $q.notify({
+      type: "positive",
+      message: "Token Assist berhasil dimuat ulang!",
+      position: "top"
+    });
   } else {
-    // default to auto
-    $q.dark.set(false);
+    $q.notify({
+      type: "warning",
+      message: "Gagal memuat token Assist. Pastikan tab clinica.assist.id terbuka.",
+      position: "top"
+    });
   }
+}
+
+async function handleReloadDesty() {
+  $q.loading.show({ message: "Memuat ulang token Desty..." });
+  const res = await store.reloadDestyToken();
+  $q.loading.hide();
+  if (res.success) {
+    $q.notify({
+      type: "positive",
+      message: "Token Desty berhasil dimuat ulang!",
+      position: "top"
+    });
+  } else {
+    $q.notify({
+      type: "warning",
+      message: "Gagal memuat token Desty. Pastikan tab omni.desty.app terbuka.",
+      position: "top"
+    });
+  }
+}
+
+// Force light mode
+onMounted(() => {
+  $q.dark.set(false);
 });
 </script>
 

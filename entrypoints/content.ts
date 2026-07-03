@@ -1,5 +1,4 @@
 import "../assets/main.css";
-import { mountHitunganHarianButtonUi } from "@/components/hitungan-harian/addHitunganHarianButton";
 
 export default defineContentScript({
   matches: ["https://clinica.assist.id/*"],
@@ -206,7 +205,6 @@ export default defineContentScript({
       const target = document.querySelector("#kamarmedis-content");
       if (target) {
         observer.observe(target, { childList: true, subtree: true });
-        mountHitunganHarianButtonUi(ctx).mount();
       } else {
         setTimeout(waitForTargetAndObserve, 500);
       }

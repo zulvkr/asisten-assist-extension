@@ -21,8 +21,8 @@
     <div v-show="currentPage === 'hitunganHarian'">
       <HitunganHarianPage />
     </div>
-    <div v-show="currentPage === 'settings'">
-      <SettingsPage />
+    <div v-show="currentPage === 'kesehatanInventori'">
+      <KesehatanInventoriPage />
     </div>
   </MainLayout>
 </template>
@@ -37,7 +37,7 @@ import StockComparisonPage from "./pages/StockComparisonPage.vue";
 import RekomendasiBelanjaPage from "./pages/RekomendasiBelanjaPage.vue";
 import DestyHelperPage from "./pages/DestyHelperPage.vue";
 import HitunganHarianPage from "./pages/HitunganHarianPage.vue";
-import SettingsPage from "./pages/SettingsPage.vue";
+import KesehatanInventoriPage from "./pages/KesehatanInventoriPage.vue";
 import { useAssistStore } from "./stores/assistStore";
 
 const currentPage = ref("obat");
@@ -45,6 +45,7 @@ const store = useAssistStore();
 
 onMounted(async () => {
   await store.loadTokenAutomatically();
+  await store.loadDestyTokenAutomatically();
 });
 </script>
 

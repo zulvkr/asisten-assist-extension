@@ -20,45 +20,10 @@
       <template v-slot:avatar>
         <q-icon name="warning" color="black" />
       </template>
-      Token Authorization belum diisi. Silakan pergi ke menu <strong>Pengaturan</strong> terlebih dahulu.
+      Token Assist belum terdeteksi. Silakan klik label <strong>Token Assist Belum Diisi</strong> di bagian atas (header) untuk memuat token dari tab clinica.assist.id yang aktif.
     </q-banner>
 
     <div v-else>
-      <!-- Summary Cards -->
-      <div class="row q-col-gutter-md q-mb-lg">
-        <div class="col-12 col-md-3">
-          <q-card flat bordered class="bg-teal-1 text-teal-9">
-            <q-card-section>
-              <div class="text-caption text-uppercase">Total Item Obat</div>
-              <div class="text-h4 text-weight-bold">{{ items.length }}</div>
-            </q-card-section>
-          </q-card>
-        </div>
-        <div class="col-12 col-md-3">
-          <q-card flat bordered class="bg-blue-1 text-blue-9">
-            <q-card-section>
-              <div class="text-caption text-uppercase">Total Nilai Aset Stok</div>
-              <div class="text-h4 text-weight-bold">{{ formatRupiah(totalAssetValue) }}</div>
-            </q-card-section>
-          </q-card>
-        </div>
-        <div class="col-12 col-md-3">
-          <q-card flat bordered class="bg-red-1 text-red-9">
-            <q-card-section>
-              <div class="text-caption text-uppercase">Sudah ED (Expired)</div>
-              <div class="text-h4 text-weight-bold">{{ countExpiredStock }}</div>
-            </q-card-section>
-          </q-card>
-        </div>
-        <div class="col-12 col-md-3">
-          <q-card flat bordered class="bg-orange-1 text-orange-9">
-            <q-card-section>
-              <div class="text-caption text-uppercase">Stok Tipis (<= 10)</div>
-              <div class="text-h4 text-weight-bold">{{ countLowStock }}</div>
-            </q-card-section>
-          </q-card>
-        </div>
-      </div>
 
       <!-- Filters & Table Card -->
       <q-card flat bordered>
@@ -303,25 +268,7 @@ function getClosestExpirationDate(item: any): Date | null {
   return batches[0].date;
 }
 
-// Computed Summary Stats
-const totalAssetValue = computed(() => {
-  return items.value.reduce((sum, row) => {
-    const qty = row.stockTotal || 0;
-    const cost = row.avgHPP || row.buyFee || 0;
-    return sum + qty * cost;
-  }, 0);
-});
 
-const countExpiredStock = computed(() => {
-  return items.value.filter((row) => row.edMonths !== null && row.edMonths <= 0).length;
-});
-
-const countLowStock = computed(() => {
-  return items.value.filter((row) => {
-    const qty = row.stockTotal || 0;
-    return qty > 0 && qty <= 10;
-  }).length;
-});
 
 // Computed Filtered List
 const filteredItems = computed(() => {

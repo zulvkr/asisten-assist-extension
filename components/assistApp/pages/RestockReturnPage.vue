@@ -573,37 +573,10 @@
         <template v-slot:avatar>
           <q-icon name="warning" color="black" />
         </template>
-        Token Authorization belum diisi. Silakan pergi ke menu <strong>Pengaturan</strong> terlebih dahulu.
+        Token Assist belum terdeteksi. Silakan klik label <strong>Token Assist Belum Diisi</strong> di bagian atas (header) untuk memuat token dari tab clinica.assist.id yang aktif.
       </q-banner>
 
       <div v-else>
-        <!-- Summary Cards -->
-        <div class="row q-col-gutter-md q-mb-lg">
-          <div class="col-12 col-md-4">
-            <q-card flat bordered class="bg-teal-1 text-teal-9">
-              <q-card-section>
-                <div class="text-caption text-uppercase">Total Transaksi</div>
-                <div class="text-h4 text-weight-bold">{{ items.length }}</div>
-              </q-card-section>
-            </q-card>
-          </div>
-          <div class="col-12 col-md-4">
-            <q-card flat bordered class="bg-blue-1 text-blue-9">
-              <q-card-section>
-                <div class="text-caption text-uppercase">Total Pengeluaran</div>
-                <div class="text-h4 text-weight-bold">{{ formatRupiah(totalSpend) }}</div>
-              </q-card-section>
-            </q-card>
-          </div>
-          <div class="col-12 col-md-4">
-            <q-card flat bordered class="bg-red-1 text-red-9">
-              <q-card-section>
-                <div class="text-caption text-uppercase">Total Hutang Tersisa</div>
-                <div class="text-h4 text-weight-bold">{{ formatRupiah(totalDebt) }}</div>
-              </q-card-section>
-            </q-card>
-          </div>
-        </div>
 
         <!-- Main Table -->
         <q-card flat bordered>
@@ -974,14 +947,7 @@ const columns = [
   { name: "status", label: "Status", align: "center", field: "status", sortable: true }
 ];
 
-// Computed Stats for list view
-const totalSpend = computed(() => {
-  return items.value.reduce((sum, row) => sum + (row.totalFee || 0), 0);
-});
 
-const totalDebt = computed(() => {
-  return items.value.reduce((sum, row) => sum + (row.debtFee || 0), 0);
-});
 
 // Computed Filtered Rows
 const filteredItems = computed(() => {
