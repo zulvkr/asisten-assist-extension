@@ -15,7 +15,7 @@ export async function fetchPemasukanData(
   params: FetchPemasukanParams = {}
 ): Promise<PemasukanData[]> {
   const { url, tanggalMin, tanggalMax } = buildPemasukanRequest(params);
-  const token = localStorage.getItem("token") ?? "";
+  const token = localStorage.getItem("assist_token") ?? localStorage.getItem("token") ?? "";
 
   const response = (await browser.runtime.sendMessage({
     type: "FETCH_PEMASUKAN_DATA",

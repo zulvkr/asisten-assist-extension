@@ -166,6 +166,34 @@ export default defineContentScript({
       return false;
     });
 
+    const extractAndSyncSecretKey = async () => {
+      try {
+        const scripts = Array.from(document.querySelectorAll("script"))
+          .map((s) => s.src)
+          .filter((src) => src && src.includes("assist.id"));
+
+        for (const src of scripts) {
+          if (!src.includes("main.") && !src.includes("vendors.")) {
+            continue;
+          }
+          const response = await fetch(src);
+          if (!response.ok) continue;
+          const text = await response.text();
+          
+          const match = text.match(/\.encFields\s*&&\s*\(\w+\.data\s*=\s*Object\(\w+\.\w+\)\(\w+\.data,\s*["']([^"']{16,64})["']\)\)/);
+          if (match && match[1]) {
+            const key = match[1];
+            console.log("[AssistExtension] Dynamically extracted secret key:", key);
+            await browser.storage.local.set({ assistSecretKey: key });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("[AssistExtension] Error dynamically extracting secret key:", err);
+      }
+    };
+
+    void extractAndSyncSecretKey();
     await fetchMarginTable();
 
     const observer = new MutationObserver(() => {

@@ -437,7 +437,7 @@ function normalizeAttentionFilterLabel(label: string | null): string | null {
   }
 
   if (label.startsWith("Potensi kehilangan penjualan")) {
-    return "Potensi kehilangan penjualan";
+    return "Potensi kehilangan penjualan online";
   }
 
   return label;

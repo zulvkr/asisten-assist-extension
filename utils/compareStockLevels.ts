@@ -96,20 +96,11 @@ function resolveAttention(input: {
   }
 
   if (assistStock > destyStock) {
-    const stockGap = assistStock - destyStock;
     if (destyStock === 0) {
-      const lostSalesValue = stockGap * Math.max(sellNormalFee ?? 0, 0);
-      const notes =
-        sellNormalFee === null
-          ? [
-              "Harga jual Assist tidak tersedia; estimasi kehilangan penjualan memakai Rp 0.",
-            ]
-          : [];
-
       return {
-        label: `Potensi kehilangan penjualan ${formatRupiah(lostSalesValue)}`,
+        label: "Potensi kehilangan penjualan online",
         tone: "red",
-        notes,
+        notes: [],
       };
     }
 
