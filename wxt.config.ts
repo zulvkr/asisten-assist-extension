@@ -10,7 +10,7 @@ export default defineConfig({
   },
   manifest: {
     name: "Asisten Assist",
-    description: "Ekstensi asisten operasional apotek untuk integrasi Assist API dan Desty Omni. Membantu pengelolaan stok obat, BHP, transaksi restock/return, perbandingan data stok, dan sinkronisasi pesanan (PLDMP) khusus di Apotek Aldila.",
+    description: "Ekstensi asisten operasional apotek",
     permissions: ["storage"],
     host_permissions: [
       "https://clinica.assist.id/*",
