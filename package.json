@@ -1,6 +1,6 @@
 {
   "name": "asisten-assist",
-  "description": "Ekstensi asisten operasional apotek untuk integrasi Assist",
+  "description": "Ekstensi asisten",
   "private": true,
   "version": "1.1.13",
   "type": "module",
