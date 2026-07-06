@@ -220,10 +220,6 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
-          </q-table>
-        </q-card-section>
-      </q-card>
-    </div>
   </div>
 </template>
 
