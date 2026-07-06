@@ -1,8 +1,8 @@
 {
   "name": "asisten-assist",
-  "description": "Asisten Assist Extension",
+  "description": "Ekstensi asisten operasional apotek untuk integrasi Assist API dan Desty Omni di Apotek Aldila.",
   "private": true,
-  "version": "1.1.12",
+  "version": "1.1.13",
   "type": "module",
   "scripts": {
     "dev": "wxt",
