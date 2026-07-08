@@ -98,9 +98,25 @@
               <q-td :props="props">
                 <div class="text-weight-bold text-teal-9 text-body2">{{ props.value }}</div>
                 <div class="text-caption text-grey-7 q-mt-xs row items-center q-gutter-x-xs">
-                  <span v-if="props.row.code" class="font-mono bg-grey-3 q-px-xs rounded text-weight-bold">{{ props.row.code }}</span>
+                  <span v-if="props.row.code" class="font-mono bg-grey-3 q-px-xs rounded text-weight-bold">Kode: {{ props.row.code }}</span>
                   <span v-if="props.row.code && props.row.brandName">•</span>
                   <span v-if="props.row.brandName" class="text-weight-medium">{{ props.row.brandName }}</span>
+                  <span>•</span>
+                  <span class="row items-center no-wrap">
+                    <span class="font-mono bg-grey-3 q-px-xs rounded text-weight-bold">SKU: {{ getSkuDestyValue(props.row) }}</span>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      color="teal"
+                      icon="edit"
+                      size="xs"
+                      class="q-ml-xs"
+                      @click="editSkuDesty(props.row)"
+                    >
+                      <q-tooltip>Hubungkan SKU Desty</q-tooltip>
+                    </q-btn>
+                  </span>
                 </div>
               </q-td>
             </template>
@@ -115,6 +131,26 @@
                   {{ props.value > 0 ? '+' : '' }}{{ props.value.toFixed(1) }}%
                 </q-badge>
                 <span v-else class="text-grey-5">-</span>
+              </q-td>
+            </template>
+
+            <template v-slot:body-cell-marginTarget="props">
+              <q-td :props="props">
+                <div class="row items-center justify-end no-wrap">
+                  <span v-if="props.value !== '-'" class="text-weight-bold q-mr-xs">{{ props.value }}</span>
+                  <span v-else class="text-grey-5 q-mr-xs">-</span>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    color="teal"
+                    icon="edit"
+                    size="xs"
+                    @click="editTargetMargin(props.row)"
+                  >
+                    <q-tooltip>Ubah Target Margin</q-tooltip>
+                  </q-btn>
+                </div>
               </q-td>
             </template>
 
@@ -254,8 +290,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useQuasar } from "quasar";
+import type { QTableColumn } from "quasar";
 import { useAssistStore } from "../stores/assistStore";
 import { formatRupiah } from "@/utils/rupiahUtils";
 
@@ -293,7 +330,7 @@ const initialPagination = {
   rowsPerPage: 15
 };
 
-const columns = [
+const columns: QTableColumn[] = [
   { name: "medName", label: "Nama / Kode / Brand", align: "left", field: "medName", sortable: true },
   { name: "unit", label: "Satuan", align: "left", field: "unit", sortable: true },
   { name: "stockTotal", label: "Stok Total", align: "right", field: "stockTotal", sortable: true },
@@ -305,6 +342,13 @@ const columns = [
     label: "Margin (Aktual)",
     align: "right",
     field: (row: any) => calculateMargin(row),
+    sortable: true
+  },
+  {
+    name: "marginTarget",
+    label: "Margin (Target)",
+    align: "right",
+    field: (row: any) => getTargetMarginValue(row),
     sortable: true
   },
   {
@@ -337,6 +381,96 @@ function calculateMargin(row: any): number {
   return ((sell - cost) / sell) * 100;
 }
 
+function getTargetMarginValue(row: any): string {
+  const code = row.code || "";
+  if (!code) return "-";
+  const marginRow = store.marginData.find((dataRow: any) => dataRow[0] === code);
+  return marginRow ? marginRow[2] : "-";
+}
+
+function getSkuDestyValue(row: any): string {
+  const code = row.code || "";
+  if (!code) return "-";
+  const marginRow = store.marginData.find((dataRow: any) => dataRow[0] === code);
+  return marginRow && marginRow[5] ? marginRow[5] : "-";
+}
+
+function editSkuDesty(row: any) {
+  const currentSku = getSkuDestyValue(row);
+  const initialVal = currentSku !== "-" ? currentSku : "";
+
+  $q.dialog({
+    title: "Hubungkan SKU Desty",
+    message: `Masukkan SKU Desty untuk ${row.medName} (SKU Assist: ${row.code || "-"}):`,
+    prompt: {
+      model: initialVal,
+      type: "text",
+      label: "SKU Desty",
+    },
+    cancel: true,
+    persistent: true
+  }).onOk(async (data) => {
+    const newSku = data.trim();
+
+    try {
+      await store.upsertSku(row.code, row.medName, newSku);
+      $q.notify({
+        type: "positive",
+        message: "Pemetaan SKU Desty berhasil diperbarui!",
+        position: "top"
+      });
+    } catch (err: any) {
+      console.error(err);
+      $q.notify({
+        type: "negative",
+        message: err.message || "Gagal menyimpan pemetaan SKU. Perubahan dibatalkan.",
+        position: "top"
+      });
+    }
+  });
+}
+
+function editTargetMargin(row: any) {
+  const currentMarginStr = getTargetMarginValue(row);
+  const initialVal = currentMarginStr !== "-" ? currentMarginStr.replace("%", "").trim() : "";
+
+  $q.dialog({
+    title: "Ubah Target Margin",
+    message: `Masukkan target margin baru untuk ${row.medName} (SKU: ${row.code || "-"}):`,
+    prompt: {
+      model: initialVal,
+      type: "text",
+      label: "Target Margin (%)",
+      isValid: (val) => !isNaN(Number(val)) && Number(val) >= 0
+    },
+    cancel: true,
+    persistent: true
+  }).onOk(async (data) => {
+    const newMarginPercent = data.trim();
+    const marginStr = newMarginPercent ? `${newMarginPercent}%` : "";
+
+    try {
+      await store.upsertMargin(row.code, row.medName, marginStr);
+      $q.notify({
+        type: "positive",
+        message: "Target margin berhasil diperbarui!",
+        position: "top"
+      });
+    } catch (err: any) {
+      console.error(err);
+      $q.notify({
+        type: "negative",
+        message: err.message || "Gagal menyimpan target margin. Perubahan dibatalkan.",
+        position: "top"
+      });
+    }
+  });
+}
+
+onMounted(() => {
+  store.fetchMarginData();
+});
+
 // Calculate closest expiration date based on FEFO (First Expired, First Out)
 function getClosestExpirationDate(item: any): Date | null {
   if (!item.ExpireOverview || !Array.isArray(item.ExpireOverview) || item.ExpireOverview.length === 0) {
@@ -353,9 +487,9 @@ function getClosestExpirationDate(item: any): Date | null {
     return null;
   }
 
-  batches.sort((a, b) => a.date.getTime() - b.date.getTime());
+  batches.sort((a: { qty: number; date: Date }, b: { qty: number; date: Date }) => a.date.getTime() - b.date.getTime());
 
-  const totalBatchQty = batches.reduce((sum, b) => sum + b.qty, 0);
+  const totalBatchQty = batches.reduce((sum: number, b: { qty: number; date: Date }) => sum + b.qty, 0);
   const stockTotal = typeof item.stockTotal === "number" ? item.stockTotal : 0;
   const consumed = totalBatchQty - stockTotal;
 
@@ -381,7 +515,7 @@ function getClosestExpirationDate(item: any): Date | null {
     }
   }
 
-  const positiveQtyBatches = batches.filter((b) => b.qty > 0);
+  const positiveQtyBatches = batches.filter((b: { qty: number; date: Date }) => b.qty > 0);
   if (positiveQtyBatches.length > 0) {
     return positiveQtyBatches[0].date;
   }
@@ -511,7 +645,7 @@ const selectedMedicineBrand = ref("");
 const loadingHistory = ref(false);
 const stockHistory = ref<any[]>([]);
 
-const historyColumns = [
+const historyColumns: QTableColumn[] = [
   { name: "date", label: "Waktu / Tanggal", align: "left", field: "createdAt", sortable: true },
   { name: "type", label: "Tipe Transaksi", align: "left", field: "transactionType" },
   { name: "delta", label: "Perubahan", align: "right", field: (row: any) => getStockDelta(row) },

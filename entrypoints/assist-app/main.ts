@@ -2,7 +2,7 @@ import { createApp } from "vue";
 import { createPinia } from "pinia";
 import * as components from "quasar";
 import * as directives from "quasar";
-import { Quasar, Notify, Dialog } from "quasar";
+import { Quasar, Notify, Dialog, Loading } from "quasar";
 
 import "./style.css";
 
@@ -28,7 +28,8 @@ app.use(Quasar, {
   },
   plugins: {
     Notify,
-    Dialog
+    Dialog,
+    Loading
   },
 });
 

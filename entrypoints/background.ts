@@ -480,6 +480,19 @@ async function handleFetchStockComparison(
   }
 
   try {
+    const storage = await browser.storage.local.get("settings:excludedDestySkuPrefixes");
+    const excludedStr = (storage["settings:excludedDestySkuPrefixes"] as string | undefined) ?? "ISA-";
+    const prefixes = excludedStr
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    const shouldExcludeSku = (sku: string | undefined | null): boolean => {
+      if (!sku) return false;
+      const s = sku.trim().toLowerCase();
+      return prefixes.some((pref) => s.startsWith(pref.toLowerCase()));
+    };
+
     const [pemasukanData, marginRows, medicineStockItems, bhpStockItems] =
       await Promise.all([
         comparisonMode === "all"
@@ -548,6 +561,9 @@ async function handleFetchStockComparison(
       }
     }
 
+    // Filter out sold items that match the excluded SKU prefixes
+    soldItems = soldItems.filter((item) => !shouldExcludeSku(item.sku));
+
     let destyStockBySku: Record<string, number | null> | undefined;
     let destyStockDetailBySku:
       | Record<
@@ -585,6 +601,9 @@ async function handleFetchStockComparison(
             tenantId: destyTenantId,
             masterWarehouseId: destyMasterWarehouseId,
           });
+          // Filter out excluded Desty SKU items
+          destyItems = destyItems.filter((item) => !shouldExcludeSku(item.sku));
+
           destyStockBySku = buildDestyStockBySku(destyItems);
           destyStockDetailBySku = buildDestyStockDetailBySku(destyItems);
         } catch (error) {

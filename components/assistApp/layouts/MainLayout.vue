@@ -242,6 +242,26 @@
             <q-item-label caption>Pemasukan harian klinik</q-item-label>
           </q-item-section>
         </q-item>
+
+        <!-- Pengaturan Tab -->
+        <q-item
+          clickable
+          v-ripple
+          :active="page === 'settings'"
+          active-class="bg-teal-1 text-teal text-weight-bold"
+          @click="emitPage('settings')"
+        >
+          <q-item-section avatar>
+            <q-icon name="settings" />
+            <q-tooltip v-if="miniState" anchor="center right" self="center left">
+              Pengaturan
+            </q-tooltip>
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>Pengaturan</q-item-label>
+            <q-item-label caption>Koneksi API & Google Sheets</q-item-label>
+          </q-item-section>
+        </q-item>
       </q-list>
     </q-drawer>
 
