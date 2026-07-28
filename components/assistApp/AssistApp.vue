@@ -24,6 +24,9 @@
     <div v-show="currentPage === 'kesehatanInventori'">
       <KesehatanInventoriPage />
     </div>
+    <div v-show="currentPage === 'hnaValuation'">
+      <HnaValuationPage />
+    </div>
     <div v-show="currentPage === 'settings'">
       <SettingsPage />
     </div>
@@ -41,6 +44,7 @@ import RekomendasiBelanjaPage from "./pages/RekomendasiBelanjaPage.vue";
 import DestyHelperPage from "./pages/DestyHelperPage.vue";
 import HitunganHarianPage from "./pages/HitunganHarianPage.vue";
 import KesehatanInventoriPage from "./pages/KesehatanInventoriPage.vue";
+import HnaValuationPage from "./pages/HnaValuationPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
 import { useAssistStore } from "./stores/assistStore";
 

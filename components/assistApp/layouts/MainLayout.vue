@@ -243,6 +243,26 @@
           </q-item-section>
         </q-item>
 
+        <!-- Valuasi HNA & HPP Tab -->
+        <q-item
+          clickable
+          v-ripple
+          :active="page === 'hnaValuation'"
+          active-class="bg-teal-1 text-teal text-weight-bold"
+          @click="emitPage('hnaValuation')"
+        >
+          <q-item-section avatar>
+            <q-icon name="payments" />
+            <q-tooltip v-if="miniState" anchor="center right" self="center left">
+              Valuasi HNA & HPP
+            </q-tooltip>
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>Valuasi HNA & HPP</q-item-label>
+            <q-item-label caption>HPP Penjualan & Nilai Stok</q-item-label>
+          </q-item-section>
+        </q-item>
+
         <!-- Pengaturan Tab -->
         <q-item
           clickable
