@@ -29,6 +29,10 @@ export interface Item {
   depotId?: string;
   isSlotTransacted: boolean;
   baseFee: number;
+  /** Weighted HPP from Assist when the transaction payload includes it. */
+  avgHPP?: number;
+  buyFee?: number;
+  code?: string;
   discount: number;
   totalFee: number;
   isPriceLock: boolean;

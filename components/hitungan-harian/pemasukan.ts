@@ -1,4 +1,5 @@
 import type { PemasukanData } from "@/types/PemasukanData";
+import type { HppCatalogItem } from "@/types/HppCatalogItem";
 import {
   buildPemasukanRequest,
   type FetchPemasukanParams,
@@ -9,6 +10,12 @@ interface FetchPemasukanWorkerResponse {
   status?: number;
   error?: string;
   data?: PemasukanData[];
+}
+
+interface FetchHppCatalogWorkerResponse {
+  ok: boolean;
+  error?: string;
+  data?: HppCatalogItem[];
 }
 
 export async function fetchPemasukanData(
@@ -35,6 +42,20 @@ export async function fetchPemasukanData(
     `range ${tanggalMin} - ${tanggalMax}`
   );
   console.debug(response.data);
+
+  return response.data;
+}
+
+export async function fetchHppCatalogData(): Promise<HppCatalogItem[]> {
+  const token = localStorage.getItem("assist_token") ?? localStorage.getItem("token") ?? "";
+  const response = (await browser.runtime.sendMessage({
+    type: "FETCH_ASSIST_HPP_CATALOG",
+    payload: { token },
+  })) as FetchHppCatalogWorkerResponse | undefined;
+
+  if (!response?.ok || !response.data) {
+    throw new Error(response?.error ?? "Gagal mengambil data HPP dari katalog Assist.");
+  }
 
   return response.data;
 }

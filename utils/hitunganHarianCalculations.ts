@@ -1,4 +1,5 @@
 import { Payment, PemasukanData } from "@/types/PemasukanData";
+import type { HppCatalogItem } from "@/types/HppCatalogItem";
 
 const SHIFT_CONFIG = [
   { label: "Pagi" as const, startHour: 6, endHour: 14 },
@@ -27,7 +28,10 @@ interface ShiftDetailItem {
   name: string;
   type: string;
   incomeType?: string;
+  quantity: number;
   totalFee: number;
+  unitHpp: number;
+  totalHpp: number;
 }
 
 interface ShiftDetailPayment {
@@ -43,6 +47,7 @@ interface ShiftDetailRow {
   patientName: string;
   apotek: SectionTotals;
   klinik: SectionTotals;
+  hpp: number;
   items: ShiftDetailItem[];
 }
 
@@ -53,6 +58,7 @@ interface ShiftSummaryRow {
   shift: ShiftLabel;
   apotek: SectionTotals;
   klinik: SectionTotals;
+  hpp: number;
   details: ShiftDetailRow[];
 }
 
@@ -163,13 +169,63 @@ function createShiftSummaryRow(
     shift,
     apotek: createEmptyTotals(),
     klinik: createEmptyTotals(),
+    hpp: 0,
     details: [],
   };
 }
 
-function calculateTransactionTotals(tx: PemasukanData): {
+function getFinitePositiveNumber(value: unknown): number | null {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+function getCatalogLookupKey(type: "prescription" | "akhp", value: unknown): string {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized ? `${type}:${normalized}` : "";
+}
+
+function createHppCatalogLookup(catalog: HppCatalogItem[]): Map<string, HppCatalogItem> {
+  const lookup = new Map<string, HppCatalogItem>();
+  for (const item of catalog) {
+    for (const value of [item.id, item.code, item.name]) {
+      const key = getCatalogLookupKey(item.type, value);
+      if (key) {
+        lookup.set(key, item);
+      }
+    }
+  }
+  return lookup;
+}
+
+function resolveUnitHpp(
+  item: PemasukanData["Items"][number],
+  catalogLookup: Map<string, HppCatalogItem>,
+): number {
+  const catalogType = item.type === "akhp" ? "akhp" : "prescription";
+  const itemId = catalogType === "akhp" ? item.akhpId : item.medicineId;
+  const catalogItem =
+    (itemId ? catalogLookup.get(getCatalogLookupKey(catalogType, itemId)) : undefined) ||
+    (item.code ? catalogLookup.get(getCatalogLookupKey(catalogType, item.code)) : undefined) ||
+    (item.name ? catalogLookup.get(getCatalogLookupKey(catalogType, item.name)) : undefined);
+
+  // avgHPP is HPP after PPN in Assist. The transaction value is preferred
+  // because it represents the value saved at the time of sale.
+  return (
+    getFinitePositiveNumber(item.avgHPP) ??
+    getFinitePositiveNumber(catalogItem?.avgHPP) ??
+    getFinitePositiveNumber(item.buyFee) ??
+    getFinitePositiveNumber(catalogItem?.buyFee) ??
+    0
+  );
+}
+
+function calculateTransactionTotals(
+  tx: PemasukanData,
+  catalogLookup: Map<string, HppCatalogItem>,
+): {
   apotek: SectionTotals;
   klinik: SectionTotals;
+  hpp: number;
   items: ShiftDetailItem[];
 } {
   const detailTotals = {
@@ -180,13 +236,20 @@ function calculateTransactionTotals(tx: PemasukanData): {
   const paymentCategory = normalisePaymentCategory(primaryPayment);
   const marketplaceCategory = getMarketplaceCategory(primaryPayment);
 
-  const detailItems: ShiftDetailItem[] = (tx.Items ?? []).map((item) => ({
-    id: item._id,
-    name: item.name ?? "-",
-    type: item.type ?? "",
-    incomeType: item.incomeType,
-    totalFee: item.type === "scourPrescription" ? 0 : (item.totalFee ?? 0),
-  }));
+  const detailItems: ShiftDetailItem[] = (tx.Items ?? []).map((item) => {
+    const quantity = Number(item.quantity ?? 0);
+    const unitHpp = resolveUnitHpp(item, catalogLookup);
+    return {
+      id: item._id,
+      name: item.name ?? "-",
+      type: item.type ?? "",
+      incomeType: item.incomeType,
+      quantity,
+      totalFee: item.type === "scourPrescription" ? 0 : (item.totalFee ?? 0),
+      unitHpp,
+      totalHpp: Math.round(quantity * unitHpp),
+    };
+  });
 
   for (const item of tx.Items ?? []) {
     const incomeType = item.incomeType;
@@ -218,9 +281,12 @@ function calculateTransactionTotals(tx: PemasukanData): {
   detailTotals.klinik.total =
     detailTotals.klinik.cash + detailTotals.klinik.debit;
 
+  const hpp = detailItems.reduce((total, item) => total + item.totalHpp, 0);
+
   return {
     apotek: detailTotals.apotek,
     klinik: detailTotals.klinik,
+    hpp,
     items: detailItems,
   };
 }
@@ -228,6 +294,7 @@ function calculateTransactionTotals(tx: PemasukanData): {
 function processTransaction(
   tx: PemasukanData,
   map: Map<string, ShiftSummaryRow>,
+  catalogLookup: Map<string, HppCatalogItem>,
 ): void {
   const createdAt = new Date(tx.createdAt);
   if (Number.isNaN(createdAt.getTime())) {
@@ -255,10 +322,14 @@ function processTransaction(
   }
 
   const summary = map.get(summaryKey)!;
-  const { apotek, klinik, items } = calculateTransactionTotals(tx);
+  const { apotek, klinik, hpp, items } = calculateTransactionTotals(
+    tx,
+    catalogLookup,
+  );
 
   addSectionTotals(summary.apotek, apotek);
   addSectionTotals(summary.klinik, klinik);
+  summary.hpp += hpp;
 
   summary.details.push({
     transactionId: tx._id,
@@ -267,6 +338,7 @@ function processTransaction(
     patientName: tx.Patients?.nama ?? "-",
     apotek,
     klinik,
+    hpp,
     items,
   });
 }
@@ -282,11 +354,13 @@ function sortShiftSummaries(summaries: ShiftSummaryRow[]): ShiftSummaryRow[] {
 
 export function calculateShiftSummaries(
   data: PemasukanData[],
+  hppCatalog: HppCatalogItem[] = [],
 ): ShiftSummaryRow[] {
   const map = new Map<string, ShiftSummaryRow>();
+  const catalogLookup = createHppCatalogLookup(hppCatalog);
 
   for (const tx of data) {
-    processTransaction(tx, map);
+    processTransaction(tx, map, catalogLookup);
   }
 
   const summaries = Array.from(map.values());

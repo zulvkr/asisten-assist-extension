@@ -135,6 +135,9 @@
                           <span v-if="detail.klinik.debit > 0" class="q-ml-xs">Debit ({{ formatRupiah(detail.klinik.debit) }})</span>
                           <span v-if="detail.klinik.total === 0" class="q-ml-xs text-grey-4">-</span>
                         </div>
+                        <div class="col-12 text-weight-medium">
+                          HPP (HNA + PPN): {{ formatRupiah(detail.hpp) }}
+                        </div>
                       </div>
 
                       <!-- Row 3: Items list -->
@@ -148,7 +151,10 @@
                             style="max-width: 600px;"
                           >
                             <span>• {{ item.name }} ({{ formatDetailType(item) }}) x{{ item.quantity }}</span>
-                            <span>{{ formatRupiah(item.totalFee) }}</span>
+                            <span>
+                              Omset {{ formatRupiah(item.totalFee) }}
+                              <span class="text-grey-7">• HPP {{ formatRupiah(item.totalHpp) }}</span>
+                            </span>
                           </div>
                           <div v-if="!detail.items.length" class="text-grey-4 text-italic text-caption">
                             Tidak ada item.
@@ -181,7 +187,10 @@ import {
 } from "@/utils/hitunganHarianCalculations";
 import { formatRupiah } from "@/utils/rupiahUtils";
 import type { PemasukanData } from "@/types/PemasukanData";
-import { fetchPemasukanData } from "@/components/hitungan-harian/pemasukan";
+import {
+  fetchHppCatalogData,
+  fetchPemasukanData,
+} from "@/components/hitungan-harian/pemasukan";
 
 type StatusVariant = "muted" | "error";
 
@@ -207,6 +216,7 @@ const columns = [
   { name: "klinikCash", label: "Klinik Cash", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.klinik.cash), sortable: true },
   { name: "klinikDebit", label: "Klinik Debit", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.klinik.debit), sortable: true },
   { name: "klinikTotal", label: "Total Klinik", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.klinik.total), sortable: true },
+  { name: "hpp", label: "HPP (HNA + PPN)", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.hpp), sortable: true },
   { name: "action", label: "Detail", align: "center", sortable: false }
 ];
 
@@ -214,17 +224,20 @@ async function loadSummaries() {
   if (loading.value) return;
   loading.value = true;
   statusVariant.value = "muted";
-  statusMessage.value = "Memuat data...";
+  statusMessage.value = "Memuat transaksi dan HPP...";
   summaries.value = [];
   rawData.value = [];
   try {
-    const pemasukanRaw = await fetchPemasukanData({
-      tanggalMin: startDate.value,
-      tanggalMax: endDate.value,
-    });
+    const [pemasukanRaw, hppCatalog] = await Promise.all([
+      fetchPemasukanData({
+        tanggalMin: startDate.value,
+        tanggalMax: endDate.value,
+      }),
+      fetchHppCatalogData(),
+    ]);
     const enriched = enrichPemasukanData(pemasukanRaw);
     rawData.value = enriched;
-    const result = calculateShiftSummaries(enriched);
+    const result = calculateShiftSummaries(enriched, hppCatalog);
     summaries.value = result;
     statusMessage.value = result.length
       ? ""
@@ -324,6 +337,7 @@ async function exportToExcel() {
       "Cash Klinik",
       "Debit Klinik",
       "Total Klinik",
+      "HPP (HNA + PPN)",
     ];
     const summaryRows = summaries.value.map((summary) => [
       summary.displayDate,
@@ -338,6 +352,7 @@ async function exportToExcel() {
       summary.klinik.cash,
       summary.klinik.debit,
       summary.klinik.total,
+      summary.hpp,
     ]);
     const summaryWS = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryRows]);
     (summaryWS as any)["!cols"] = [
@@ -347,7 +362,7 @@ async function exportToExcel() {
       { wch: 14 },
       { wch: 14 },
       { wch: 14 },
-      { wch: 14 },
+      { wch: 18 },
       { wch: 14 },
       { wch: 14 },
       { wch: 14 },

@@ -1,4 +1,5 @@
 import type { PemasukanData } from "@/types/PemasukanData";
+import type { HppCatalogItem } from "@/types/HppCatalogItem";
 import {
   buildDestyStockDetailBySku,
   buildDestyStockBySku,
@@ -288,6 +289,29 @@ function buildShoppingCatalogItems(
       } satisfies ShoppingCatalogItem;
     })
     .filter((item): item is ShoppingCatalogItem => Boolean(item));
+}
+
+function buildHppCatalogItems(
+  stockItems: AssistStockItem[],
+  type: HppCatalogItem["type"],
+): HppCatalogItem[] {
+  return stockItems
+    .map((item) => {
+      const id = String(item.id ?? "").trim();
+      if (!id) {
+        return null;
+      }
+
+      return {
+        id,
+        code: String(item.code ?? "").trim(),
+        name: String(item.medName ?? item.itemName ?? "").trim(),
+        type,
+        avgHPP: toNullableNumber(item.avgHPP),
+        buyFee: toNullableNumber(item.buyFee),
+      } satisfies HppCatalogItem;
+    })
+    .filter((item): item is HppCatalogItem => Boolean(item));
 }
 
 function toNullableNumber(value: unknown): number | null {
@@ -891,6 +915,42 @@ export default defineBackground(() => {
 
         return true;
       }
+
+    if (message.type === "FETCH_ASSIST_HPP_CATALOG") {
+      (async () => {
+        try {
+          const assistToken = message.payload?.token?.trim() ?? "";
+          if (!assistToken) {
+            sendResponse({ ok: false, error: "Token Assist tidak tersedia." });
+            return;
+          }
+
+          const [medicineStockItems, bhpStockItems] = await Promise.all([
+            fetchAssistMedicineStockItems(assistToken),
+            fetchAssistBhpStockItems(assistToken),
+          ]);
+
+          sendResponse({
+            ok: true,
+            data: [
+              ...buildHppCatalogItems(medicineStockItems, "prescription"),
+              ...buildHppCatalogItems(bhpStockItems, "akhp"),
+            ],
+          });
+        } catch (error) {
+          console.error("Gagal memuat katalog HPP Assist:", error);
+          sendResponse({
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Gagal mengambil data HPP dari katalog Assist.",
+          });
+        }
+      })();
+
+      return true;
+    }
 
     if (message.type !== "FETCH_PEMASUKAN_DATA") {
       return;
