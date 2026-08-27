@@ -25,17 +25,13 @@ export function resolveShoppingRecommendationSettings(
       overrides.defaultLeadTime,
       DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS.defaultLeadTime,
     ),
-    cheapProductMaxPrice: normalizeNonNegativeNumber(
-      overrides.cheapProductMaxPrice,
-      DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS.cheapProductMaxPrice,
-    ),
     fastMovingMinDailySales: normalizeNonNegativeNumber(
       overrides.fastMovingMinDailySales,
       DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS.fastMovingMinDailySales,
     ),
-    cheapFastMovingLeadTime: normalizePositiveNumber(
-      overrides.cheapFastMovingLeadTime,
-      DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS.cheapFastMovingLeadTime,
+    fastMovingLeadTime: normalizePositiveNumber(
+      overrides.fastMovingLeadTime,
+      DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS.fastMovingLeadTime,
     ),
     targetStockDays: normalizePositiveNumber(
       overrides.targetStockDays,
@@ -54,10 +50,10 @@ export function validateShoppingRecommendationSettings(
     };
   }
 
-  if (settings.cheapFastMovingLeadTime <= 0) {
+  if (settings.fastMovingLeadTime <= 0) {
     return {
       valid: false,
-      reason: "Lead time murah & cepat laku harus lebih dari 0.",
+      reason: "Lead time cepat laku harus lebih dari 0.",
     };
   }
 
@@ -68,11 +64,11 @@ export function validateShoppingRecommendationSettings(
     };
   }
 
-  if (settings.targetStockDays <= settings.cheapFastMovingLeadTime) {
+  if (settings.targetStockDays <= settings.fastMovingLeadTime) {
     return {
       valid: false,
       reason:
-        "Target stok hari harus lebih besar dari lead time murah & cepat laku.",
+        "Target stok hari harus lebih besar dari lead time cepat laku.",
     };
   }
 
@@ -146,14 +142,10 @@ export function buildShoppingRecommendationRows(
     const averageDailySales =
       input.lookbackDays > 0 ? qtySold30Days / input.lookbackDays : 0;
     const activeDailySales = activeDays > 0 ? qtySold30Days / activeDays : 0;
-    const isCheap =
-      typeof catalogItem?.buyFee === "number" &&
-      catalogItem.buyFee <= settings.cheapProductMaxPrice;
     const isFastMoving = averageDailySales >= settings.fastMovingMinDailySales;
-    const leadTimeLimit =
-      isCheap && isFastMoving
-        ? settings.cheapFastMovingLeadTime
-        : settings.defaultLeadTime;
+    const leadTimeLimit = isFastMoving
+      ? settings.fastMovingLeadTime
+      : settings.defaultLeadTime;
     const estimatedOutOfStockDays = calculateEstimatedOutOfStockDays({
       stockTotal,
       qtySold30Days,
@@ -345,9 +337,9 @@ export function buildShoppingRecommendationRows(
       statusColor: resolveStatusColor({
         estimatedDaysRemaining: effectiveDaysRemaining,
         leadTimeLimit,
-        targetStockDays: settings.targetStockDays,
       }),
       isDormant,
+      isFastMoving,
       needsManualReview,
       isCappedDemand,
       isGoldenProduct,
@@ -369,14 +361,7 @@ export function compareShoppingRecommendationRows(
   right: ShoppingRecommendationRow,
 ): number {
   return (
-    Number(right.potentialIncomeLoss > 0) -
-      Number(left.potentialIncomeLoss > 0) ||
-    Number(right.isCappedDemand) - Number(left.isCappedDemand) ||
-    Number(right.isGoldenProduct) - Number(left.isGoldenProduct) ||
-    statusRank(left.statusColor) - statusRank(right.statusColor) ||
-    right.potentialIncomeLoss - left.potentialIncomeLoss ||
-    right.growthSuggestedQty - left.growthSuggestedQty ||
-    right.calculatedSuggestedQty - left.calculatedSuggestedQty ||
+    right.averageDailySales - left.averageDailySales ||
     right.qtySold30Days - left.qtySold30Days ||
     left.itemName.localeCompare(right.itemName)
   );
@@ -577,18 +562,12 @@ function calculateEstimatedDaysRemaining(
 function resolveStatusColor(input: {
   estimatedDaysRemaining: number;
   leadTimeLimit: number;
-  targetStockDays: number;
 }): RecommendationStatusColor {
   if (input.estimatedDaysRemaining <= input.leadTimeLimit) {
     return "red";
   }
 
-  const yellowUpperBound =
-    input.leadTimeLimit >= input.targetStockDays
-      ? input.leadTimeLimit + 3
-      : input.targetStockDays;
-
-  if (input.estimatedDaysRemaining <= yellowUpperBound) {
+  if (input.estimatedDaysRemaining <= input.leadTimeLimit * 2) {
     return "yellow";
   }
 

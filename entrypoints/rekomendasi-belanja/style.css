@@ -727,6 +727,7 @@ tbody tr.active-row td {
 .indicator-review { background: #e2e8f0; color: #475569; border-color: #cbd5e1; }
 .indicator-dormant { background: #ede9fe; color: #6d28d9; border-color: #ddd6fe; }
 .indicator-covered { background: #ccfbf1; color: #115e59; border-color: #99f6e4; }
+.indicator-fast { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; }
 .indicator-loss { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
 .indicator-capped { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
 .indicator-golden { background: #fef3c7; color: #b45309; border-color: #fde68a; }
@@ -785,6 +786,7 @@ tbody tr.active-row td {
   font-weight: 600;
 }
 
+.tag-fast { background-color: var(--color-blue-50); color: var(--color-blue-600); border: 1px solid var(--color-blue-border); }
 .tag-capped { background-color: var(--color-blue-50); color: var(--color-blue-600); }
 .tag-golden { background-color: var(--color-yellow-50); color: var(--color-yellow-600); }
 .tag-dead { background-color: #ede9fe; color: #6d28d9; }

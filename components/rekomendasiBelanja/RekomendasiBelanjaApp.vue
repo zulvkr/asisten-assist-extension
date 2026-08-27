@@ -39,16 +39,6 @@
             />
           </div>
           <div class="field">
-            <label for="cheapProductMaxPrice">Batas harga murah (Rp)</label>
-            <input
-              id="cheapProductMaxPrice"
-              v-model.number="formSettings.cheapProductMaxPrice"
-              type="number"
-              min="0"
-              step="100"
-            />
-          </div>
-          <div class="field">
             <label for="fastMovingMinDailySales">Min/hari cepat</label>
             <input
               id="fastMovingMinDailySales"
@@ -59,10 +49,10 @@
             />
           </div>
           <div class="field">
-            <label for="cheapFastMovingLeadTime">Lead cepat (hari)</label>
+            <label for="fastMovingLeadTime">Lead cepat (hari)</label>
             <input
-              id="cheapFastMovingLeadTime"
-              v-model.number="formSettings.cheapFastMovingLeadTime"
+              id="fastMovingLeadTime"
+              v-model.number="formSettings.fastMovingLeadTime"
               type="number"
               min="1"
               step="1"
@@ -129,7 +119,7 @@
     <section class="kpi-grid">
       <article class="kpi-card kpi-red">
         <div class="kpi-header">
-          <h3>MERAH (KRITIS - &lt; 3 HARI)</h3>
+          <h3>MERAH (KRITIS - &le; LEAD TIME)</h3>
           <span class="kpi-icon text-red">⚠️</span>
         </div>
         <strong class="kpi-value text-red">{{ kpis.redCount }}</strong>
@@ -138,7 +128,7 @@
 
       <article class="kpi-card kpi-yellow">
         <div class="kpi-header">
-          <h3>KUNING (PERINGATAN - 4..30 HARI)</h3>
+          <h3>KUNING (PERINGATAN - &le; 2X LEAD TIME)</h3>
           <span class="kpi-icon text-yellow">⚠️</span>
         </div>
         <strong class="kpi-value text-yellow">{{ kpis.yellowCount }}</strong>
@@ -147,7 +137,7 @@
 
       <article class="kpi-card kpi-green">
         <div class="kpi-header">
-          <h3>HIJAU (AMAN - &gt; 30 HARI)</h3>
+          <h3>HIJAU (AMAN - &gt; 2X LEAD TIME)</h3>
           <span class="kpi-icon text-green">✔️</span>
         </div>
         <strong class="kpi-value text-green">{{ kpis.greenCount }}</strong>
@@ -191,7 +181,7 @@
               :class="{ active: filters.statusGroup === 'all' }"
               @click="filters.statusGroup = 'all'"
             >
-              Semua
+              📋 Semua
             </button>
             <button 
               type="button" 
@@ -199,7 +189,7 @@
               :class="{ active: filters.statusGroup === 'red-yellow' }"
               @click="filters.statusGroup = 'red-yellow'"
             >
-              <span class="status-dots"><span class="dot red"></span><span class="dot yellow"></span></span>
+              <span class="status-dots"><span class="dot red"></span><span class="dot yellow"></span></span> 🔴🟡 Kritis &amp; Peringatan
             </button>
             <button 
               type="button" 
@@ -207,7 +197,7 @@
               :class="{ active: filters.statusGroup === 'red' }"
               @click="filters.statusGroup = 'red'"
             >
-              Kritis
+              🔴 Kritis
             </button>
             <button 
               type="button" 
@@ -215,7 +205,7 @@
               :class="{ active: filters.statusGroup === 'yellow' }"
               @click="filters.statusGroup = 'yellow'"
             >
-              Peringatan
+              🟡 Peringatan
             </button>
             <button 
               type="button" 
@@ -223,7 +213,7 @@
               :class="{ active: filters.statusGroup === 'green' }"
               @click="filters.statusGroup = 'green'"
             >
-              Aman
+              🟢 Aman
             </button>
           </div>
         </div>
@@ -238,7 +228,7 @@
               :class="{ active: filters.orderedFilter === 'all' }"
               @click="filters.orderedFilter = 'all'"
             >
-              Semua
+              📋 Semua
             </button>
             <button 
               type="button" 
@@ -246,7 +236,7 @@
               :class="{ active: filters.orderedFilter === 'ordered' }"
               @click="filters.orderedFilter = 'ordered'"
             >
-              📦 Dipesan
+              📦 Sudah Dipesan
             </button>
             <button 
               type="button" 
@@ -254,7 +244,7 @@
               :class="{ active: filters.orderedFilter === 'not-ordered' }"
               @click="filters.orderedFilter = 'not-ordered'"
             >
-              🛒 Belum
+              🛒 Belum Dipesan
             </button>
           </div>
         </div>
@@ -332,15 +322,6 @@
           <button
             type="button"
             class="ghost-button"
-            :disabled="!filteredRowsToOrder.length"
-            @click="orderAllFilteredRows"
-          >
-            Tandai Semua Dipesan ({{ filteredRowsToOrder.length }})
-          </button>
-          
-          <button
-            type="button"
-            class="ghost-button"
             :disabled="!draftRows.length"
             @click="clearAllOrders"
           >
@@ -373,7 +354,7 @@
               <th>NAMA OBAT</th>
               <th>STOK SAAT INI</th>
               <th>ROP (UNIT)</th>
-              <th class="text-center">SEDANG DIPESAN</th>
+              <th class="text-center">SUDAH DIPESAN</th>
               <th>KECEPATAN JUAL (30 HARI)</th>
               <th>HARI TERSISA</th>
               <th>STATUS</th>
@@ -472,20 +453,20 @@
         >
           {{ statusLabel(selectedInsightRow.statusColor) }}
         </span>
-        <span v-if="selectedInsightRow.isCappedDemand" class="tag tag-capped"
-          >Demand terhambat</span
+        <span v-if="selectedInsightRow.isFastMoving" class="tag tag-fast"
+          >⚡ Fast Moving</span
         >
         <span v-if="selectedInsightRow.isGoldenProduct" class="tag tag-golden"
-          >Produk emas</span
+          >⭐ Produk Emas</span
         >
         <span v-if="selectedInsightRow.isDeadStock" class="tag tag-dead"
-          >Stok mati</span
+          >🛑 Stok Mati</span
         >
         <span
           v-if="selectedInsightRow.hasUnitHistoryWarning"
           class="tag tag-review"
           :title="selectedInsightRow.unitHistoryWarning"
-          >Riwayat unit campur</span
+          >⚠️ Riwayat unit campur</span
         >
       </div>
 
@@ -761,8 +742,7 @@ interface FiltersState {
 
 type QuickFilterKey =
   | "all"
-  | "income-loss"
-  | "capped-demand"
+  | "fast-moving"
   | "golden-product";
 
 interface EnhancedRecommendationRow extends ShoppingRecommendationRow {
@@ -791,8 +771,7 @@ type IndicatorTone =
   | "review"
   | "dormant"
   | "covered"
-  | "loss"
-  | "capped"
+  | "fast"
   | "golden"
   | "dead";
 
@@ -818,10 +797,9 @@ const DEFAULT_FILTERS: FiltersState = {
 };
 
 const quickFilterOptions: Array<{ key: QuickFilterKey; label: string }> = [
-  { key: "all", label: "Semua" },
-  { key: "income-loss", label: "Potensi Rugi" },
-  { key: "capped-demand", label: "Permintaan Terhambat" },
-  { key: "golden-product", label: "Produk Emas" },
+  { key: "all", label: "📋 Semua" },
+  { key: "fast-moving", label: "⚡ Fast Moving" },
+  { key: "golden-product", label: "⭐ Produk Emas" },
 ];
 
 const rows = ref<ShoppingRecommendationRow[]>([]);
@@ -891,8 +869,8 @@ const enhancedRows = computed<EnhancedRecommendationRow[]>(() => {
       };
     })
     .sort((left, right) => {
-      if (left.estimatedDaysRemaining !== right.estimatedDaysRemaining) {
-        return left.estimatedDaysRemaining - right.estimatedDaysRemaining;
+      if (right.averageDailySales !== left.averageDailySales) {
+        return right.averageDailySales - left.averageDailySales;
       }
       return left.itemName.localeCompare(right.itemName);
     });
@@ -941,12 +919,6 @@ const filteredRows = computed(() => {
 
     return matchesSearch && matchesStatus && matchesOrdered && matchesQuickFilter(row);
   });
-});
-
-const filteredRowsToOrder = computed(() => {
-  return filteredRows.value.filter(
-    (row) => row.pendingOrderQty <= 0 && (row.statusColor === "red" || row.statusColor === "yellow"),
-  );
 });
 
 const draftRows = computed<DraftSummaryRow[]>(() => {
@@ -1143,50 +1115,7 @@ async function togglePendingOrder(row: EnhancedRecommendationRow) {
   }
 }
 
-async function orderAllFilteredRows() {
-  if (!filteredRowsToOrder.value.length) {
-    return;
-  }
 
-  const items = filteredRowsToOrder.value.map((row) => {
-    const qty = row.calculatedSuggestedQty || row.replenishSuggestedQty || row.targetStock || 1;
-    return {
-      itemId: row.itemId,
-      itemType: row.itemType,
-      itemName: row.itemName,
-      code: row.code,
-      unit: row.unit,
-      quantity: qty,
-      buyFee: row.buyFee,
-      leadTimeLimit: row.leadTimeLimit,
-    };
-  });
-
-  // Optimistic local update
-  for (const item of items) {
-    const localRow = rows.value.find((r) => r.itemId === item.itemId);
-    if (localRow) {
-      localRow.pendingOrderQty = item.quantity;
-    }
-  }
-
-  try {
-    await browser.runtime.sendMessage({
-      type: "MARK_ITEMS_AS_ORDERED",
-      payload: { items },
-    });
-    infoMessage.value = `${items.length} item ditandai sebagai sedang dipesan.`;
-  } catch (error) {
-    // Revert local state on error
-    for (const item of items) {
-      const localRow = rows.value.find((r) => r.itemId === item.itemId);
-      if (localRow) {
-        localRow.pendingOrderQty = 0;
-      }
-    }
-    errorMessage.value = "Gagal menandai item.";
-  }
-}
 
 async function clearAllOrders() {
   if (!confirm("Apakah Anda yakin ingin mengosongkan semua pesanan aktif?")) {
@@ -1302,11 +1231,11 @@ function downloadDraftCsv() {
 function statusLabel(status: RecommendationStatusColor): string {
   switch (status) {
     case "red":
-      return "MERAH";
+      return "🔴 MERAH";
     case "yellow":
-      return "KUNING";
+      return "🟡 KUNING";
     case "green":
-      return "HIJAU";
+      return "🟢 HIJAU";
     default:
       return status;
   }
@@ -1331,7 +1260,7 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
   if (row.hasUnitHistoryWarning) {
     indicators.push({
       key: `${row.itemId}-unit-history`,
-      icon: "U",
+      icon: "⚠️",
       label: "Riwayat unit",
       tooltip:
         row.unitHistoryWarning ||
@@ -1343,7 +1272,7 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
   if (row.needsManualReview) {
     indicators.push({
       key: `${row.itemId}-manual-review`,
-      icon: "R",
+      icon: "🔍",
       label: "Review unit",
       tooltip:
         row.manualReviewReason ||
@@ -1355,7 +1284,7 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
   if (row.isDormant) {
     indicators.push({
       key: `${row.itemId}-dormant`,
-      icon: "D",
+      icon: "💤",
       label: "Dormant",
       tooltip: "Tidak bergerak dalam 30 hari terakhir.",
       tone: "dormant",
@@ -1365,7 +1294,7 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
   if (row.isCovered) {
     indicators.push({
       key: `${row.itemId}-covered`,
-      icon: "C",
+      icon: "✅",
       label: "Covered",
       tooltip: `Sudah tercakup draft. Draft saat ini: ${row.draftedQty}.`,
       tone: "covered",
@@ -1375,39 +1304,27 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
   if (row.pendingOrderQty > 0) {
     indicators.push({
       key: `${row.itemId}-pending-order`,
-      icon: "P",
+      icon: "📦",
       label: "PO aktif",
       tooltip: `Ada purchase order outstanding sebanyak ${row.pendingOrderQty}.`,
       tone: "covered",
     });
   }
 
-  if (row.potentialIncomeLoss > 0) {
+  if (row.isFastMoving) {
     indicators.push({
-      key: `${row.itemId}-loss`,
-      icon: "L",
-      label: "Rugi omzet",
-      tooltip: `Potensi rugi omzet ${formatRupiah(row.potentialIncomeLoss)}.`,
-      tone: "loss",
-    });
-  }
-
-  if (row.isCappedDemand) {
-    indicators.push({
-      key: `${row.itemId}-capped-demand`,
-      icon: "T",
-      label: "Demand tertahan",
-      tooltip:
-        row.growthRecommendationNote ||
-        "Permintaan kemungkinan tertahan oleh stok yang habis atau tipis.",
-      tone: "capped",
+      key: `${row.itemId}-fast-moving`,
+      icon: "⚡",
+      label: "Fast Moving",
+      tooltip: `Produk fast moving (penjualan ${formatDailySales(row.averageDailySales)}/hari >= ${activeSettings.value.fastMovingMinDailySales}/hari).`,
+      tone: "fast",
     });
   }
 
   if (row.isGoldenProduct) {
     indicators.push({
       key: `${row.itemId}-golden-product`,
-      icon: "G",
+      icon: "⭐",
       label: "Produk emas",
       tooltip: "Produk dengan kontribusi profit tinggi.",
       tone: "golden",
@@ -1417,7 +1334,7 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
   if (row.isDeadStock) {
     indicators.push({
       key: `${row.itemId}-dead-stock`,
-      icon: "S",
+      icon: "🛑",
       label: "Stok mati",
       tooltip: "Perputaran sangat lambat dan berisiko menjadi stok mati.",
       tone: "dead",
@@ -1429,10 +1346,8 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
 
 function matchesQuickFilter(row: EnhancedRecommendationRow): boolean {
   switch (filters.quickFilter) {
-    case "income-loss":
-      return row.potentialIncomeLoss > 0;
-    case "capped-demand":
-      return row.isCappedDemand || row.growthSuggestedQty > 0;
+    case "fast-moving":
+      return row.isFastMoving;
     case "golden-product":
       return row.isGoldenProduct;
     case "all":

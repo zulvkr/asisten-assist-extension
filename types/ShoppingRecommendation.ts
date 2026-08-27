@@ -4,9 +4,8 @@ export type RecommendationStatusColor = "red" | "yellow" | "green";
 
 export interface ShoppingRecommendationSettings {
   defaultLeadTime: number;
-  cheapProductMaxPrice: number;
   fastMovingMinDailySales: number;
-  cheapFastMovingLeadTime: number;
+  fastMovingLeadTime: number;
   targetStockDays: number;
 }
 
@@ -107,6 +106,7 @@ export interface ShoppingRecommendationRow {
   growthRecommendationNote: string;
   statusColor: RecommendationStatusColor;
   isDormant: boolean;
+  isFastMoving: boolean;
   needsManualReview: boolean;
   isCappedDemand: boolean;
   isGoldenProduct: boolean;
@@ -127,10 +127,9 @@ export interface ShoppingRecommendationSettingsValidation {
 export const DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS: ShoppingRecommendationSettings =
   {
     defaultLeadTime: 3,
-    cheapProductMaxPrice: 5000,
-    fastMovingMinDailySales: 1,
-    cheapFastMovingLeadTime: 5,
-    targetStockDays: 7,
+    fastMovingMinDailySales: 0.1,
+    fastMovingLeadTime: 6,
+    targetStockDays: 30,
   };
 
 export const DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS: ShoppingAnalyticsThresholds =
