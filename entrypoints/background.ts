@@ -26,10 +26,13 @@ import {
 } from "@/services/shoppingRecommendationStorage";
 import type {
   MarkOutstandingOrderItem,
+  ProductPurchaseHistoryResponse,
+  ProductPurchaseRecordDto,
   ShoppingCatalogItem,
   ShoppingItemType,
   ShoppingRecommendationRow,
   ShoppingRecommendationSettings,
+  SupplierPriceComparisonDto,
 } from "@/types/ShoppingRecommendation";
 import {
   buildShoppingRecommendationRows,
@@ -51,6 +54,14 @@ interface FetchStockComparisonPayload {
 interface FetchShoppingRecommendationsPayload {
   assistToken?: string;
   settings?: Partial<ShoppingRecommendationSettings>;
+}
+
+interface FetchProductPriceHistoryPayload {
+  assistToken?: string;
+  itemId: string;
+  itemType: ShoppingItemType;
+  itemName?: string;
+  code?: string;
 }
 
 interface MarkItemsAsOrderedPayload {
@@ -432,6 +443,279 @@ async function handleFetchShoppingRecommendations(
   }
 }
 
+const priceHistoryCache = new Map<
+  string,
+  { data: ProductPurchaseHistoryResponse; cachedAt: number }
+>();
+
+async function handleFetchProductPriceHistory(
+  payload: FetchProductPriceHistoryPayload,
+): Promise<{ ok: true; data: ProductPurchaseHistoryResponse } | { ok: false; error: string }> {
+  const assistToken = payload.assistToken?.trim() ?? "";
+  if (!assistToken) {
+    return { ok: false, error: "Token Assist tidak tersedia." };
+  }
+  const itemId = payload.itemId?.trim() ?? "";
+  if (!itemId) {
+    return { ok: false, error: "ID Item tidak valid." };
+  }
+
+  const cacheKey = `${payload.itemType}::${itemId}`;
+  const cached = priceHistoryCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < 15 * 60 * 1000) {
+    return { ok: true, data: cached.data };
+  }
+
+  try {
+    const rawRecords: ProductPurchaseRecordDto[] = [];
+
+    // 1. Fetch from audit stock endpoint
+    try {
+      const filter =
+        payload.itemType === "akhp"
+          ? { hospitalId: runtimeConfig.assistHospitalId, akhpId: itemId }
+          : { hospitalId: runtimeConfig.assistHospitalId, medicineId: itemId };
+
+      const endpoint =
+        payload.itemType === "akhp"
+          ? `${runtimeConfig.assistApiBase}/KAKHPStocks/auditAKHPStock`
+          : `${runtimeConfig.assistApiBase}/KTxes/auditMedStock`;
+
+      const auditUrl = `${endpoint}?filter=${encodeURIComponent(JSON.stringify(filter))}`;
+      const auditRes = await fetch(auditUrl, {
+        headers: buildAssistHeaders(assistToken),
+        credentials: "include",
+      });
+
+      if (auditRes.ok) {
+        const auditData = (await auditRes.json()) as any[];
+        if (Array.isArray(auditData)) {
+          for (const row of auditData) {
+            if (row.transactionType === "restock") {
+              const tx = row.Transaction || {};
+              const dist = tx.Distributors || {};
+              const qty = Number(row.quantity ?? 1);
+              const buyPrice = Number(row.buyFee ?? row.baseFee ?? tx.buyFee ?? 0);
+              const discount = Number(row.diskonObat ?? row.discount ?? 0);
+              const netUnitPrice = Number(row.baseFee ?? (buyPrice * (1 - discount / 100)));
+              const subtotal = Number(row.totalFee ?? (netUnitPrice * qty));
+
+              rawRecords.push({
+                transactionId: String(tx.id || tx._id || row.id || `rec_${Math.random()}`),
+                invoiceNumber: String(tx.code || tx.nomorFaktur || row.batchNo || "-"),
+                receivedDate: (row.createdAt || row.executeDate || tx.transactionDate || tx.date || "").slice(0, 10),
+                supplierId: dist.id || dist._id || tx.distributorId || undefined,
+                supplierName: String(dist.supplierName || tx.supplierName || row.supplierName || "Supplier Tanpa Nama").trim(),
+                batchNumber: row.batchNo || "-",
+                expiryDate: row.expiredDate ? String(row.expiredDate).slice(0, 10) : undefined,
+                quantity: qty,
+                unitName: row.unit || undefined,
+                buyPrice,
+                netUnitPrice: netUnitPrice > 0 ? netUnitPrice : buyPrice,
+                discountPercent: discount,
+                subtotal,
+              });
+            }
+          }
+        }
+      }
+    } catch (auditErr) {
+      console.warn("Gagal mengambil kartu stok untuk riwayat harga:", auditErr);
+    }
+
+    // 2. Fallback / supplement from general KTxes if records are scarce
+    if (rawRecords.length === 0) {
+      try {
+        const txFilter = {
+          where: {
+            hospitalId: runtimeConfig.assistHospitalId,
+            distributorId: { neq: null },
+          },
+          include: ["Distributors"],
+          limit: 100,
+        };
+        const txUrl = `${runtimeConfig.assistApiBase}/KTxes?filter=${encodeURIComponent(JSON.stringify(txFilter))}`;
+        const txRes = await fetch(txUrl, {
+          headers: buildAssistHeaders(assistToken),
+          credentials: "include",
+        });
+        if (txRes.ok) {
+          const txData = (await txRes.json()) as any[];
+          if (Array.isArray(txData)) {
+            for (const tx of txData) {
+              const dist = tx.Distributors || {};
+              const items = Array.isArray(tx.item) ? tx.item : [];
+              for (const it of items) {
+                const matchId =
+                  payload.itemType === "akhp"
+                    ? it.akhpId === itemId
+                    : it.medicineId === itemId;
+                const matchName =
+                  payload.itemName &&
+                  it.name &&
+                  String(it.name).trim().toLowerCase() === payload.itemName.trim().toLowerCase();
+
+                if (matchId || matchName) {
+                  const qty = Number(it.quantity ?? 1);
+                  const buyPrice = Number(it.buyFee ?? it.baseFee ?? 0);
+                  const discount = Number(it.diskonObat ?? it.discount ?? 0);
+                  const netUnitPrice = Number(it.baseFee ?? (buyPrice * (1 - discount / 100)));
+                  const subtotal = Number(it.totalFee ?? (netUnitPrice * qty));
+
+                  rawRecords.push({
+                    transactionId: String(tx.id || tx._id || `tx_${Math.random()}`),
+                    invoiceNumber: String(tx.nomorFaktur || tx.code || "-"),
+                    receivedDate: String(tx.transactionDate || tx.date || tx.createdAt || "").slice(0, 10),
+                    supplierId: dist.id || dist._id || tx.distributorId || undefined,
+                    supplierName: String(dist.supplierName || tx.supplierName || "Supplier Tanpa Nama").trim(),
+                    batchNumber: it.batchNo || "-",
+                    expiryDate: it.expiredDate ? String(it.expiredDate).slice(0, 10) : undefined,
+                    quantity: qty,
+                    unitName: it.unit || undefined,
+                    buyPrice,
+                    netUnitPrice: netUnitPrice > 0 ? netUnitPrice : buyPrice,
+                    discountPercent: discount,
+                    subtotal,
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (txErr) {
+        console.warn("Gagal mengambil KTxes untuk riwayat harga:", txErr);
+      }
+    }
+
+    // Sort rawRecords chronologically descending (newest first)
+    rawRecords.sort(
+      (a, b) => new Date(b.receivedDate).getTime() - new Date(a.receivedDate).getTime(),
+    );
+
+    // Group by supplier
+    const supplierGroups = new Map<string, {
+      supplierId: string;
+      supplierName: string;
+      supplierPhone?: string;
+      prices: number[];
+      latestPrice: number;
+      lastDate: string;
+      totalQty: number;
+      purchaseCount: number;
+      weightedSum: number;
+    }>();
+
+    let overallLowestNetPrice: number | null = null;
+    let overallLatestNetPrice: number | null = null;
+    let latestSupplierName: string | null = null;
+    let totalPurchasedQuantity = 0;
+    let totalWeightedPrice = 0;
+
+    for (const rec of rawRecords) {
+      const supKey = rec.supplierName.trim().toUpperCase() || "UNKNOWN";
+      const net = rec.netUnitPrice > 0 ? rec.netUnitPrice : rec.buyPrice;
+
+      if (net > 0) {
+        if (overallLowestNetPrice === null || net < overallLowestNetPrice) {
+          overallLowestNetPrice = net;
+        }
+      }
+
+      if (overallLatestNetPrice === null && net > 0) {
+        overallLatestNetPrice = net;
+        latestSupplierName = rec.supplierName;
+      }
+
+      totalPurchasedQuantity += rec.quantity;
+      totalWeightedPrice += net * rec.quantity;
+
+      const existing = supplierGroups.get(supKey);
+      if (existing) {
+        if (net > 0) existing.prices.push(net);
+        existing.totalQty += rec.quantity;
+        existing.purchaseCount += 1;
+        existing.weightedSum += net * rec.quantity;
+        if (new Date(rec.receivedDate) > new Date(existing.lastDate)) {
+          existing.lastDate = rec.receivedDate;
+          existing.latestPrice = net;
+        }
+      } else {
+        supplierGroups.set(supKey, {
+          supplierId: rec.supplierId || supKey,
+          supplierName: rec.supplierName,
+          prices: net > 0 ? [net] : [],
+          latestPrice: net,
+          lastDate: rec.receivedDate,
+          totalQty: rec.quantity,
+          purchaseCount: 1,
+          weightedSum: net * rec.quantity,
+        });
+      }
+    }
+
+    const supplierComparisons: SupplierPriceComparisonDto[] = [];
+    let cheapestSupplierName: string | null = null;
+
+    for (const group of supplierGroups.values()) {
+      const lowestNetPrice = group.prices.length ? Math.min(...group.prices) : group.latestPrice;
+      const avgNetPrice = group.totalQty > 0 ? Math.round(group.weightedSum / group.totalQty) : group.latestPrice;
+      const isCheapest = overallLowestNetPrice !== null && lowestNetPrice === overallLowestNetPrice;
+      if (isCheapest && !cheapestSupplierName) {
+        cheapestSupplierName = group.supplierName;
+      }
+      const priceDiffPercent =
+        overallLowestNetPrice !== null && overallLowestNetPrice > 0
+          ? Number((((lowestNetPrice - overallLowestNetPrice) / overallLowestNetPrice) * 100).toFixed(1))
+          : 0;
+
+      supplierComparisons.push({
+        supplierId: group.supplierId,
+        supplierName: group.supplierName,
+        supplierPhone: group.supplierPhone,
+        lowestNetPrice,
+        latestNetPrice: group.latestPrice,
+        averageNetPrice: avgNetPrice,
+        lastPurchasedDate: group.lastDate,
+        totalQuantityPurchased: group.totalQty,
+        purchaseCount: group.purchaseCount,
+        isCheapest,
+        priceDifferencePercent: priceDiffPercent,
+      });
+    }
+
+    supplierComparisons.sort((a, b) => a.lowestNetPrice - b.lowestNetPrice);
+
+    const overallAverageNetPrice =
+      totalPurchasedQuantity > 0 ? Math.round(totalWeightedPrice / totalPurchasedQuantity) : null;
+
+    const responseData: ProductPurchaseHistoryResponse = {
+      itemId,
+      itemName: payload.itemName || "",
+      code: payload.code || "",
+      unitName: rawRecords[0]?.unitName || "",
+      currentBuyPrice: rawRecords[0]?.buyPrice ?? null,
+      lowestNetPrice: overallLowestNetPrice,
+      cheapestSupplierName,
+      latestNetPrice: overallLatestNetPrice,
+      latestSupplierName,
+      averageNetPrice: overallAverageNetPrice,
+      totalPurchasedQuantity,
+      totalTransactions: rawRecords.length,
+      supplierComparisons,
+      historyRecords: rawRecords,
+    };
+
+    priceHistoryCache.set(cacheKey, { data: responseData, cachedAt: Date.now() });
+
+    return { ok: true, data: responseData };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Gagal mengambil riwayat harga supplier.",
+    };
+  }
+}
+
 async function handleMarkItemsAsOrdered(
   payload: MarkItemsAsOrderedPayload,
 ): Promise<MarkItemsAsOrderedResponse | { ok: false; error: string }> {
@@ -809,6 +1093,17 @@ export default defineBackground(() => {
           });
         }
         sendResponse({ ok: true });
+      })();
+
+      return true;
+    }
+
+    if (message.type === "FETCH_PRODUCT_PRICE_HISTORY") {
+      (async () => {
+        const result = await handleFetchProductPriceHistory(
+          (message.payload ?? {}) as FetchProductPriceHistoryPayload,
+        );
+        sendResponse(result);
       })();
 
       return true;

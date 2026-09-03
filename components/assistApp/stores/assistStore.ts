@@ -4,10 +4,16 @@ import { resolveAssistToken } from "@/composables/assistTokenManager";
 import { resolveDestyToken } from "@/composables/destyOmniTokenManager";
 import { runtimeConfig } from "@/config/runtimeConfig";
 
+const DEFAULT_ASSIST_ACCOUNT_TX_ID = "68b6f3bea945e5b08b004236";
+
 export const useAssistStore = defineStore("assist", () => {
   const assistToken = ref(localStorage.getItem("assist_token") || "");
   const hospitalId = ref(localStorage.getItem("assist_hospital_id") || runtimeConfig.assistHospitalId);
   const apiBaseUrl = ref(runtimeConfig.assistApiBase);
+  const assistAccountTxId = ref(
+    localStorage.getItem("assist_account_tx_id") || DEFAULT_ASSIST_ACCOUNT_TX_ID,
+  );
+  const developerMode = ref(localStorage.getItem("settings:developerMode") === "true");
 
   const destyToken = ref(localStorage.getItem("desty_token") || "");
   const destyTenantId = ref(localStorage.getItem("desty_tenant_id") || "");
@@ -80,6 +86,18 @@ export const useAssistStore = defineStore("assist", () => {
     hospitalId.value = hospId.trim();
     localStorage.setItem("assist_token", assistToken.value);
     localStorage.setItem("assist_hospital_id", hospitalId.value);
+  }
+
+  function saveAssistSalesConfig(accountTxId: string) {
+    assistAccountTxId.value = accountTxId.trim();
+    localStorage.setItem("assist_account_tx_id", assistAccountTxId.value);
+    browser.storage.local.set({ assistAccountTxId: assistAccountTxId.value }).catch(() => undefined);
+  }
+
+  function saveDeveloperMode(enabled: boolean) {
+    developerMode.value = enabled;
+    localStorage.setItem("settings:developerMode", String(enabled));
+    browser.storage.local.set({ "settings:developerMode": enabled }).catch(() => undefined);
   }
 
   function getHeaders() {
@@ -360,6 +378,8 @@ export const useAssistStore = defineStore("assist", () => {
     assistToken,
     hospitalId,
     apiBaseUrl,
+    assistAccountTxId,
+    developerMode,
     destyToken,
     destyTenantId,
     destyMasterWarehouseId,
@@ -372,6 +392,8 @@ export const useAssistStore = defineStore("assist", () => {
     reloadAssistToken,
     reloadDestyToken,
     saveConfig,
+    saveAssistSalesConfig,
+    saveDeveloperMode,
     getHeaders,
     fetchMarginData,
     saveAppsScriptConfig,

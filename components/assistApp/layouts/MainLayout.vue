@@ -194,12 +194,12 @@
           <q-item-section avatar>
             <q-icon name="sync" />
             <q-tooltip v-if="miniState" anchor="center right" self="center left">
-              PLDMP
+              Desty Helper
             </q-tooltip>
           </q-item-section>
           <q-item-section>
-            <q-item-label>PLDMP</q-item-label>
-            <q-item-label caption>Desty Helper Integration</q-item-label>
+            <q-item-label>Desty Helper</q-item-label>
+            <q-item-label caption>PLDMP & sinkronisasi penjualan</q-item-label>
           </q-item-section>
         </q-item>
 

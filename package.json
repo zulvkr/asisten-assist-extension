@@ -2,7 +2,7 @@
   "name": "asisten-assist",
   "description": "Ekstensi asisten",
   "private": true,
-  "version": "1.1.17",
+  "version": "1.1.18",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -12,11 +12,13 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
+    "test": "vitest run",
     "postinstall": "wxt prepare"
   },
   "devDependencies": {
     "@wxt-dev/module-vue": "^1.0.3",
     "typescript": "^5.9.2",
+    "vitest": "^3.2.7",
     "wxt": "^0.20.6"
   },
   "volta": {

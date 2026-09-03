@@ -96,6 +96,8 @@ export function getAssistShoppingSalesByDate(
       itemType: ShoppingItemType;
       itemName: string;
       qtySold: number;
+      txIds: Set<string>;
+      dailyHistory: Map<string, { qty: number; txIds: Set<string> }>;
       observedUnits: Set<string>;
       firstSoldAt: string | null;
       lastSoldAt: string | null;
@@ -112,6 +114,8 @@ export function getAssistShoppingSalesByDate(
     if (includeOnlyPaidOff && transaction.status !== "paid off") {
       continue;
     }
+
+    const txId = transaction._id || transaction.code || "";
 
     for (const item of transaction.Items) {
       if (!ALLOWED_ASSIST_ITEM_TYPES.has(item.type)) {
@@ -130,6 +134,8 @@ export function getAssistShoppingSalesByDate(
         item.createdAt,
         transaction.createdAt,
       );
+      const dayKey = observedAt ? observedAt.slice(0, 10) : "";
+      const effectiveTxId = txId || item.transactionId || `tx_${Math.random()}`;
 
       if (!assistItemId) {
         missingItemId += 1;
@@ -139,6 +145,13 @@ export function getAssistShoppingSalesByDate(
       const existing = grouped.get(key);
       if (existing) {
         existing.qtySold += item.quantity;
+        existing.txIds.add(effectiveTxId);
+        if (dayKey) {
+          const dayData = existing.dailyHistory.get(dayKey) ?? { qty: 0, txIds: new Set<string>() };
+          dayData.qty += item.quantity;
+          dayData.txIds.add(effectiveTxId);
+          existing.dailyHistory.set(dayKey, dayData);
+        }
         if (normalizedUnit) {
           existing.observedUnits.add(normalizedUnit);
         }
@@ -156,11 +169,18 @@ export function getAssistShoppingSalesByDate(
         continue;
       }
 
+      const dailyHistory = new Map<string, { qty: number; txIds: Set<string> }>();
+      if (dayKey) {
+        dailyHistory.set(dayKey, { qty: item.quantity, txIds: new Set([effectiveTxId]) });
+      }
+
       grouped.set(key, {
         itemId: key,
         itemType,
         itemName: item.name,
         qtySold: item.quantity,
+        txIds: new Set([effectiveTxId]),
+        dailyHistory,
         observedUnits: new Set(normalizedUnit ? [normalizedUnit] : []),
         firstSoldAt: observedAt,
         lastSoldAt: observedAt,
@@ -173,18 +193,27 @@ export function getAssistShoppingSalesByDate(
 
   return {
     salesAggregates: Array.from(grouped.values())
-      .map((aggregate) => ({
-        itemId: aggregate.itemId,
-        itemType: aggregate.itemType,
-        itemName: aggregate.itemName,
-        qtySold: aggregate.qtySold,
-        observedUnits: Array.from(aggregate.observedUnits).sort(),
-        firstSoldAt: aggregate.firstSoldAt,
-        lastSoldAt: aggregate.lastSoldAt,
-        lastKnownStockBefore: aggregate.lastKnownStockBefore,
-        lastKnownStockAfter: aggregate.lastKnownStockAfter,
-        lastObservedStockAt: aggregate.lastObservedStockAt,
-      }))
+      .map((aggregate) => {
+        const dailySalesMap: Record<string, { qty: number; events: number }> = {};
+        for (const [dKey, val] of aggregate.dailyHistory.entries()) {
+          dailySalesMap[dKey] = { qty: val.qty, events: val.txIds.size };
+        }
+
+        return {
+          itemId: aggregate.itemId,
+          itemType: aggregate.itemType,
+          itemName: aggregate.itemName,
+          qtySold: aggregate.qtySold,
+          salesEvents: aggregate.txIds.size,
+          dailySalesMap,
+          observedUnits: Array.from(aggregate.observedUnits).sort(),
+          firstSoldAt: aggregate.firstSoldAt,
+          lastSoldAt: aggregate.lastSoldAt,
+          lastKnownStockBefore: aggregate.lastKnownStockBefore,
+          lastKnownStockAfter: aggregate.lastKnownStockAfter,
+          lastObservedStockAt: aggregate.lastObservedStockAt,
+        };
+      })
       .sort(
         (a, b) => b.qtySold - a.qtySold || a.itemName.localeCompare(b.itemName),
       ),

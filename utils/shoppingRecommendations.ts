@@ -1,6 +1,8 @@
 import {
   DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS,
   DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS,
+  type DailySalesRecord,
+  type DemandPatternType,
   type RecommendationStatusColor,
   type ShoppingCatalogItem,
   type ShoppingRecommendationRow,
@@ -33,6 +35,10 @@ export function resolveShoppingRecommendationSettings(
       overrides.fastMovingLeadTime,
       DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS.fastMovingLeadTime,
     ),
+    fastMovingMinSalesEvents: normalizePositiveNumber(
+      overrides.fastMovingMinSalesEvents,
+      DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS.fastMovingMinSalesEvents,
+    ),
     targetStockDays: normalizePositiveNumber(
       overrides.targetStockDays,
       DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS.targetStockDays,
@@ -54,6 +60,13 @@ export function validateShoppingRecommendationSettings(
     return {
       valid: false,
       reason: "Lead time cepat laku harus lebih dari 0.",
+    };
+  }
+
+  if (settings.fastMovingMinSalesEvents <= 0) {
+    return {
+      valid: false,
+      reason: "Min transaksi cepat laku harus lebih dari 0.",
     };
   }
 
@@ -111,12 +124,14 @@ export function buildShoppingRecommendationRows(
   }
 
   const rows: ShoppingRecommendationRow[] = [];
+  const lookback = Math.max(1, input.lookbackDays);
 
   for (const itemId of itemIds) {
     const catalogItem = catalogByItemId.get(itemId);
     const salesAggregate = salesByItemId.get(itemId);
 
     const qtySold30Days = Number(salesAggregate?.qtySold ?? 0);
+    const salesEvents = Number(salesAggregate?.salesEvents ?? 0);
     const stockTotal = Number(catalogItem?.stockTotal ?? 0);
     const pendingOrderQty = normalizeNonNegativeNumber(
       input.pendingOrderQuantities?.[itemId],
@@ -134,90 +149,102 @@ export function buildShoppingRecommendationRows(
     const needsManualReview = false;
     const manualReviewReason = "";
     const isDormant = qtySold30Days <= 0;
-    const activeDays = resolveActiveDays({
-      firstSoldAt: salesAggregate?.firstSoldAt ?? null,
-      lookbackDays: input.lookbackDays,
-      now,
-    });
-    const averageDailySales =
-      input.lookbackDays > 0 ? qtySold30Days / input.lookbackDays : 0;
-    const activeDailySales = activeDays > 0 ? qtySold30Days / activeDays : 0;
-    const isFastMoving = averageDailySales >= settings.fastMovingMinDailySales;
+
+    // Dual Velocity & Frequency metrics
+    const averageDailySales = qtySold30Days / lookback;
+    const eventDailyVelocity = salesEvents / lookback;
+    const avgUnitsPerTransaction = salesEvents > 0 ? qtySold30Days / salesEvents : 0;
+
+    // Fast Moving requires BOTH unit volume AND recurring transaction frequency
+    const isFastMoving =
+      averageDailySales >= settings.fastMovingMinDailySales &&
+      salesEvents >= settings.fastMovingMinSalesEvents;
+
+    // Bulk Spike: sporadic bulk purchase with insufficient transaction frequency
+    const isBulkSpike =
+      !isFastMoving &&
+      qtySold30Days >= 5 &&
+      salesEvents < settings.fastMovingMinSalesEvents;
+
     const leadTimeLimit = isFastMoving
       ? settings.fastMovingLeadTime
       : settings.defaultLeadTime;
+
+    // Out of stock estimation & Active days
     const estimatedOutOfStockDays = calculateEstimatedOutOfStockDays({
       stockTotal,
       qtySold30Days,
-      lookbackDays: input.lookbackDays,
+      lookbackDays: lookback,
       leadTimeLimit,
       lastSoldAt: salesAggregate?.lastSoldAt ?? null,
       lastKnownStockAfter: salesAggregate?.lastKnownStockAfter ?? null,
       now,
     });
-    const activeEstimatedDaysRemaining = calculateEstimatedDaysRemaining(
-      stockTotal,
-      activeDailySales,
-    );
+    const activeDays = Math.max(1, lookback - estimatedOutOfStockDays);
+
+    // True velocity with dampening capping (prevent short active window spikes from inflating targets)
+    const rawTrueVelocity = qtySold30Days / activeDays;
+    const rawTrueEventVelocity = salesEvents / activeDays;
+    const cappedTrueVelocity = Math.min(rawTrueVelocity, 2.5 * averageDailySales);
+    const availabilityRatio = activeDays / lookback;
     const trueVelocity =
-      qtySold30Days > 0
-        ? qtySold30Days /
-          Math.max(
-            1,
-            activeDays -
-              calculateEstimatedDemandConstraintDays({
-                estimatedOutOfStockDays,
-                stockTotal,
-                averageDailySales: activeDailySales,
-                estimatedDaysRemaining: activeEstimatedDaysRemaining,
-                lookbackDays: input.lookbackDays,
-                leadTimeLimit,
-                lastSoldAt: salesAggregate?.lastSoldAt ?? null,
-                lastKnownStockAfter:
-                  salesAggregate?.lastKnownStockAfter ?? null,
-                now,
-              }),
-          )
-        : 0;
+      availabilityRatio * cappedTrueVelocity +
+      (1.0 - availabilityRatio) * averageDailySales;
+
+    const cappedTrueEventVelocity = Math.min(
+      rawTrueEventVelocity,
+      2.5 * eventDailyVelocity,
+    );
+    const trueEventVelocity =
+      availabilityRatio * cappedTrueEventVelocity +
+      (1.0 - availabilityRatio) * eventDailyVelocity;
+
+    // Effective daily velocity for daily drain simulation & reorder calculation (dampens bulk spikes)
+    const effectiveDailyVelocity = isBulkSpike
+      ? Math.min(averageDailySales, Math.max(0.1, eventDailyVelocity * 2.0))
+      : averageDailySales;
+
     const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
       stockTotal,
-      averageDailySales,
+      effectiveDailyVelocity,
     );
+    const effectiveDaysRemaining = calculateEstimatedDaysRemaining(
+      effectiveStockTotal,
+      effectiveDailyVelocity,
+    );
+
     const estimatedDemandConstraintDays =
       calculateEstimatedDemandConstraintDays({
         estimatedOutOfStockDays,
         stockTotal,
-        averageDailySales: activeDailySales,
-        estimatedDaysRemaining: activeEstimatedDaysRemaining,
-        lookbackDays: input.lookbackDays,
+        averageDailySales: effectiveDailyVelocity,
+        estimatedDaysRemaining,
+        lookbackDays: lookback,
         leadTimeLimit,
         lastSoldAt: salesAggregate?.lastSoldAt ?? null,
         lastKnownStockAfter: salesAggregate?.lastKnownStockAfter ?? null,
         now,
       });
-    const adjustedTrueVelocity =
-      qtySold30Days > 0
-        ? qtySold30Days /
-          Math.max(1, activeDays - estimatedDemandConstraintDays)
-        : 0;
-    const effectiveDaysRemaining = calculateEstimatedDaysRemaining(
-      effectiveStockTotal,
-      averageDailySales,
-    );
-    const targetStock = Math.ceil(averageDailySales * settings.targetStockDays);
-    const rop = Math.ceil(averageDailySales * leadTimeLimit);
+
+    // Target stock based on effectiveDailyVelocity
+    let targetStock = Math.ceil(effectiveDailyVelocity * settings.targetStockDays);
+    if (targetStock < 1 && qtySold30Days > 0) targetStock = 1;
+    const rop = Math.ceil(effectiveDailyVelocity * leadTimeLimit);
+
     const replenishSuggestedQty = needsManualReview
       ? 0
       : Math.max(0, targetStock - effectiveStockTotal);
+
     const potentialSalesGrowthPercent =
       averageDailySales > 0
-        ? ((adjustedTrueVelocity - averageDailySales) / averageDailySales) * 100
+        ? ((trueVelocity - averageDailySales) / averageDailySales) * 100
         : 0;
+
     const growthSuggestedQty = needsManualReview
       ? 0
       : calculateGrowthSuggestedQty({
-          averageDailySales,
-          trueVelocity: adjustedTrueVelocity,
+          averageDailySales: effectiveDailyVelocity,
+          trueVelocity,
           estimatedDaysRemaining,
           leadTimeLimit,
           targetStock,
@@ -226,10 +253,11 @@ export function buildShoppingRecommendationRows(
           stockTotal,
           isDormant,
         });
+
     const calculatedSuggestedQty = replenishSuggestedQty + growthSuggestedQty;
     const potentialIncomeLoss =
       stockTotal <= 0 && typeof catalogItem?.sellNormalFee === "number"
-        ? adjustedTrueVelocity * leadTimeLimit * catalogItem.sellNormalFee
+        ? trueVelocity * leadTimeLimit * catalogItem.sellNormalFee
         : 0;
     const unitProfit =
       typeof catalogItem?.sellNormalFee === "number"
@@ -245,13 +273,42 @@ export function buildShoppingRecommendationRows(
     const isGoldenProduct =
       profitContribution30Days >=
         DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.goldenProductMinProfitContribution &&
-      averageDailySales >= settings.fastMovingMinDailySales;
+      isFastMoving;
     const isDeadStock =
-      stockTotal > 0 &&
-      estimatedDaysRemaining >=
-        DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.deadStockMinDaysRemaining &&
-      averageDailySales <=
-        DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.deadStockMaxDailySales;
+      (qtySold30Days === 0 && stockTotal > 0) ||
+      (stockTotal > 0 &&
+        estimatedDaysRemaining >=
+          DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.deadStockMinDaysRemaining &&
+        averageDailySales <=
+          DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS.deadStockMaxDailySales);
+
+    let demandPattern: DemandPatternType = "Regular";
+    if (isDeadStock) demandPattern = "DeadStock";
+    else if (isFastMoving) demandPattern = "FastMoving";
+    else if (isBulkSpike) demandPattern = "BulkSpike";
+
+    const statusColor = resolveStatusColor({
+      stockTotal: effectiveStockTotal,
+      qtySold30Days,
+      isFastMoving,
+      estimatedDaysRemaining: effectiveDaysRemaining,
+      leadTimeLimit,
+    });
+
+    // 30-day timeline trend construction
+    const dailySalesTrend: DailySalesRecord[] = [];
+    const dayMap = salesAggregate?.dailySalesMap ?? {};
+    for (let dayOffset = lookback - 1; dayOffset >= 0; dayOffset--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - dayOffset);
+      const dateStr = d.toISOString().slice(0, 10);
+      const dayRecord = dayMap[dateStr];
+      dailySalesTrend.push({
+        date: dateStr,
+        qty: dayRecord?.qty ?? 0,
+        events: dayRecord?.events ?? 0,
+      });
+    }
 
     const notes: string[] = [];
     if (manualReviewReason) {
@@ -262,6 +319,11 @@ export function buildShoppingRecommendationRows(
     }
     if (isDormant) {
       notes.push("Tidak ada penjualan dalam 30 hari terakhir.");
+    }
+    if (isBulkSpike) {
+      notes.push(
+        `Bulk spike: ${qtySold30Days} unit dalam ${salesEvents}x transaksi. Kecepatan dihitung moderat agar tidak over-stock.`,
+      );
     }
     if (!catalogItem?.code) {
       notes.push("Kode produk tidak tersedia dari Assist.");
@@ -319,9 +381,14 @@ export function buildShoppingRecommendationRows(
       avgHpp: catalogItem?.avgHpp ?? null,
       sellNormalFee: catalogItem?.sellNormalFee ?? null,
       qtySold30Days,
+      salesEvents,
+      eventDailyVelocity,
+      trueEventVelocity,
+      avgUnitsPerTransaction,
+      effectiveDailyVelocity,
       activeDays,
       averageDailySales,
-      trueVelocity: adjustedTrueVelocity,
+      trueVelocity,
       estimatedOutOfStockDays,
       estimatedDemandConstraintDays,
       estimatedDaysRemaining,
@@ -334,12 +401,11 @@ export function buildShoppingRecommendationRows(
       potentialIncomeLoss,
       potentialSalesGrowthPercent,
       growthRecommendationNote,
-      statusColor: resolveStatusColor({
-        estimatedDaysRemaining: effectiveDaysRemaining,
-        leadTimeLimit,
-      }),
+      statusColor,
       isDormant,
       isFastMoving,
+      isBulkSpike,
+      demandPattern,
       needsManualReview,
       isCappedDemand,
       isGoldenProduct,
@@ -350,6 +416,7 @@ export function buildShoppingRecommendationRows(
       observedTransactionUnits: observedUnits,
       notes,
       rop,
+      dailySalesTrend,
     });
   }
 
@@ -560,17 +627,30 @@ function calculateEstimatedDaysRemaining(
 }
 
 function resolveStatusColor(input: {
+  stockTotal: number;
+  qtySold30Days: number;
+  isFastMoving: boolean;
   estimatedDaysRemaining: number;
   leadTimeLimit: number;
 }): RecommendationStatusColor {
-  if (input.estimatedDaysRemaining <= input.leadTimeLimit) {
-    return "red";
+  if (input.stockTotal <= 0) {
+    return input.qtySold30Days > 0 ? "red" : "green";
   }
 
-  if (input.estimatedDaysRemaining <= input.leadTimeLimit * 2) {
+  if (input.isFastMoving) {
+    if (input.estimatedDaysRemaining <= input.leadTimeLimit) {
+      return "red";
+    }
+    if (input.estimatedDaysRemaining <= input.leadTimeLimit * 2) {
+      return "yellow";
+    }
+    return "green";
+  }
+
+  // Non-fast moving (Slow, Regular, BulkSpike)
+  if (input.estimatedDaysRemaining <= input.leadTimeLimit) {
     return "yellow";
   }
-
   return "green";
 }
 

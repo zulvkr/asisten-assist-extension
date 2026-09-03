@@ -6,6 +6,7 @@ export interface ShoppingRecommendationSettings {
   defaultLeadTime: number;
   fastMovingMinDailySales: number;
   fastMovingLeadTime: number;
+  fastMovingMinSalesEvents: number;
   targetStockDays: number;
 }
 
@@ -30,11 +31,19 @@ export interface ShoppingCatalogItem {
   sellNormalFee: number | null;
 }
 
+export interface DailySalesRecord {
+  date: string;
+  qty: number;
+  events: number;
+}
+
 export interface ShoppingSalesAggregate {
   itemId: string;
   itemType: ShoppingItemType;
   itemName: string;
   qtySold: number;
+  salesEvents: number;
+  dailySalesMap: Record<string, { qty: number; events: number }>;
   observedUnits: string[];
   firstSoldAt: string | null;
   lastSoldAt: string | null;
@@ -75,6 +84,8 @@ export interface MarkOutstandingOrderItem {
   leadTimeLimit?: number;
 }
 
+export type DemandPatternType = "FastMoving" | "BulkSpike" | "DeadStock" | "Regular";
+
 export interface ShoppingRecommendationRow {
   itemId: string;
   itemType: ShoppingItemType;
@@ -89,6 +100,11 @@ export interface ShoppingRecommendationRow {
   avgHpp: number | null;
   sellNormalFee: number | null;
   qtySold30Days: number;
+  salesEvents: number;
+  eventDailyVelocity: number;
+  trueEventVelocity: number;
+  avgUnitsPerTransaction: number;
+  effectiveDailyVelocity: number;
   activeDays: number;
   averageDailySales: number;
   trueVelocity: number;
@@ -107,6 +123,8 @@ export interface ShoppingRecommendationRow {
   statusColor: RecommendationStatusColor;
   isDormant: boolean;
   isFastMoving: boolean;
+  isBulkSpike: boolean;
+  demandPattern: DemandPatternType;
   needsManualReview: boolean;
   isCappedDemand: boolean;
   isGoldenProduct: boolean;
@@ -117,6 +135,7 @@ export interface ShoppingRecommendationRow {
   observedTransactionUnits: string[];
   notes: string[];
   rop: number;
+  dailySalesTrend: DailySalesRecord[];
 }
 
 export interface ShoppingRecommendationSettingsValidation {
@@ -129,6 +148,7 @@ export const DEFAULT_SHOPPING_RECOMMENDATION_SETTINGS: ShoppingRecommendationSet
     defaultLeadTime: 3,
     fastMovingMinDailySales: 0.1,
     fastMovingLeadTime: 6,
+    fastMovingMinSalesEvents: 3,
     targetStockDays: 30,
   };
 
@@ -140,3 +160,51 @@ export const DEFAULT_SHOPPING_ANALYTICS_THRESHOLDS: ShoppingAnalyticsThresholds 
     deadStockMinDaysRemaining: 60,
     deadStockMaxDailySales: 0.1,
   };
+
+// Supplier Price Comparison DTOs
+export interface SupplierPriceComparisonDto {
+  supplierId: string;
+  supplierName: string;
+  supplierPhone?: string;
+  lowestNetPrice: number;
+  latestNetPrice: number;
+  averageNetPrice: number;
+  lastPurchasedDate: string;
+  totalQuantityPurchased: number;
+  purchaseCount: number;
+  isCheapest: boolean;
+  priceDifferencePercent: number;
+}
+
+export interface ProductPurchaseRecordDto {
+  transactionId: string;
+  invoiceNumber: string;
+  receivedDate: string;
+  supplierId?: string;
+  supplierName: string;
+  batchNumber?: string;
+  expiryDate?: string;
+  quantity: number;
+  unitName?: string;
+  buyPrice: number;
+  netUnitPrice: number;
+  discountPercent?: number;
+  subtotal: number;
+}
+
+export interface ProductPurchaseHistoryResponse {
+  itemId: string;
+  itemName: string;
+  code: string;
+  unitName: string;
+  currentBuyPrice: number | null;
+  lowestNetPrice: number | null;
+  cheapestSupplierName: string | null;
+  latestNetPrice: number | null;
+  latestSupplierName: string | null;
+  averageNetPrice: number | null;
+  totalPurchasedQuantity: number;
+  totalTransactions: number;
+  supplierComparisons: SupplierPriceComparisonDto[];
+  historyRecords: ProductPurchaseRecordDto[];
+}

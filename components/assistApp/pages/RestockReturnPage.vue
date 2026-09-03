@@ -274,16 +274,25 @@
                   borderless
                   input-debounce="300"
                   :options="row.options || []"
+                  :loading="row.loading"
                   label="Cari barang..."
                   color="teal"
                   class="font-weight-medium"
                   @filter="(val, update, abort) => searchItemRow(val, update, abort, row)"
+                  @virtual-scroll="(details) => onScrollRow(details, row)"
                   @update:model-value="(val) => onItemSelectRow(val, row)"
                 >
                   <template v-slot:no-option>
                     <q-item>
                       <q-item-section class="text-grey text-caption">
-                        Ketik nama obat / BHP...
+                        {{ row.loading ? 'Mencari barang...' : 'Tidak ada produk ditemukan' }}
+                      </q-item-section>
+                    </q-item>
+                  </template>
+                  <template v-slot:after-options v-if="row.loadingMore">
+                    <q-item dense>
+                      <q-item-section class="text-center text-caption text-grey-6">
+                        <q-spinner size="16px" color="teal" class="q-mr-xs" /> Memuat lebih banyak...
                       </q-item-section>
                     </q-item>
                   </template>
@@ -1105,6 +1114,48 @@ function onDistributorChange(val: any) {
   }
 }
 
+const PRODUCT_PAGE_SIZE = 20;
+
+// Fetch products from Assist KStockDepots with pagination
+async function fetchProductsFromAssist(searchVal: string, skip: number = 0) {
+  if (!store.assistToken) return [];
+  const where: any = {
+    hospitalId: store.hospitalId,
+    name: "Apotek"
+  };
+  const trimmed = (searchVal || "").trim();
+  if (trimmed) {
+    where.or = [
+      { medName: { like: trimmed, options: "i" } },
+      { itemName: { like: trimmed, options: "i" } },
+      { barcode: trimmed }
+    ];
+  }
+  const filter = {
+    where,
+    include: ["KMedicineStocks", "KAKHPStocks"],
+    limit: PRODUCT_PAGE_SIZE,
+    skip
+  };
+  const url = `${store.apiBaseUrl}/KStockDepots?filter=${encodeURIComponent(JSON.stringify(filter))}`;
+  const res = await fetch(url, { headers: store.getHeaders() });
+  if (!res.ok) throw new Error(`Search failed with status ${res.status}`);
+  const data = await res.json();
+  const list = Array.isArray(data) ? data : [];
+  return list.map((item: any) => {
+    const isBHP = !!item.KAKHPStocks;
+    const catalog = isBHP ? item.KAKHPStocks : item.KMedicineStocks;
+    const name = isBHP ? item.itemName : item.medName;
+    return {
+      label: `${name} (${isBHP ? "BHP" : "Obat"}) - [${catalog?.code || "N/A"}]`,
+      value: item,
+      isBHP,
+      catalog,
+      name
+    };
+  });
+}
+
 // Add empty row
 function addNewRow() {
   formItems.value.push({
@@ -1133,6 +1184,11 @@ function addNewRow() {
     prevPrice: 0,
     recPrice: 0,
     options: [],
+    searchTerm: "",
+    hasMore: true,
+    loading: false,
+    loadingMore: false,
+    _searchSeq: 0,
     itemNotes: "",
     isPendingStock: false,
     isSlotTransacted: true,
@@ -1144,46 +1200,70 @@ function addNewRow() {
 
 // Autocomplete filter inside each row for Medicine & BHP Search
 async function searchItemRow(val: string, update: Function, abort: Function, row: any) {
-  if (val.length < 2) {
-    abort();
-    return;
-  }
+  row.searchTerm = val || "";
+  row.hasMore = true;
+  row.loading = true;
+  row._searchSeq = (row._searchSeq || 0) + 1;
+  const seq = row._searchSeq;
+
   try {
-    const filter = {
-      where: {
-        hospitalId: store.hospitalId,
-        name: "Apotek",
-        or: [
-          { medName: { like: val, options: "i" } },
-          { itemName: { like: val, options: "i" } },
-          { barcode: val }
-        ]
-      },
-      include: ["KMedicineStocks", "KAKHPStocks"],
-      limit: 15
-    };
-    const url = `${store.apiBaseUrl}/KStockDepots?filter=${encodeURIComponent(JSON.stringify(filter))}`;
-    const res = await fetch(url, { headers: store.getHeaders() });
-    if (!res.ok) throw new Error("Search failed");
-    const data = await res.json();
-    
+    const items = await fetchProductsFromAssist(row.searchTerm, 0);
+    if (seq !== row._searchSeq) {
+      return;
+    }
+    if (items.length < PRODUCT_PAGE_SIZE) {
+      row.hasMore = false;
+    }
     update(() => {
-      row.options = data.map((item: any) => {
-        const isBHP = !!item.KAKHPStocks;
-        const catalog = isBHP ? item.KAKHPStocks : item.KMedicineStocks;
-        const name = isBHP ? item.itemName : item.medName;
-        return {
-          label: `${name} (${isBHP ? 'BHP' : 'Obat'}) - [${catalog?.code || 'N/A'}]`,
-          value: item,
-          isBHP,
-          catalog,
-          name
-        };
-      });
+      row.options = items;
+      row.loading = false;
     });
   } catch (err) {
-    console.error(err);
+    console.error("Gagal mencari produk:", err);
+    if (seq === row._searchSeq) {
+      row.loading = false;
+    }
     abort();
+  }
+}
+
+// Virtual scroll handler for infinite scrolling product options
+async function onScrollRow(details: { to: number; ref: any }, row: any) {
+  const lastIndex = (row.options?.length || 0) - 1;
+  if (row.loading || row.loadingMore || !row.hasMore || lastIndex < 0) {
+    return;
+  }
+
+  // When scrolling close to the end of the loaded list
+  if (details.to >= lastIndex - 3) {
+    row.loadingMore = true;
+    const seq = row._searchSeq;
+    try {
+      const nextSkip = row.options.length;
+      const newItems = await fetchProductsFromAssist(row.searchTerm || "", nextSkip);
+      if (seq !== row._searchSeq) {
+        return;
+      }
+      if (newItems.length < PRODUCT_PAGE_SIZE) {
+        row.hasMore = false;
+      }
+      if (newItems.length > 0) {
+        row.options.push(...newItems);
+        if (details.ref && typeof details.ref.refresh === "function") {
+          setTimeout(() => {
+            details.ref.refresh();
+          }, 30);
+        }
+      } else {
+        row.hasMore = false;
+      }
+    } catch (err) {
+      console.error("Gagal memuat produk tambahan:", err);
+    } finally {
+      if (seq === row._searchSeq) {
+        row.loadingMore = false;
+      }
+    }
   }
 }
 
@@ -1318,6 +1398,11 @@ async function saveRestockTransaction(validItems: any[]) {
       delete copy.margin;
       delete copy.prevPrice;
       delete copy.recPrice;
+      delete copy.searchTerm;
+      delete copy.hasMore;
+      delete copy.loading;
+      delete copy.loadingMore;
+      delete copy._searchSeq;
       copy.expiredDate = new Date(copy.expiredDate).toISOString();
       return copy;
     });

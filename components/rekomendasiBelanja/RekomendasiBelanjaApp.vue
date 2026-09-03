@@ -59,6 +59,16 @@
             />
           </div>
           <div class="field">
+            <label for="fastMovingMinSalesEvents">Min transaksi cepat</label>
+            <input
+              id="fastMovingMinSalesEvents"
+              v-model.number="formSettings.fastMovingMinSalesEvents"
+              type="number"
+              min="1"
+              step="1"
+            />
+          </div>
+          <div class="field">
             <label for="targetStockDays">Target hari stok</label>
             <input
               id="targetStockDays"
@@ -395,6 +405,24 @@
                     Abaikan
                   </button>
                 </div>
+                <div class="row-actions" style="margin-top: 6px; display: flex; gap: 4px; align-items: center;">
+                  <button
+                    type="button"
+                    class="btn-row-action"
+                    title="Bandingkan Harga &amp; Supplier Historis"
+                    @click.stop="openPriceHistory(row)"
+                  >
+                    🏷️ Supplier
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-row-action"
+                    title="Lihat Tren Penjualan &amp; Velocity"
+                    @click.stop="selectedInsightItemId = row.itemId"
+                  >
+                    📈 Tren
+                  </button>
+                </div>
               </td>
               <td class="stock-cell">{{ row.stockTotal }} {{ row.unit }}</td>
               <td class="rop-cell">{{ row.rop }} {{ row.unit }}</td>
@@ -514,28 +542,28 @@
         </article>
 
         <article class="insight-card">
-          <h3>Velocity</h3>
+          <h3>Velocity &amp; Frekuensi</h3>
           <div class="metric-pair">
-            <span>Standard</span>
-            <strong
-              >{{
-                formatDailySales(selectedInsightRow.averageDailySales)
-              }}/hari</strong
-            >
+            <span>Vol. Harian</span>
+            <strong>{{ formatDailySales(selectedInsightRow.averageDailySales) }}/hari</strong>
           </div>
           <div class="metric-pair">
-            <span>True velocity</span>
-            <strong
-              >{{
-                formatDailySales(selectedInsightRow.trueVelocity)
-              }}/hari</strong
-            >
+            <span>Frekuensi Order</span>
+            <strong>{{ selectedInsightRow.salesEvents }}x order ({{ formatDailySales(selectedInsightRow.eventDailyVelocity) }}/hari)</strong>
           </div>
           <div class="metric-pair">
-            <span>Growth potential</span>
-            <strong>{{
-              formatPercent(selectedInsightRow.potentialSalesGrowthPercent)
-            }}</strong>
+            <span>Rata-rata/Order</span>
+            <strong>{{ formatDailySales(selectedInsightRow.avgUnitsPerTransaction) }} unit</strong>
+          </div>
+          <div class="metric-pair">
+            <span>True Velocity</span>
+            <strong>{{ formatDailySales(selectedInsightRow.trueVelocity) }}/hari</strong>
+          </div>
+          <div class="metric-pair">
+            <span>Pola Permintaan</span>
+            <strong :style="{ color: selectedInsightRow.isBulkSpike ? '#f59e0b' : selectedInsightRow.isFastMoving ? '#0d9488' : '#64748b' }">
+              {{ selectedInsightRow.demandPattern }}
+            </strong>
           </div>
         </article>
 
@@ -551,27 +579,54 @@
           </div>
           <div class="metric-pair">
             <span>Coverage aktual</span>
-            <strong
-              >{{
-                formatDays(selectedInsightRow.estimatedDaysRemaining)
-              }}
-              hari</strong
-            >
+            <strong>{{ formatDays(selectedInsightRow.estimatedDaysRemaining) }} hari</strong>
           </div>
           <div class="metric-pair">
             <span>Demand constrained</span>
-            <strong
-              >{{
-                formatDays(selectedInsightRow.estimatedDemandConstraintDays)
-              }}
-              hari</strong
-            >
+            <strong>{{ formatDays(selectedInsightRow.estimatedDemandConstraintDays) }} hari</strong>
           </div>
           <div class="meter">
-            <span
-              :style="{ width: `${constraintMeterWidth(selectedInsightRow)}%` }"
-            />
+            <span :style="{ width: `${constraintMeterWidth(selectedInsightRow)}%` }" />
           </div>
+        </article>
+
+        <article class="insight-card full-width-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <h3 style="margin: 0;">📊 Tren Penjualan Harian (30 Hari)</h3>
+            <span style="font-size: 11px; color: #64748b;">
+              {{ selectedInsightRow.salesEvents }}x transaksi • {{ selectedInsightRow.qtySold30Days }} unit terjual
+            </span>
+          </div>
+          <div class="trend-bars-container" style="display: flex; align-items: flex-end; gap: 3px; height: 75px; padding: 6px 0; border-bottom: 1px solid #e2e8f0;">
+            <div
+              v-for="d in selectedInsightRow.dailySalesTrend"
+              :key="d.date"
+              style="flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center;"
+              :title="`${d.date}: ${d.qty} unit (${d.events}x order)`"
+            >
+              <div
+                :style="{
+                  height: `${Math.max(d.qty > 0 ? 15 : 0, Math.min(100, (d.qty / Math.max(1, maxDailyQty(selectedInsightRow))) * 100))}%`,
+                  width: '100%',
+                  background: d.qty > 0 ? '#0d9488' : '#e2e8f0',
+                  borderRadius: '2px 2px 0 0'
+                }"
+              />
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8; margin-top: 4px;">
+            <span>30 hari lalu</span>
+            <span>Hari ini</span>
+          </div>
+          <button
+            type="button"
+            class="primary-btn"
+            style="width: 100%; margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 6px;"
+            @click="openPriceHistory(selectedInsightRow)"
+          >
+            <span>🏷️</span>
+            <span>Bandingkan Harga &amp; Supplier Historis</span>
+          </button>
         </article>
 
         <article class="insight-card">
@@ -701,11 +756,19 @@
         </div>
       </div>
     </section>
+
+    <!-- Product Price History & Supplier Comparison Modal -->
+    <ProductPriceHistoryDialog
+      v-model="showPriceHistoryDialog"
+      :item="selectedPriceHistoryItem"
+      :assist-token="assistToken"
+    />
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import ProductPriceHistoryDialog from "./ProductPriceHistoryDialog.vue";
 import { requestAssistTokenFromOpenTabs } from "@/composables/assistTokenManager";
 import {
   type MarkOutstandingOrderItem,
@@ -743,6 +806,7 @@ interface FiltersState {
 type QuickFilterKey =
   | "all"
   | "fast-moving"
+  | "bulk-spike"
   | "golden-product";
 
 interface EnhancedRecommendationRow extends ShoppingRecommendationRow {
@@ -799,6 +863,7 @@ const DEFAULT_FILTERS: FiltersState = {
 const quickFilterOptions: Array<{ key: QuickFilterKey; label: string }> = [
   { key: "all", label: "📋 Semua" },
   { key: "fast-moving", label: "⚡ Fast Moving" },
+  { key: "bulk-spike", label: "📦 Bulk Spike" },
   { key: "golden-product", label: "⭐ Produk Emas" },
 ];
 
@@ -815,6 +880,20 @@ const copyStatus = ref("");
 const manualSearch = ref("");
 const selectedInsightItemId = ref("");
 const showSettingsPanel = ref(false);
+
+const showPriceHistoryDialog = ref(false);
+const selectedPriceHistoryItem = ref<ShoppingRecommendationRow | null>(null);
+const assistToken = ref("");
+
+function openPriceHistory(row: ShoppingRecommendationRow) {
+  selectedPriceHistoryItem.value = row;
+  showPriceHistoryDialog.value = true;
+}
+
+function maxDailyQty(row: ShoppingRecommendationRow | null): number {
+  if (!row?.dailySalesTrend?.length) return 1;
+  return Math.max(1, ...row.dailySalesTrend.map((d) => d.qty));
+}
 
 const activeSettings = ref<ShoppingRecommendationSettings>(loadStoredSettings());
 const formSettings = ref<ShoppingRecommendationSettings>({
@@ -1031,6 +1110,8 @@ async function loadRecommendations(settings: ShoppingRecommendationSettings) {
         "Token Assist tidak ditemukan. Buka dan login ke clinica.assist.id, lalu coba lagi.",
       );
     }
+
+    assistToken.value = assistTokenResult.token;
 
     const response = (await browser.runtime.sendMessage({
       type: "FETCH_SHOPPING_RECOMMENDATIONS",
@@ -1316,8 +1397,18 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
       key: `${row.itemId}-fast-moving`,
       icon: "⚡",
       label: "Fast Moving",
-      tooltip: `Produk fast moving (penjualan ${formatDailySales(row.averageDailySales)}/hari >= ${activeSettings.value.fastMovingMinDailySales}/hari).`,
+      tooltip: `Produk cepat laku (${formatDailySales(row.averageDailySales)}/hari, ${row.salesEvents}x transaksi).`,
       tone: "fast",
+    });
+  }
+
+  if (row.isBulkSpike) {
+    indicators.push({
+      key: `${row.itemId}-bulk-spike`,
+      icon: "📦",
+      label: "Bulk Spike",
+      tooltip: `Lonjakan borongan (${row.qtySold30Days} unit dalam ${row.salesEvents}x order). Kecepatan belanja diredam agar modal aman.`,
+      tone: "review",
     });
   }
 
@@ -1348,6 +1439,8 @@ function matchesQuickFilter(row: EnhancedRecommendationRow): boolean {
   switch (filters.quickFilter) {
     case "fast-moving":
       return row.isFastMoving;
+    case "bulk-spike":
+      return row.isBulkSpike;
     case "golden-product":
       return row.isGoldenProduct;
     case "all":
@@ -1505,4 +1598,21 @@ function escapeCsvValue(value: string): string {
 
 <style>
 /* Style loaded from styles.css */
+.btn-row-action {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-row-action:hover {
+  background: #0d9488;
+  border-color: #0d9488;
+  color: #ffffff;
+}
 </style>

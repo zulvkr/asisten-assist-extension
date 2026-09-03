@@ -70,6 +70,16 @@
           </div>
           <div class="col-12 col-sm-6 col-md-3">
             <q-input
+              v-model.number="formSettings.fastMovingMinSalesEvents"
+              type="number"
+              outlined
+              dense
+              label="Min transaksi cepat"
+              color="teal"
+            />
+          </div>
+          <div class="col-12 col-sm-6 col-md-3">
+            <q-input
               v-model.number="formSettings.targetStockDays"
               type="number"
               outlined
@@ -334,6 +344,32 @@
                   {{ ind.icon }} {{ ind.label }}
                 </q-badge>
               </div>
+              <div class="row q-gutter-xs q-mt-xs items-center">
+                <q-btn
+                  size="xs"
+                  dense
+                  flat
+                  color="teal"
+                  class="bg-teal-1 q-px-xs"
+                  icon="local_offer"
+                  label="Supplier"
+                  @click.stop="openPriceHistory(props.row)"
+                >
+                  <q-tooltip>Bandingkan Harga &amp; Supplier Historis</q-tooltip>
+                </q-btn>
+                <q-btn
+                  size="xs"
+                  dense
+                  flat
+                  color="blue"
+                  class="bg-blue-1 q-px-xs"
+                  icon="show_chart"
+                  label="Tren"
+                  @click.stop="openDrawerFor(props.row)"
+                >
+                  <q-tooltip>Lihat Tren Penjualan 30 Hari &amp; Detail Velocity</q-tooltip>
+                </q-btn>
+              </div>
             </q-td>
           </template>
 
@@ -477,8 +513,56 @@
 
           <q-separator class="q-my-sm" />
 
+          <q-separator class="q-my-sm" />
+
+          <!-- Dual Velocity Breakdown -->
+          <div class="row q-col-gutter-sm q-mb-md">
+            <div class="col-6">
+              <div class="text-caption text-grey">Frekuensi Transaksi</div>
+              <div class="text-body2 text-weight-bold">{{ selectedInsightRow.salesEvents }}x order ({{ formatDailySales(selectedInsightRow.eventDailyVelocity) }}/hari)</div>
+              <div class="text-caption text-grey">Rata-rata: {{ formatDailySales(selectedInsightRow.avgUnitsPerTransaction) }} unit/order</div>
+            </div>
+            <div class="col-6">
+              <div class="text-caption text-grey">Pola Permintaan</div>
+              <div class="text-body2 text-weight-bold" :class="selectedInsightRow.isBulkSpike ? 'text-orange-9' : selectedInsightRow.isFastMoving ? 'text-teal-9' : 'text-grey-8'">
+                {{ selectedInsightRow.demandPattern }}
+              </div>
+              <div class="text-caption text-grey">True Velocity: {{ formatDailySales(selectedInsightRow.trueVelocity) }}/hari</div>
+            </div>
+          </div>
+
+          <!-- 30 Days Sales Trend Sparkline/Bar -->
+          <div class="q-mt-sm q-pa-sm bg-grey-1 rounded">
+            <div class="row items-center justify-between text-caption text-weight-bold text-grey-8 q-mb-xs">
+              <span>📊 Tren Penjualan 30 Hari</span>
+              <span class="text-caption text-grey">{{ selectedInsightRow.salesEvents }}x order • {{ selectedInsightRow.qtySold30Days }} unit</span>
+            </div>
+            <div class="row items-end no-wrap" style="height: 60px; padding: 4px 0; border-bottom: 1px solid #e0e0e0;">
+              <div
+                v-for="d in selectedInsightRow.dailySalesTrend"
+                :key="d.date"
+                class="col"
+                style="height: 100%; display: flex; align-items: flex-end; justify-content: center; padding: 0 1px;"
+                :title="`${d.date}: ${d.qty} unit (${d.events}x order)`"
+              >
+                <div
+                  :style="{
+                    height: `${Math.max(d.qty > 0 ? 15 : 0, Math.min(100, (d.qty / Math.max(1, maxDailyQty(selectedInsightRow))) * 100))}%`,
+                    width: '100%',
+                    background: d.qty > 0 ? '#009688' : '#e0e0e0',
+                    borderRadius: '2px 2px 0 0'
+                  }"
+                />
+              </div>
+            </div>
+            <div class="row justify-between text-caption text-grey-6 q-mt-xs" style="font-size: 10px;">
+              <span>30 hari lalu</span>
+              <span>Hari ini</span>
+            </div>
+          </div>
+
           <!-- Calculation formulas explanation -->
-          <div class="bg-grey-1 q-pa-md rounded q-mt-sm">
+          <div class="bg-grey-1 q-pa-md rounded q-mt-md">
             <div class="text-subtitle2 text-weight-bold q-mb-xs">Formula & Perhitungan:</div>
             <ul class="q-pl-md q-my-none text-caption text-grey-8">
               <li>Lead Time: <strong>{{ selectedInsightRow.leadTimeLimit }} hari</strong> {{ selectedInsightRow.isFastMoving ? '(Fast Moving)' : '(Reguler)' }}</li>
@@ -489,23 +573,40 @@
           </div>
         </q-card-section>
 
-        <q-card-actions align="right" class="q-pa-md bg-grey-1 border-top">
-          <q-btn flat color="grey" label="Tutup" v-close-popup />
+        <q-card-actions align="between" class="q-pa-md bg-grey-1 border-top">
           <q-btn
+            outline
             color="teal"
-            :icon="selectedInsightRow.pendingOrderQty > 0 ? 'check_circle' : 'add_shopping_cart'"
-            :label="selectedInsightRow.pendingOrderQty > 0 ? 'Hapus dari Draf' : 'Tambahkan ke Draf'"
-            @click="togglePendingOrder(selectedInsightRow); isInsightDialogOpen = false"
+            icon="local_offer"
+            label="Bandingkan Supplier"
+            @click="openPriceHistory(selectedInsightRow); isInsightDialogOpen = false"
           />
+          <div class="row q-gutter-sm">
+            <q-btn flat color="grey" label="Tutup" v-close-popup />
+            <q-btn
+              color="teal"
+              :icon="selectedInsightRow.pendingOrderQty > 0 ? 'check_circle' : 'add_shopping_cart'"
+              :label="selectedInsightRow.pendingOrderQty > 0 ? 'Hapus dari Draf' : 'Tambahkan ke Draf'"
+              @click="togglePendingOrder(selectedInsightRow); isInsightDialogOpen = false"
+            />
+          </div>
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Product Price History & Supplier Comparison Modal -->
+    <ProductPriceHistoryDialog
+      v-model="showPriceHistoryDialog"
+      :item="selectedPriceHistoryItem"
+      :assist-token="assistToken"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
+import ProductPriceHistoryDialog from "@/components/rekomendasiBelanja/ProductPriceHistoryDialog.vue";
 import { useAssistStore } from "../stores/assistStore";
 import { requestAssistTokenFromOpenTabs } from "@/composables/assistTokenManager";
 import {
@@ -543,6 +644,7 @@ interface FiltersState {
 type QuickFilterKey =
   | "all"
   | "fast-moving"
+  | "bulk-spike"
   | "golden-product";
 
 interface EnhancedRecommendationRow extends ShoppingRecommendationRow {
@@ -599,6 +701,7 @@ const DEFAULT_FILTERS: FiltersState = {
 const quickFilterOptions: Array<{ key: QuickFilterKey; label: string }> = [
   { key: "all", label: "📋 Semua" },
   { key: "fast-moving", label: "⚡ Fast Moving" },
+  { key: "bulk-spike", label: "📦 Bulk Spike" },
   { key: "golden-product", label: "⭐ Produk Emas" },
 ];
 
@@ -616,6 +719,25 @@ const manualSearch = ref("");
 const selectedInsightItemId = ref("");
 const isInsightDialogOpen = ref(false);
 const showSettingsPanel = ref(false);
+
+const showPriceHistoryDialog = ref(false);
+const selectedPriceHistoryItem = ref<ShoppingRecommendationRow | null>(null);
+const assistToken = ref("");
+
+function openPriceHistory(row: ShoppingRecommendationRow) {
+  selectedPriceHistoryItem.value = row;
+  showPriceHistoryDialog.value = true;
+}
+
+function openDrawerFor(row: ShoppingRecommendationRow) {
+  selectedInsightItemId.value = row.itemId;
+  isInsightDialogOpen.value = true;
+}
+
+function maxDailyQty(row: ShoppingRecommendationRow | null): number {
+  if (!row?.dailySalesTrend?.length) return 1;
+  return Math.max(1, ...row.dailySalesTrend.map((d) => d.qty));
+}
 
 const activeSettings = ref<ShoppingRecommendationSettings>(loadStoredSettings());
 const formSettings = ref<ShoppingRecommendationSettings>({
@@ -820,6 +942,8 @@ async function loadRecommendations(settings: ShoppingRecommendationSettings) {
     loading.value = false;
     return;
   }
+
+  assistToken.value = token;
 
   try {
     const response = (await browser.runtime.sendMessage({
@@ -1110,8 +1234,18 @@ function getRowIndicators(row: EnhancedRecommendationRow): ItemIndicator[] {
       key: `${row.itemId}-fast-moving`,
       icon: "⚡",
       label: "Fast Moving",
-      tooltip: `Produk fast moving (penjualan ${formatDailySales(row.averageDailySales)}/hari >= ${activeSettings.value.fastMovingMinDailySales}/hari).`,
+      tooltip: `Produk cepat laku (${formatDailySales(row.averageDailySales)}/hari, ${row.salesEvents}x transaksi).`,
       tone: "fast",
+    });
+  }
+
+  if (row.isBulkSpike) {
+    indicators.push({
+      key: `${row.itemId}-bulk-spike`,
+      icon: "📦",
+      label: "Bulk Spike",
+      tooltip: `Lonjakan borongan (${row.qtySold30Days} unit dalam ${row.salesEvents}x order). Kecepatan belanja diredam agar modal aman.`,
+      tone: "review",
     });
   }
 
@@ -1142,6 +1276,8 @@ function matchesQuickFilter(row: EnhancedRecommendationRow): boolean {
   switch (filters.quickFilter) {
     case "fast-moving":
       return row.isFastMoving;
+    case "bulk-spike":
+      return row.isBulkSpike;
     case "golden-product":
       return row.isGoldenProduct;
     case "all":
