@@ -2,7 +2,7 @@
   "name": "asisten-assist",
   "description": "Ekstensi asisten",
   "private": true,
-  "version": "1.1.18",
+  "version": "1.1.21",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -11,6 +11,9 @@
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
+    "bump": "powershell -ExecutionPolicy Bypass -File ./scripts/bump-and-zip.ps1",
+    "bump:minor": "powershell -ExecutionPolicy Bypass -File ./scripts/bump-and-zip.ps1 minor",
+    "bump:major": "powershell -ExecutionPolicy Bypass -File ./scripts/bump-and-zip.ps1 major",
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "postinstall": "wxt prepare"

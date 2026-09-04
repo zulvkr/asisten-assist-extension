@@ -122,7 +122,8 @@
                         <div class="col-12 col-sm-6">
                           <strong>Apotek:</strong>
                           <span v-if="detail.apotek.cash > 0" class="q-ml-xs">Cash ({{ formatRupiah(detail.apotek.cash) }})</span>
-                          <span v-if="detail.apotek.debit > 0" class="q-ml-xs">Debit ({{ formatRupiah(detail.apotek.debit) }})</span>
+                          <span v-if="detail.apotek.mandiri > 0" class="q-ml-xs">Mandiri ({{ formatRupiah(detail.apotek.mandiri) }})</span>
+                          <span v-if="detail.apotek.qris > 0" class="q-ml-xs">QRIS ({{ formatRupiah(detail.apotek.qris) }})</span>
                           <span v-if="detail.apotek.shopee > 0" class="q-ml-xs">Shopee ({{ formatRupiah(detail.apotek.shopee) }})</span>
                           <span v-if="detail.apotek.tiktok > 0" class="q-ml-xs">TikTok ({{ formatRupiah(detail.apotek.tiktok) }})</span>
                           <span v-if="detail.apotek.blibli > 0" class="q-ml-xs">Blibli ({{ formatRupiah(detail.apotek.blibli) }})</span>
@@ -207,7 +208,8 @@ const columns = [
   { name: "displayDate", label: "Tanggal", align: "left", field: "displayDate", sortable: true },
   { name: "shift", label: "Shift", align: "left", field: "shift", sortable: true },
   { name: "apotekCash", label: "Apotek Cash", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.apotek.cash), sortable: true },
-  { name: "apotekDebit", label: "Apotek Debit", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.apotek.debit), sortable: true },
+  { name: "apotekMandiri", label: "Apotek Mandiri", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.apotek.mandiri), sortable: true },
+  { name: "apotekQris", label: "Apotek QRIS", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.apotek.qris), sortable: true },
   { name: "apotekShopee", label: "Shopee", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.apotek.shopee), sortable: true },
   { name: "apotekTiktok", label: "TikTok", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.apotek.tiktok), sortable: true },
   { name: "apotekBlibli", label: "Blibli", align: "right", field: (row: ShiftSummaryRow) => formatRupiah(row.apotek.blibli), sortable: true },
@@ -328,7 +330,8 @@ async function exportToExcel() {
       "Tanggal",
       "Shift",
       "Cash Apotek",
-      "Debit Apotek",
+      "Mandiri Apotek",
+      "QRIS Apotek",
       "Shopee",
       "TikTok",
       "Blibli",
@@ -343,7 +346,8 @@ async function exportToExcel() {
       summary.displayDate,
       summary.shift,
       summary.apotek.cash,
-      summary.apotek.debit,
+      summary.apotek.mandiri,
+      summary.apotek.qris,
       summary.apotek.shopee,
       summary.apotek.tiktok,
       summary.apotek.blibli,
@@ -358,6 +362,8 @@ async function exportToExcel() {
     (summaryWS as any)["!cols"] = [
       { wch: 12 },
       { wch: 10 },
+      { wch: 14 },
+      { wch: 14 },
       { wch: 14 },
       { wch: 14 },
       { wch: 14 },

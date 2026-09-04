@@ -10,11 +10,13 @@ const SHIFT_ORDER = SHIFT_CONFIG.map((config) => config.label);
 
 type ShiftLabel = (typeof SHIFT_CONFIG)[number]["label"];
 
-type PaymentCategory = "cash" | "debit";
+type PaymentCategory = "cash" | "mandiri" | "qris";
 type MarketplaceCategory = "shopee" | "tiktok" | "blibli" | "goApotik";
 
 interface SectionTotals {
   cash: number;
+  mandiri: number;
+  qris: number;
   debit: number;
   total: number;
   shopee: number;
@@ -86,6 +88,8 @@ function getShiftLabel(date: Date): ShiftLabel | null {
 function createEmptyTotals(): SectionTotals {
   return {
     cash: 0,
+    mandiri: 0,
+    qris: 0,
     debit: 0,
     total: 0,
     shopee: 0,
@@ -95,12 +99,23 @@ function createEmptyTotals(): SectionTotals {
   };
 }
 
-function normalisePaymentCategory(payment: Payment): PaymentCategory {
+function normalisePaymentCategory(
+  payment: Payment | undefined,
+): PaymentCategory {
+  if (!payment) {
+    return "cash";
+  }
   const raw = `${payment.type ?? ""} ${payment.name ?? ""} ${
     payment.intent ?? ""
-  }`;
+  } ${payment.reason ?? ""}`;
   const normalised = raw.toLowerCase();
+
+  if (normalised.includes("qris")) {
+    return "qris";
+  }
+
   if (
+    normalised.includes("mandiri") ||
     normalised.includes("debit") ||
     normalised.includes("transfer") ||
     normalised.includes("kartu") ||
@@ -110,10 +125,11 @@ function normalisePaymentCategory(payment: Payment): PaymentCategory {
     normalised.includes("perusahaan") ||
     normalised.includes("bank") ||
     normalised.includes("kredit") ||
-    normalised.includes("qris")
+    normalised.includes("edc")
   ) {
-    return "debit";
+    return "mandiri";
   }
+
   return "cash";
 }
 
@@ -148,6 +164,8 @@ function getMarketplaceCategory(
 
 function addSectionTotals(target: SectionTotals, addition: SectionTotals) {
   target.cash += addition.cash;
+  target.mandiri += addition.mandiri;
+  target.qris += addition.qris;
   target.debit += addition.debit;
   target.total += addition.total;
   target.shopee += addition.shopee;
@@ -259,7 +277,11 @@ function calculateTransactionTotals(
         detailTotals.apotek[marketplaceCategory] += amount;
       } else if (paymentCategory === "cash") {
         detailTotals.apotek.cash += amount;
+      } else if (paymentCategory === "qris") {
+        detailTotals.apotek.qris += amount;
+        detailTotals.apotek.debit += amount;
       } else {
+        detailTotals.apotek.mandiri += amount;
         detailTotals.apotek.debit += amount;
       }
     } else if (incomeType === "klinik") {
@@ -267,13 +289,19 @@ function calculateTransactionTotals(
         detailTotals.klinik.cash += amount;
       } else {
         detailTotals.klinik.debit += amount;
+        if (paymentCategory === "qris") {
+          detailTotals.klinik.qris += amount;
+        } else {
+          detailTotals.klinik.mandiri += amount;
+        }
       }
     }
   }
 
   detailTotals.apotek.total =
     detailTotals.apotek.cash +
-    detailTotals.apotek.debit +
+    detailTotals.apotek.mandiri +
+    detailTotals.apotek.qris +
     detailTotals.apotek.shopee +
     detailTotals.apotek.tiktok +
     detailTotals.apotek.blibli +
