@@ -9,8 +9,13 @@ export interface DestyStockBreakdown {
 
 export interface DestyOmniStockItem {
   sku: string;
+  skuId?: string;
+  warehouseId?: string;
   stock: number | null;
   breakdown: DestyStockBreakdown;
+  fisik?: number | null;
+  tersedia?: number | null;
+  pesanan?: number | null;
   productName?: string;
   raw?: unknown;
 }
@@ -23,6 +28,15 @@ export interface FetchDestyOmniStockParams {
   skus?: string[];
   /** Ignored; kept for backward compat. Base URL is always DESTY_API_BASE */
   endpoint?: string;
+}
+
+export interface EditDestyOnHandParams {
+  token: string;
+  tenantId?: string;
+  skuId: string;
+  warehouseId?: string;
+  amount: number;
+  editType?: "Set" | "Add";
 }
 
 export function buildDestyStockBySku(
@@ -80,38 +94,75 @@ function sumWarehouseOnHand(
 
 function mapOmniInventoryRecord(
   record: Record<string, unknown>,
+  targetWarehouseId?: string,
 ): DestyOmniStockItem | null {
   const sku = String(record.masterSku ?? "").trim();
   if (!sku) {
     return null;
   }
 
-  const available = toNullableNumber(record.available);
-  const onHand = toNullableNumber(record.onHand);
-  const reserved = toNullableNumber(record.reserved);
+  const skuId = record.skuId !== undefined && record.skuId !== null
+    ? String(record.skuId)
+    : (record.id !== undefined && record.id !== null ? String(record.id) : undefined);
+
+  let specificWh: Record<string, unknown> | undefined;
+  if (targetWarehouseId && Array.isArray(record.warehouseStocks)) {
+    specificWh = (record.warehouseStocks as Array<Record<string, unknown>>).find(
+      (ws) => String(ws.warehouseId || "") === targetWarehouseId,
+    );
+  }
+
+  const available = specificWh?.available !== undefined && specificWh.available !== null
+    ? Number(specificWh.available)
+    : (record.available !== undefined ? toNullableNumber(record.available) : null);
+
+  const onHand = specificWh?.onHand !== undefined && specificWh.onHand !== null
+    ? Number(specificWh.onHand)
+    : (record.onHand !== undefined ? toNullableNumber(record.onHand) : null);
+
+  const reserved = specificWh?.reserved !== undefined && specificWh.reserved !== null
+    ? Number(specificWh.reserved)
+    : (record.reserved !== undefined ? toNullableNumber(record.reserved) : null);
+
   const warehouseStocks = Array.isArray(record.warehouseStocks)
     ? sumWarehouseOnHand(
         record.warehouseStocks as Array<Record<string, unknown>>,
       )
     : null;
 
+  let warehouseId = targetWarehouseId || (specificWh?.warehouseId ? String(specificWh.warehouseId) : undefined);
+  if (!warehouseId) {
+    warehouseId = record.warehouseId !== undefined && record.warehouseId !== null
+      ? String(record.warehouseId)
+      : undefined;
+  }
+  if (!warehouseId && Array.isArray(record.warehouseStocks) && record.warehouseStocks.length > 0) {
+    const firstWh = record.warehouseStocks[0] as Record<string, unknown>;
+    warehouseId = String(firstWh?.warehouseId || "");
+  }
+
   const stock = available ?? onHand ?? warehouseStocks;
   const fisik = onHand ?? warehouseStocks;
 
   return {
     sku,
+    skuId,
+    warehouseId: warehouseId ? String(warehouseId) : "2042620805094077644",
     stock,
     breakdown: {
       fisik,
       tersedia: available,
       pesanan: reserved,
     },
+    fisik,
+    tersedia: available,
+    pesanan: reserved,
     productName: String(record.productName ?? "").trim() || undefined,
     raw: record,
   };
 }
 
-function adaptOmniInventoryListResponse(payload: unknown): {
+function adaptOmniInventoryListResponse(payload: unknown, targetWarehouseId?: string): {
   items: DestyOmniStockItem[];
   pages: number;
 } {
@@ -139,7 +190,7 @@ function adaptOmniInventoryListResponse(payload: unknown): {
       if (!record || typeof record !== "object") {
         return null;
       }
-      return mapOmniInventoryRecord(record as Record<string, unknown>);
+      return mapOmniInventoryRecord(record as Record<string, unknown>, targetWarehouseId);
     })
     .filter((item): item is DestyOmniStockItem => item !== null);
 
@@ -222,7 +273,7 @@ async function fetchInventoryPage(params: {
   }
 
   const payload = (await response.json()) as unknown;
-  return adaptOmniInventoryListResponse(payload);
+  return adaptOmniInventoryListResponse(payload, params.masterWarehouseId);
 }
 
 /** Fetch all product stock via paginated GET /api/inventory-center/master-sku/list */
@@ -291,6 +342,9 @@ async function fetchStockBySkus(
             tersedia: null,
             pesanan: null,
           },
+          fisik: null,
+          tersedia: null,
+          pesanan: null,
         },
       );
     } catch {
@@ -303,6 +357,9 @@ async function fetchStockBySkus(
           tersedia: null,
           pesanan: null,
         },
+        fisik: null,
+        tersedia: null,
+        pesanan: null,
       });
     }
   }
@@ -325,4 +382,57 @@ export async function fetchDestyOmniStock(
   }
 
   return fetchAllProductStock(token, masterWarehouseId, tenantId);
+}
+
+/** Update / edit on-hand (physical) stock in Desty Omni */
+export async function editDestyOnHand(
+  params: EditDestyOnHandParams,
+): Promise<any> {
+  const token = params.token.trim();
+  if (!token) {
+    throw new Error("Token Desty kosong. Tidak dapat mengubah stok Desty.");
+  }
+  if (!params.skuId) {
+    throw new Error("skuId Desty diperlukan untuk mengubah stok.");
+  }
+  if (params.amount === undefined || params.amount === null || Number.isNaN(Number(params.amount))) {
+    throw new Error("Jumlah (amount) stok tidak valid.");
+  }
+
+  const url = `${DESTY_API_BASE}/api/inventory-center/master-sku/on-hand/edit`;
+  const body = {
+    amount: params.amount,
+    editType: params.editType || "Add",
+    skuId: params.skuId,
+    warehouseId: params.warehouseId || "2042620805094077644",
+  };
+
+  const headers = {
+    ...buildDestyHeaders(token, params.tenantId),
+    "Content-Type": "application/json",
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gagal mengubah stok fisik Desty (${response.status})`);
+  }
+
+  const payload = (await response.json()) as any;
+  if (payload?.code !== 0 || payload?.success === false) {
+    const errorMsg = payload?.msg || payload?.engMsg || "Gagal mengubah stok fisik di Desty";
+    throw new Error(errorMsg);
+  }
+
+  const data = payload?.data;
+  if (data && data.errorCount > 0 && Array.isArray(data.errorMessages) && data.errorMessages.length > 0) {
+    throw new Error(data.errorMessages.join(", "));
+  }
+
+  return data;
 }

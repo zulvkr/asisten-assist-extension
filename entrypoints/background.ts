@@ -4,6 +4,7 @@ import {
   buildDestyStockDetailBySku,
   buildDestyStockBySku,
   fetchDestyOmniStock,
+  editDestyOnHand,
 } from "@/composables/destyOmniStockApi";
 import { resolveDestyToken } from "@/composables/destyOmniTokenManager";
 import { fetchAllDestyOrders } from "@/composables/destyOmniOrderApi";
@@ -1033,6 +1034,34 @@ export default defineBackground(() => {
           if (!token) throw new Error("Token Desty tidak tersedia.");
           const items = await fetchDestyOmniStock({ token, tenantId, masterWarehouseId, skus });
           sendResponse({ ok: true, items });
+        } catch (err) {
+          sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      })();
+      return true;
+    }
+
+    if (message.type === "UPDATE_DESTY_ON_HAND") {
+      (async () => {
+        try {
+          const { token, tenantId, skuId, warehouseId, amount, editType } = message.payload || {};
+          if (!token) throw new Error("Token Desty tidak tersedia.");
+          if (!skuId) throw new Error("skuId Desty diperlukan untuk mengubah stok.");
+          if (amount === undefined || amount === null || Number.isNaN(Number(amount))) {
+            throw new Error("Jumlah (amount) stok tidak valid.");
+          }
+
+          const targetWarehouse = warehouseId ? String(warehouseId) : "2042620805094077644";
+          const result = await editDestyOnHand({
+            token,
+            tenantId,
+            skuId: String(skuId),
+            warehouseId: targetWarehouse,
+            amount: Number(amount),
+            editType: editType === "Set" ? "Set" : "Add",
+          });
+
+          sendResponse({ ok: true, data: result });
         } catch (err) {
           sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) });
         }

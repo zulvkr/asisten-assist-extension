@@ -103,7 +103,8 @@
           Sinkronisasi Penjualan Desty → Assist
         </div>
         <q-tabs v-model="syncTab" dense active-color="teal" indicator-color="teal" align="left">
-          <q-tab name="import" label="Impor Pesanan" />
+          <q-tab name="import" label="Impor Pesanan (Online)" />
+          <q-tab name="offline_sync" label="SO Stok Offline (Assist → Desty)" />
           <q-tab v-if="store.developerMode" name="mapping" label="Pemetaan/Override SKU" />
           <q-tab name="log" label="Log Impor" />
         </q-tabs>
@@ -136,6 +137,17 @@
                 <q-btn color="positive" label="Impor ke Assist" :disable="!selectedOrder || !store.assistAccountTxId" :loading="syncBusy" @click="importSelectedOrder" />
               </div>
               <div class="col-auto">
+                <q-btn
+                  color="positive"
+                  :label="selectedOrdersCount > 0 ? `Impor Terpilih (${selectedOrdersCount})` : 'Impor Terpilih'"
+                  :disable="!selectedOrdersCount || !store.assistAccountTxId"
+                  :loading="syncBusy"
+                  @click="importSelectedCheckedOrders"
+                >
+                  <q-tooltip v-if="!selectedOrdersCount">Pilih pesanan pada tabel dengan mencentang checkbox</q-tooltip>
+                </q-btn>
+              </div>
+              <div class="col-auto">
                 <q-btn color="positive" outline label="Impor Semua Valid" :disable="!orders.length || !store.assistAccountTxId" :loading="syncBusy" @click="bulkImportOrders" />
               </div>
             </div>
@@ -162,6 +174,296 @@
               label="Preview payload (dry-run)"
               :input-style="{ fontFamily: 'monospace', fontSize: '11px' }"
             />
+          </q-tab-panel>
+
+          <!-- Offline Sales to Desty Stock Reduction Panel -->
+          <q-tab-panel name="offline_sync" class="q-px-none">
+            <!-- Filter Bar -->
+            <div class="row q-col-gutter-md items-center q-mb-md">
+              <div class="col-12 col-md-3">
+                <q-input
+                  v-model="offlineStartDate"
+                  type="date"
+                  outlined
+                  dense
+                  label="Mulai Tanggal"
+                  color="teal"
+                  stack-label
+                />
+              </div>
+              <div class="col-12 col-md-3">
+                <q-input
+                  v-model="offlineEndDate"
+                  type="date"
+                  outlined
+                  dense
+                  label="Akhir Tanggal"
+                  color="teal"
+                  stack-label
+                />
+              </div>
+              <div class="col-12 col-md-3 flex items-center">
+                <q-checkbox
+                  v-model="offlineExcludeOnline"
+                  label="Hanya Offline POS (Exclude Marketplace)"
+                  color="teal"
+                >
+                  <q-tooltip>Mengecualikan transaksi dengan tanda pembayaran Marketplace / Desty</q-tooltip>
+                </q-checkbox>
+              </div>
+              <div class="col-12 col-md-3 row q-gutter-sm justify-end">
+                <q-btn
+                  color="teal"
+                  icon="download"
+                  label="Tarik Penjualan Offline"
+                  :loading="isFetchingOfflineSales"
+                  @click="fetchOfflineSales"
+                />
+                <q-btn
+                  outline
+                  color="teal"
+                  icon="sync"
+                  label="Tarik Stok Desty"
+                  :loading="isLoadingLiveDestyStockForOffline"
+                  :disabled="!destyToken || !offlineSoldItems.length"
+                  @click="fetchLiveDestyStockForOffline()"
+                >
+                  <q-tooltip>Muat ulang tingkat stok live dari Desty Omni</q-tooltip>
+                </q-btn>
+              </div>
+            </div>
+
+            <!-- Summary Metrics -->
+            <div v-if="offlineReductionItems.length > 0" class="row q-col-gutter-sm q-mb-md">
+              <div class="col">
+                <q-card flat bordered class="bg-grey-1 text-center q-pa-sm">
+                  <div class="text-caption text-grey-7">Total Item Terjual</div>
+                  <div class="text-h6 text-weight-bold text-teal">{{ offlineSummaryStats.total }}</div>
+                </q-card>
+              </div>
+              <div class="col">
+                <q-card flat bordered class="bg-green-1 text-center q-pa-sm">
+                  <div class="text-caption text-green-9">Siap Dikurangi</div>
+                  <div class="text-h6 text-weight-bold text-positive">{{ offlineSummaryStats.ready }}</div>
+                </q-card>
+              </div>
+              <div class="col">
+                <q-card flat bordered class="bg-amber-1 text-center q-pa-sm">
+                  <div class="text-caption text-amber-10">Peringatan Stok</div>
+                  <div class="text-h6 text-weight-bold text-amber-9">{{ offlineSummaryStats.warning }}</div>
+                </q-card>
+              </div>
+              <div class="col">
+                <q-card flat bordered class="bg-red-1 text-center q-pa-sm">
+                  <div class="text-caption text-red-9">Belum Dipetakan</div>
+                  <div class="text-h6 text-weight-bold text-negative">{{ offlineSummaryStats.unmapped }}</div>
+                </q-card>
+              </div>
+              <div class="col">
+                <q-card flat bordered class="bg-purple-1 text-center q-pa-sm">
+                  <div class="text-caption text-purple-9">Sudah Terkoreksi</div>
+                  <div class="text-h6 text-weight-bold text-purple-8">{{ offlineSummaryStats.synced }}</div>
+                </q-card>
+              </div>
+            </div>
+
+            <!-- Filter Controls & Action Button -->
+            <div v-if="offlineReductionItems.length > 0" class="row q-col-gutter-sm items-center justify-between q-mb-md">
+              <div class="col-12 col-md-4">
+                <q-input
+                  v-model="offlineSearchQuery"
+                  outlined
+                  dense
+                  placeholder="Cari SKU lokal, SKU Desty, nama obat..."
+                  color="teal"
+                  clearable
+                >
+                  <template v-slot:prepend><q-icon name="search" /></template>
+                </q-input>
+              </div>
+              <div class="col-12 col-md-4">
+                <q-select
+                  v-model="offlineStatusFilter"
+                  :options="[
+                    { label: 'Semua Status', value: 'all' },
+                    { label: 'Siap Dikurangi', value: 'ready' },
+                    { label: 'Peringatan Stok / Minus', value: 'warning' },
+                    { label: 'Belum Dipetakan / SKU Hilang', value: 'unmapped' },
+                    { label: 'Sudah Terkoreksi', value: 'synced' },
+                  ]"
+                  emit-value
+                  map-options
+                  outlined
+                  dense
+                  color="teal"
+                  label="Filter Status"
+                />
+              </div>
+              <div class="col-12 col-md-4 text-right">
+                <q-btn
+                  color="positive"
+                  icon="sync"
+                  :label="`Koreksi ke Desty (${offlineCheckedItems.length} dipilih)`"
+                  :disabled="offlineCheckedItems.length === 0 || !destyToken || isSyncingOfflineStock"
+                  :loading="isSyncingOfflineStock"
+                  @click="openOfflineConfirmDialog"
+                >
+                  <q-tooltip v-if="!destyToken">Token Desty tidak aktif. Pastikan omni.desty.app terbuka.</q-tooltip>
+                </q-btn>
+              </div>
+            </div>
+
+            <!-- Offline Reduction Table -->
+            <div v-if="offlineReductionItems.length > 0" class="q-table__container q-table--bordered bg-white rounded-borders">
+              <div class="q-table__middle scroll" style="max-height: 520px;">
+                <table class="q-table q-table--dense">
+                  <thead>
+                    <tr>
+                      <th style="width: 48px;" class="text-center">
+                        <q-checkbox
+                          :model-value="isAllOfflineChecked"
+                          @update:model-value="toggleSelectAllOffline"
+                          color="teal"
+                          dense
+                        />
+                      </th>
+                      <th class="text-left">Produk Assist (POS)</th>
+                      <th class="text-center">Terjual Offline</th>
+                      <th class="text-center">Stok Assist Saat Ini</th>
+                      <th class="text-left">Pemetaan SKU Desty</th>
+                      <th class="text-center">Stok Desty Live</th>
+                      <th class="text-left" style="min-width: 200px;">Pengurangan Stok (-)</th>
+                      <th class="text-center">Status Validasi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in filteredOfflineReductionItems" :key="item.rowKey">
+                      <td class="text-center">
+                        <q-checkbox
+                          :model-value="item.checked"
+                          @update:model-value="(val) => updateOfflineRowChecked(item.rowKey, val)"
+                          :disable="!item.destySkuId || item.status === 'synced'"
+                          color="teal"
+                          dense
+                        />
+                      </td>
+                      <td>
+                        <div class="text-weight-bold text-slate-900">{{ item.assistItemName }}</div>
+                        <div class="text-caption font-mono text-grey-7">
+                          Kode: {{ item.assistCode || item.assistItemId || "-" }}
+                          <q-badge color="blue-grey-2" text-color="blue-grey-9" class="q-ml-xs text-2xs">
+                            {{ item.assistItemType }}
+                          </q-badge>
+                        </div>
+                      </td>
+                      <td class="text-center">
+                        <div class="text-weight-bold text-subtitle2 text-teal">
+                          {{ item.offlineQty }} <span class="text-caption text-grey-6">{{ item.assistUnit }}</span>
+                        </div>
+                      </td>
+                      <td class="text-center">
+                        <div v-if="item.assistStock !== null && item.assistStock !== undefined">
+                          <div class="text-weight-bold text-subtitle2 text-slate-900">
+                            {{ item.assistStock }} <span class="text-caption text-grey-6">{{ item.assistUnit }}</span>
+                          </div>
+                        </div>
+                        <div v-else class="text-caption text-grey-5 flex items-center justify-center">
+                          <q-icon name="help_outline" size="14px" class="q-mr-xs text-grey-5" />
+                          -
+                        </div>
+                      </td>
+                      <td>
+                        <div class="row items-center q-gutter-x-xs">
+                          <span class="font-mono text-weight-bold text-primary">{{ item.destySku }}</span>
+                          <q-badge color="teal-1" text-color="teal-9" v-if="item.isMapped" class="text-2xs">
+                            Mapped
+                          </q-badge>
+                          <q-badge color="grey-2" text-color="grey-8" v-else class="text-2xs">
+                            Auto 1:1
+                          </q-badge>
+                        </div>
+                        <div class="text-caption text-grey-6 q-mt-2xs" v-if="item.conversionFactor !== 1">
+                          1 {{ item.destyUnit }} = {{ item.conversionFactor }} {{ item.assistUnit }}
+                        </div>
+                        <div class="text-caption text-primary text-weight-bold q-mt-2xs">
+                          Ekuivalen Desty: {{ item.qtyDesty }} {{ item.destyUnit }}
+                        </div>
+                      </td>
+                      <td class="text-center">
+                        <div v-if="item.destyStockFound" class="q-gutter-y-2xs">
+                          <div class="row items-center justify-center q-gutter-x-xs text-caption">
+                            <span>Fisik: <strong class="text-slate-900">{{ item.destyFisik }}</strong></span>
+                            <span class="text-grey-4">|</span>
+                            <span :class="item.destyReserved > 0 ? 'text-amber-9 text-weight-bold' : 'text-grey-6'">
+                              Pesanan: {{ item.destyReserved }}
+                            </span>
+                          </div>
+                          <div>
+                            <q-badge
+                              :color="(item.destyTersedia ?? 0) > 0 ? 'green-1' : 'red-1'"
+                              :text-color="(item.destyTersedia ?? 0) > 0 ? 'green-9' : 'red-9'"
+                              class="text-weight-bold"
+                            >
+                              Tersedia: {{ item.destyTersedia }} {{ item.destyUnit }}
+                            </q-badge>
+                          </div>
+                        </div>
+                        <div v-else class="text-caption text-grey-5 flex items-center justify-center">
+                          <q-icon name="cloud_off" size="14px" class="q-mr-xs text-grey-5" />
+                          Tidak Ditemukan
+                        </div>
+                      </td>
+                      <td>
+                        <div v-if="item.destySkuId">
+                          <q-input
+                            :model-value="item.reductionQty"
+                            @update:model-value="(val) => updateOfflineRowReductionQty(item.rowKey, val)"
+                            type="number"
+                            prefix="-"
+                            outlined
+                            dense
+                            color="teal"
+                            :disable="item.status === 'synced'"
+                            hide-bottom-space
+                          >
+                            <template v-slot:append>
+                              <span class="text-caption text-grey-7 font-weight-bold">{{ item.destyUnit }}</span>
+                            </template>
+                          </q-input>
+                          <div class="text-caption text-grey-7 q-mt-xs flex items-center justify-between">
+                            <span>Fisik Baru: <strong>{{ item.calculatedFisikBaru !== null ? item.calculatedFisikBaru : '-' }}</strong></span>
+                            <span>Tersedia: <strong :class="(item.calculatedTersediaBaru ?? 0) < 0 ? 'text-red font-weight-bold' : 'text-teal'">{{ item.calculatedTersediaBaru !== null ? item.calculatedTersediaBaru : '-' }}</strong></span>
+                          </div>
+                        </div>
+                        <span v-else class="text-caption text-grey-4">-</span>
+                      </td>
+                      <td class="text-center" style="max-width: 180px;">
+                        <q-badge
+                          :color="item.badgeColor"
+                          class="q-px-sm q-py-xs"
+                        >
+                          <q-icon
+                            :name="item.status === 'synced' ? 'check_circle' : item.status === 'ready' ? 'check' : item.status === 'warning' ? 'warning' : 'error'"
+                            size="12px"
+                            class="q-mr-xs"
+                          />
+                          {{ item.status === 'synced' ? 'Terkoreksi' : item.status === 'ready' ? 'Siap' : item.status === 'warning' ? 'Peringatan' : 'Belum Cocok' }}
+                        </q-badge>
+                        <div class="text-caption text-grey-7 q-mt-xs ellipsis" :title="item.statusMessage" style="font-size: 10px;">
+                          {{ item.statusMessage }}
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div v-else class="text-center q-pa-lg text-grey-6 border-dashed rounded-borders q-mt-md">
+              <q-icon name="sync_saved_locally" size="48px" class="text-grey-4 q-mb-sm" />
+              <div>Pilih rentang tanggal lalu klik <strong>Tarik Penjualan Offline</strong> untuk memuat data transaksi.</div>
+            </div>
           </q-tab-panel>
 
           <q-tab-panel v-if="store.developerMode" name="mapping" class="q-px-none">
@@ -203,19 +505,90 @@
     <!-- Results Table Card -->
     <q-card flat bordered>
       <q-card-section class="q-pa-none">
+        <div v-if="flattenedItems.length" class="row items-center justify-between q-px-md q-py-sm bg-grey-1 text-caption">
+          <div class="row items-center q-gutter-sm">
+            <span class="text-weight-medium text-grey-8">
+              Terpilih: <strong class="text-teal-9">{{ selectedOrdersCount }} order</strong> ({{ selectedRows.length }} baris)
+            </span>
+            <q-btn size="sm" flat dense color="teal" label="Pilih Semua Valid" @click="selectAllValid" />
+            <q-btn size="sm" flat dense color="grey-7" label="Batal Pilih" @click="clearSelection" :disable="!selectedRows.length" />
+          </div>
+          <div v-if="!assistCatalog.length" class="text-orange-9 row items-center">
+            <q-icon name="warning" size="xs" class="q-mr-xs" />
+            Katalog Assist belum dimuat. Klik "Muat Katalog Assist" untuk validasi stok & mapping akurat.
+          </div>
+        </div>
+
+        <q-separator v-if="flattenedItems.length" />
+
         <q-table
           :rows="flattenedItems"
           :columns="tableColumns"
-          row-key="displayedOrderSn"
+          row-key="rowId"
+          selection="multiple"
+          v-model:selected="selectedRows"
           flat
           :loading="loading"
           :pagination="{ rowsPerPage: 15 }"
           no-data-label="Belum ada data pesanan. Klik 'Tarik Data' untuk memuat."
         >
+          <!-- Custom Header Selection Checkbox -->
+          <template v-slot:header-selection="scope">
+            <q-checkbox
+              :model-value="allValidSelected"
+              :indeterminate="someValidSelected && !allValidSelected"
+              :disable="!validItems.length"
+              color="teal"
+              @update:model-value="toggleSelectAllValid"
+            >
+              <q-tooltip v-if="!validItems.length">Tidak ada pesanan valid yang dapat dipilih</q-tooltip>
+              <q-tooltip v-else>Pilih semua pesanan valid</q-tooltip>
+            </q-checkbox>
+          </template>
+
+          <!-- Custom Body Selection Checkbox -->
+          <template v-slot:body-selection="scope">
+            <q-checkbox
+              v-model="scope.selected"
+              :disable="!scope.row.isValid"
+              color="teal"
+            >
+              <q-tooltip v-if="!scope.row.isValid">Pesanan tidak valid tidak dapat dipilih untuk impor</q-tooltip>
+            </q-checkbox>
+          </template>
+
           <!-- Index column -->
           <template v-slot:body-cell-no="props">
             <q-td :props="props" class="text-center font-mono">
               {{ props.rowIndex + 1 }}
+            </q-td>
+          </template>
+
+          <template v-slot:body-cell-validationStatus="props">
+            <q-td :props="props" class="text-center">
+              <q-badge
+                v-if="props.row.isValid"
+                color="positive"
+                class="q-px-sm cursor-pointer"
+              >
+                <q-icon name="check_circle" size="xs" class="q-mr-xs" />
+                Valid
+                <q-tooltip anchor="top middle" self="bottom middle">
+                  Order valid dan siap diimpor ke Assist
+                </q-tooltip>
+              </q-badge>
+              <q-badge
+                v-else
+                color="negative"
+                class="q-px-sm cursor-pointer"
+              >
+                <q-icon name="error" size="xs" class="q-mr-xs" />
+                Tidak Valid
+                <q-tooltip anchor="top middle" self="bottom middle" max-width="360px">
+                  <div class="text-weight-bold q-mb-xs">Masalah Validasi:</div>
+                  <div v-for="(msg, i) in props.row.validationMessages" :key="i">• {{ msg }}</div>
+                </q-tooltip>
+              </q-badge>
             </q-td>
           </template>
 
@@ -251,6 +624,117 @@
         </q-table>
       </q-card-section>
     </q-card>
+
+    <!-- Dialog Konfirmasi Koreksi Pengurangan Stok Desty -->
+    <q-dialog v-model="showOfflineConfirmDialog" persistent>
+      <q-card style="min-width: 450px; max-width: 600px;">
+        <q-card-section class="row items-center bg-teal text-white">
+          <q-icon name="sync_saved_locally" size="24px" class="q-mr-sm" />
+          <div class="text-h6">Konfirmasi Koreksi Stok Desty</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-card-section class="q-pt-md">
+          <div class="text-body2 text-slate-800 q-mb-md">
+            Anda akan melakukan <strong>pengurangan stok fisik</strong> pada Desty Omni untuk <strong>{{ offlineCheckedItems.length }} SKU</strong> berikut:
+          </div>
+
+          <q-list bordered separator class="rounded-borders bg-grey-1" style="max-height: 240px; overflow-y: auto;">
+            <q-item v-for="item in offlineCheckedItems" :key="item.rowKey" dense>
+              <q-item-section>
+                <q-item-label class="text-weight-bold font-mono text-primary">{{ item.destySku }}</q-item-label>
+                <q-item-label caption>{{ item.assistItemName }} ({{ item.assistItemType }})</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <div class="text-weight-bold text-negative">
+                  -{{ item.reductionQty }} {{ item.destyUnit }}
+                </div>
+                <div class="text-caption text-grey-6" style="font-size: 10px;">
+                  Fisik baru: {{ item.calculatedFisikBaru !== null ? item.calculatedFisikBaru : '-' }}
+                </div>
+              </q-item-section>
+            </q-item>
+          </q-list>
+
+          <q-banner rounded class="bg-amber-1 text-amber-10 q-mt-md text-caption">
+            <template v-slot:avatar>
+              <q-icon name="warning" color="amber-9" />
+            </template>
+            Stok fisik di Desty Omni akan dikurangi secara langsung via API. Pastikan data di atas sudah sesuai.
+          </q-banner>
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-px-md q-pb-md">
+          <q-btn flat label="Batal" color="grey-7" v-close-popup />
+          <q-btn
+            color="positive"
+            label="Ya, Potong Stok Desty"
+            icon="check"
+            @click="handleExecuteOfflineStockSync"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Dialog Progress & Log Eksekusi Koreksi Stok Desty -->
+    <q-dialog v-model="showOfflineProgressDialog" persistent>
+      <q-card style="min-width: 500px; max-width: 700px;">
+        <q-card-section class="row items-center bg-teal text-white">
+          <q-icon name="sync" size="24px" class="q-mr-sm" :class="{ 'rotate-spinner': isSyncingOfflineStock }" />
+          <div class="text-h6">
+            {{ isSyncingOfflineStock ? 'Memproses Koreksi Stok Desty...' : 'Koreksi Stok Desty Selesai' }}
+          </div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-md">
+          <!-- Progress Bar -->
+          <div class="q-mb-sm">
+            <div class="row justify-between text-caption text-grey-8 q-mb-xs">
+              <span>Progress: {{ offlineProgressCurrent }} / {{ offlineProgressTotal }} item</span>
+              <span class="text-weight-bold">
+                <span class="text-positive">{{ offlineProgressSuccess }} Sukses</span> • 
+                <span class="text-negative">{{ offlineProgressFailed }} Gagal</span>
+              </span>
+            </div>
+            <q-linear-progress
+              :value="offlineProgressTotal > 0 ? offlineProgressCurrent / offlineProgressTotal : 0"
+              color="teal"
+              size="8px"
+              rounded
+            />
+          </div>
+
+          <!-- Log stream list -->
+          <div class="text-caption text-grey-7 q-mb-xs">Log Aktivitas:</div>
+          <div class="bg-grey-10 text-grey-2 q-pa-sm rounded-borders font-mono text-caption" style="height: 200px; overflow-y: auto;">
+            <div
+              v-for="(log, idx) in offlineProgressLogs"
+              :key="idx"
+              class="q-mb-xs"
+              :class="{
+                'text-green-4': log.type === 'success',
+                'text-red-4': log.type === 'error',
+                'text-amber-4': log.type === 'warning',
+                'text-grey-4': log.type === 'info'
+              }"
+            >
+              <span class="text-grey-6">[{{ log.time }}]</span> {{ log.text }}
+            </div>
+            <div v-if="!offlineProgressLogs.length" class="text-grey-6 text-italic">Menunggu proses...</div>
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-px-md q-pb-md">
+          <q-btn
+            color="teal"
+            label="Tutup"
+            :disable="isSyncingOfflineStock"
+            v-close-popup
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
@@ -292,6 +776,18 @@ import type {
   DestySkuMapping,
   DestySkuMappingInput,
 } from "@/types/destySync";
+import type { DestyOmniStockItem } from "@/composables/destyOmniStockApi";
+import {
+  getAssistOfflineSoldItems,
+  buildOfflineStockReductionItems,
+  executeOfflineStockReduction,
+  fetchAllAssistPemasukan,
+} from "@/services/destySync/offlineStockSync";
+import type {
+  OfflineSoldItem,
+  OfflineSaleReductionItem,
+  OfflineStockSyncLog,
+} from "@/types/offlineStockSync";
 import {
   fetchAllDestyOrders,
   fetchDestyOrderStatusCount,
@@ -299,9 +795,13 @@ import {
 } from "@/composables/destyOmniOrderApi";
 
 interface FlattenedOrderItem {
+  rowId: string;
+  orderKey: string;
   productName: string;
   platformName: string;
   inputKeAssist: string;
+  isValid: boolean;
+  validationMessages: string[];
   quantity: number;
   satuan: string;
   totalPrice: number;
@@ -347,9 +847,36 @@ const statusMessage = ref("");
 const statusVariant = ref<"muted" | "success" | "error">("muted");
 
 const orders = ref<DestyOrderRecord[]>([]);
-const syncTab = ref<"import" | "mapping" | "log">("import");
+const selectedRows = ref<FlattenedOrderItem[]>([]);
+const syncTab = ref<"import" | "offline_sync" | "mapping" | "log">("import");
 const selectedOrderKey = ref("");
 const mappings = ref<DestySkuMapping[]>([]);
+
+// --- Offline Sales Stock Reduction States ---
+const todayStr = new Date().toISOString().slice(0, 10);
+const offlineStartDate = ref(todayStr);
+const offlineEndDate = ref(todayStr);
+const offlineExcludeOnline = ref(true);
+
+const offlineSoldItems = ref<OfflineSoldItem[]>([]);
+const destyStockMapForOffline = ref<Record<string, DestyOmniStockItem>>({});
+const offlineManualOverrides = ref<Record<string, { reductionQty?: number; checked?: boolean }>>({});
+const offlineSyncResults = ref<Record<string, { status: "success" | "error"; message?: string }>>({});
+
+const isFetchingOfflineSales = ref(false);
+const isLoadingLiveDestyStockForOffline = ref(false);
+const offlineSearchQuery = ref("");
+const offlineStatusFilter = ref<"all" | "ready" | "warning" | "unmapped" | "synced">("all");
+
+// Dialog & progress states for offline sync
+const showOfflineConfirmDialog = ref(false);
+const showOfflineProgressDialog = ref(false);
+const isSyncingOfflineStock = ref(false);
+const offlineProgressTotal = ref(0);
+const offlineProgressCurrent = ref(0);
+const offlineProgressSuccess = ref(0);
+const offlineProgressFailed = ref(0);
+const offlineProgressLogs = ref<OfflineStockSyncLog[]>([]);
 const assistCatalog = ref<AssistCatalogItem[]>([]);
 const assistDetailsByIdentifier = ref<Record<string, { invoice?: string; txId?: string; status: string; voided: boolean }>>({});
 const assistLookupCompleted = ref(false);
@@ -408,9 +935,10 @@ const ledgerColumns = [
 
 const tableColumns = [
   { name: "no", label: "No", align: "center", field: (row: any, idx: number) => idx + 1, sortable: false },
+  { name: "validationStatus", label: "Validasi", align: "center", field: "isValid", sortable: true },
+  { name: "inputKeAssist", label: "Input Ke Assist", align: "left", field: "inputKeAssist", sortable: true },
   { name: "productName", label: "Nama Produk", align: "left", field: "productName", sortable: true },
   { name: "platformName", label: "Market Place", align: "center", field: "platformName", sortable: true },
-  { name: "inputKeAssist", label: "Input Ke Assist", align: "left", field: "inputKeAssist" },
   { name: "assistInvoice", label: "Invoice Assist", align: "left", field: "assistInvoice" },
   { name: "quantity", label: "Jml", align: "right", field: "quantity", sortable: true },
   { name: "satuan", label: "Satuan", align: "center", field: "satuan" },
@@ -505,13 +1033,52 @@ function parsePlatformName(platform?: string): string {
   return platform.toUpperCase();
 }
 
+function buildSyncContext() {
+  // Assist history is the source of truth. The local ledger is for audit/logging only.
+  const duplicateIndex = new Set(
+    Object.entries(assistDetailsByIdentifier.value)
+      .filter(([, detail]) => !detail.voided)
+      .map(([identifier]) => identifier),
+  );
+  const depotIndex = buildAssistDepotIndex(assistCatalog.value);
+  for (const mapping of mappings.value) {
+    if (mapping.depotId) depotIndex[mapping.assistId] = mapping.depotId;
+  }
+  return {
+    mappings: mappings.value,
+    assistCatalog: assistCatalog.value.length ? assistCatalog.value : undefined,
+    stockByAssistId: buildAssistStockIndex(assistCatalog.value),
+    depotByAssistId: depotIndex,
+    duplicateOrderNumbers: duplicateIndex,
+    defaultDepotId: DEFAULT_ASSIST_DEPOT_ID,
+  };
+}
+
+const orderValidationMap = computed<Map<string, ReturnType<typeof validateDestyOrder>>>(() => {
+  const context = buildSyncContext();
+  const map = new Map<string, ReturnType<typeof validateDestyOrder>>();
+  for (const order of orders.value) {
+    const key = order.displayedOrderSn || order.orderId || order.id || "";
+    if (key) {
+      map.set(key, validateDestyOrder(normalizeDestyOrder(order), context));
+    }
+  }
+  return map;
+});
+
 const flattenedItems = computed<FlattenedOrderItem[]>(() => {
   const result: FlattenedOrderItem[] = [];
   let rowIndex = 0;
 
   for (const record of orders.value) {
+    const orderKey = record.displayedOrderSn || record.orderId || record.id || "";
+    const validationResult = orderValidationMap.value.get(orderKey);
+    const isValid = validationResult ? validationResult.valid : false;
+    const validationMessages = validationResult ? validationResult.issues.map((i) => i.message) : [];
+
     const items = Array.isArray(record.items) && record.items.length ? record.items : [undefined];
-    for (const item of items) {
+    for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+      const item = items[itemIdx];
       const sku = item?.skuCode ?? item?.masterSku ?? "";
       const excelRow = rowIndex + 2;
       
@@ -525,10 +1092,14 @@ const flattenedItems = computed<FlattenedOrderItem[]>(() => {
       const totalHargaModalCalculated: number | "" = typeof hargaModalSatuan === "number" ? (item?.quantity ?? 0) * hargaModalSatuan : "";
 
       result.push({
+        rowId: `${orderKey}_${itemIdx}_${sku}`,
+        orderKey,
         productName: item?.productName ?? "-",
         platformName: parsePlatformName(record.platformName),
-        inputKeAssist: importStatusForOrder(record.displayedOrderSn ?? record.orderId ?? record.id ?? ""),
-        assistInvoice: assistInvoiceForOrder(record.displayedOrderSn ?? record.orderId ?? record.id ?? ""),
+        inputKeAssist: importStatusForOrder(orderKey),
+        isValid,
+        validationMessages,
+        assistInvoice: assistInvoiceForOrder(orderKey),
         quantity: item?.quantity ?? 0,
         satuan,
         totalPrice: record.totalSales ?? 0,
@@ -552,33 +1123,60 @@ const flattenedItems = computed<FlattenedOrderItem[]>(() => {
   return result;
 });
 
+const validItems = computed(() => flattenedItems.value.filter((item) => item.isValid));
+
+const allValidSelected = computed(() => {
+  return validItems.value.length > 0 && validItems.value.every((item) =>
+    selectedRows.value.some((r) => r.rowId === item.rowId)
+  );
+});
+
+const someValidSelected = computed(() => {
+  return selectedRows.value.some((r) => r.isValid);
+});
+
+const selectedOrderKeys = computed(() => {
+  return Array.from(new Set(selectedRows.value.filter((r) => r.isValid).map((r) => r.orderKey).filter(Boolean)));
+});
+
+const selectedOrdersCount = computed(() => selectedOrderKeys.value.length);
+
+const selectedOrders = computed(() => {
+  const keys = new Set(selectedOrderKeys.value);
+  return orders.value.filter((order) => {
+    const key = order.displayedOrderSn || order.orderId || order.id || "";
+    const validation = orderValidationMap.value.get(key);
+    return keys.has(key) && validation?.valid;
+  });
+});
+
+function toggleSelectAllValid(val: boolean | any) {
+  if (val) {
+    selectedRows.value = [...validItems.value];
+  } else {
+    selectedRows.value = [];
+  }
+}
+
+function selectAllValid() {
+  selectedRows.value = [...validItems.value];
+}
+
+function clearSelection() {
+  selectedRows.value = [];
+}
+
+watch(flattenedItems, (items) => {
+  const validRowIds = new Set(items.filter((i) => i.isValid).map((i) => i.rowId));
+  selectedRows.value = selectedRows.value.filter((r) => validRowIds.has(r.rowId));
+});
+
 const selectedOrder = computed(() => {
   if (!selectedOrderKey.value) return undefined;
   return orders.value.find((order) =>
     (order.displayedOrderSn || order.orderId || order.id || "") === selectedOrderKey.value,
   );
 });
-
-function buildSyncContext() {
-  // Assist history is the source of truth. The local ledger is for audit/logging only.
-  const duplicateIndex = new Set(
-    Object.entries(assistDetailsByIdentifier.value)
-      .filter(([, detail]) => !detail.voided)
-      .map(([identifier]) => identifier),
-  );
-  const depotIndex = buildAssistDepotIndex(assistCatalog.value);
-  for (const mapping of mappings.value) {
-    if (mapping.depotId) depotIndex[mapping.assistId] = mapping.depotId;
-  }
-  return {
-    mappings: mappings.value,
-    assistCatalog: assistCatalog.value.length ? assistCatalog.value : undefined,
-    stockByAssistId: buildAssistStockIndex(assistCatalog.value),
-    depotByAssistId: depotIndex,
-    duplicateOrderNumbers: duplicateIndex,
-    defaultDepotId: DEFAULT_ASSIST_DEPOT_ID,
-  };
-}
 
 function validateSelectedOrder() {
   syncPayloadPreview.value = "";
@@ -818,6 +1416,79 @@ async function importSelectedOrder() {
   }
 }
 
+async function importSelectedCheckedOrders() {
+  const targetOrders = selectedOrders.value;
+  if (!targetOrders.length || syncBusy.value) return;
+  syncBusy.value = true;
+  try {
+    const tokenResult = await resolveAssistToken();
+    const assistToken = tokenResult.token || store.assistToken;
+    if (!assistToken) throw new Error("Token Assist tidak ditemukan.");
+    if (!assistCatalog.value.length) throw new Error("Muat katalog dan stok Assist terlebih dahulu sebelum impor.");
+
+    const normalizedOrders = targetOrders.map(normalizeDestyOrder);
+    const dates = normalizedOrders.map((order) => order.createdAt?.slice(0, 10)).filter(Boolean).sort() as string[];
+    const startDate = dates[0] || new Date().toISOString().slice(0, 10);
+    const endDate = dates[dates.length - 1] || startDate;
+
+    const remoteDetails = await fetchAssistDestyTransactionDetails({
+      token: assistToken,
+      apiBaseUrl: store.apiBaseUrl,
+      hospitalId: store.hospitalId,
+      startDate,
+      endDate,
+    });
+    applyAssistTransactionDetails(remoteDetails);
+    assistLookupCompleted.value = true;
+
+    const remoteDuplicates = new Set(remoteDetails.filter((detail) => !detail.voided).flatMap((detail) => [...detail.identifiers]));
+    const context = buildSyncContext();
+    const checkedIdentifiers = normalizedOrders.flatMap((order) => getDestyOrderIdentifiers(order));
+    importLedger.value = await reconcileDestyImportLedger(remoteDuplicates, checkedIdentifiers);
+
+    const duplicateIndex = new Set(remoteDuplicates);
+    const results = await bulkImportDestyOrders({
+      orders: targetOrders,
+      mappings: mappings.value,
+      config: {
+        token: assistToken,
+        apiBaseUrl: store.apiBaseUrl,
+        accountTxId: store.assistAccountTxId,
+        hospitalId: store.hospitalId,
+        assistCatalog: assistCatalog.value.length ? assistCatalog.value : undefined,
+        stockByAssistId: context.stockByAssistId,
+        depotIdByAssistId: context.depotByAssistId,
+        defaultDepotId: DEFAULT_ASSIST_DEPOT_ID,
+        duplicateOrderNumbers: duplicateIndex,
+      },
+      concurrency: 2,
+      onProgress: (completed, total, item) => {
+        syncValidationMessage.value = `Proses impor terpilih ${completed}/${total}: ${item.order.marketplaceOrderSn} (${item.status}).`;
+      },
+    });
+
+    importLedger.value = await getDestyImportLedger();
+    await loadRemoteAssistDetails(targetOrders);
+
+    const successCount = results.filter((item) => item.status === "success").length;
+    syncValidationMessage.value = `Impor terpilih selesai: ${successCount}/${results.length} berhasil. Order invalid/duplicate tidak dikirim.`;
+
+    const successfulOrderSns = new Set(
+      results
+        .filter((item) => item.status === "success")
+        .map((item) => item.order.marketplaceOrderSn || item.order.bookingSn || item.order.trackingNumber)
+        .filter(Boolean),
+    );
+    selectedRows.value = selectedRows.value.filter(
+      (row) => !successfulOrderSns.has(row.orderKey) && !successfulOrderSns.has(row.displayedOrderSn),
+    );
+  } catch (error) {
+    syncValidationMessage.value = error instanceof Error ? error.message : "Impor terpilih gagal dan tidak dilanjutkan.";
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
 async function bulkImportOrders() {
   if (!orders.value.length || syncBusy.value) return;
   syncBusy.value = true;
@@ -949,6 +1620,7 @@ async function fetchOrders() {
   statusMessage.value = "Memulai pengambilan data pesanan...";
   statusVariant.value = "muted";
   orders.value = [];
+  selectedRows.value = [];
   fetchedCount.value = 0;
   totalCount.value = 0;
   progressPhase.value = "list";
@@ -1094,6 +1766,220 @@ function exportToExcel() {
     statusVariant.value = "error";
   } finally {
     exporting.value = false;
+  }
+}
+
+// --- Offline Stock Reduction Computed & Handlers ---
+const offlineReductionItems = computed<OfflineSaleReductionItem[]>(() => {
+  return buildOfflineStockReductionItems({
+    soldItems: offlineSoldItems.value,
+    mappings: mappings.value,
+    destyStockMap: destyStockMapForOffline.value,
+    assistCatalog: assistCatalog.value,
+    manualOverrides: offlineManualOverrides.value,
+    syncResults: offlineSyncResults.value,
+  });
+});
+
+const filteredOfflineReductionItems = computed(() => {
+  let list = offlineReductionItems.value;
+  const q = offlineSearchQuery.value.trim().toLowerCase();
+  if (q) {
+    list = list.filter(
+      (item) =>
+        item.assistItemName.toLowerCase().includes(q) ||
+        item.assistCode.toLowerCase().includes(q) ||
+        item.destySku.toLowerCase().includes(q),
+    );
+  }
+  if (offlineStatusFilter.value !== "all") {
+    list = list.filter((item) => item.status === offlineStatusFilter.value);
+  }
+  return list;
+});
+
+const offlineCheckedItems = computed(() => {
+  return offlineReductionItems.value.filter((item) => item.checked && item.status !== "synced");
+});
+
+const isAllOfflineChecked = computed(() => {
+  const eligible = filteredOfflineReductionItems.value.filter(
+    (item) => item.destySkuId && item.status !== "synced",
+  );
+  return eligible.length > 0 && eligible.every((item) => item.checked);
+});
+
+const offlineSummaryStats = computed(() => {
+  const list = offlineReductionItems.value;
+  return {
+    total: list.length,
+    ready: list.filter((i) => i.status === "ready").length,
+    warning: list.filter((i) => i.status === "warning").length,
+    unmapped: list.filter((i) => i.status === "unmapped").length,
+    synced: list.filter((i) => i.status === "synced").length,
+  };
+});
+
+function toggleSelectAllOffline(val: boolean | any) {
+  for (const item of filteredOfflineReductionItems.value) {
+    if (item.destySkuId && item.status !== "synced") {
+      const existing = offlineManualOverrides.value[item.rowKey] || {};
+      offlineManualOverrides.value[item.rowKey] = { ...existing, checked: Boolean(val) };
+    }
+  }
+}
+
+function updateOfflineRowChecked(rowKey: string, checked: boolean) {
+  const existing = offlineManualOverrides.value[rowKey] || {};
+  offlineManualOverrides.value[rowKey] = { ...existing, checked };
+}
+
+function updateOfflineRowReductionQty(rowKey: string, val: string | number | null | undefined) {
+  const existing = offlineManualOverrides.value[rowKey] || {};
+  offlineManualOverrides.value[rowKey] = {
+    ...existing,
+    reductionQty: Math.max(0, Number(val ?? 0)),
+  };
+}
+
+async function fetchLiveDestyStockForOffline(skusToFetch?: string[]) {
+  if (!destyToken.value) return;
+
+  let targetSkus = skusToFetch;
+  if (!targetSkus || targetSkus.length === 0) {
+    const skuSet = new Set<string>();
+    for (const item of offlineReductionItems.value) {
+      if (item.destySku) skuSet.add(item.destySku.toUpperCase());
+    }
+    targetSkus = Array.from(skuSet);
+  }
+
+  if (targetSkus.length === 0) return;
+
+  isLoadingLiveDestyStockForOffline.value = true;
+  try {
+    const res = (await browser.runtime.sendMessage({
+      type: "FETCH_DESTY_STOCK",
+      payload: {
+        token: destyToken.value,
+        tenantId: destyTenantId.value,
+        masterWarehouseId: store.destyMasterWarehouseId || "2042620805094077644",
+        skus: targetSkus,
+      },
+    })) as { ok: boolean; items?: DestyOmniStockItem[]; error?: string } | undefined;
+
+    if (res && res.ok && Array.isArray(res.items)) {
+      const nextMap = { ...destyStockMapForOffline.value };
+      for (const item of res.items) {
+        if (item.sku) {
+          nextMap[item.sku.toUpperCase()] = item;
+        }
+      }
+      destyStockMapForOffline.value = nextMap;
+    } else {
+      throw new Error(res?.error || "Gagal mengambil stok Desty");
+    }
+  } catch (err) {
+    console.error("Gagal mengambil stok live Desty:", err);
+    statusVariant.value = "error";
+    statusMessage.value = "Gagal mengambil live stock Desty: " + (err instanceof Error ? err.message : String(err));
+  } finally {
+    isLoadingLiveDestyStockForOffline.value = false;
+  }
+}
+
+async function fetchOfflineSales() {
+  if (isFetchingOfflineSales.value) return;
+  isFetchingOfflineSales.value = true;
+  offlineManualOverrides.value = {};
+  offlineSyncResults.value = {};
+
+  try {
+    const tokenResult = await resolveAssistToken();
+    const assistToken = tokenResult.token || store.assistToken;
+    if (!assistToken) {
+      throw new Error("Token Assist tidak ditemukan. Buka tab clinica.assist.id terlebih dahulu.");
+    }
+
+    // Ensure catalog & mappings are loaded
+    if (!mappings.value.length || !assistCatalog.value.length) {
+      await loadSyncCatalog();
+    }
+
+    const transactions = await fetchAllAssistPemasukan(
+      offlineStartDate.value,
+      offlineEndDate.value,
+      assistToken,
+    );
+
+    const result = getAssistOfflineSoldItems(transactions, {
+      includeOnlyPaidOff: true,
+      excludeOnline: offlineExcludeOnline.value,
+    });
+
+    offlineSoldItems.value = result.soldItems;
+    statusVariant.value = "success";
+    statusMessage.value = `Berhasil memuat ${result.soldItems.length} produk terjual offline (${result.skippedOnlineCount} transaksi online dilewati).`;
+
+    if (destyToken.value) {
+      await fetchLiveDestyStockForOffline();
+    }
+  } catch (err) {
+    console.error("Gagal memuat penjualan offline:", err);
+    statusVariant.value = "error";
+    statusMessage.value = err instanceof Error ? err.message : "Gagal memuat penjualan offline Assist.";
+  } finally {
+    isFetchingOfflineSales.value = false;
+  }
+}
+
+function openOfflineConfirmDialog() {
+  if (!offlineCheckedItems.value.length) {
+    statusVariant.value = "error";
+    statusMessage.value = "Pilih setidaknya satu item yang siap dikurangi.";
+    return;
+  }
+  showOfflineConfirmDialog.value = true;
+}
+
+async function handleExecuteOfflineStockSync() {
+  showOfflineConfirmDialog.value = false;
+  const itemsToSync = [...offlineCheckedItems.value];
+  if (itemsToSync.length === 0) return;
+
+  showOfflineProgressDialog.value = true;
+  isSyncingOfflineStock.value = true;
+  offlineProgressTotal.value = itemsToSync.length;
+  offlineProgressCurrent.value = 0;
+  offlineProgressSuccess.value = 0;
+  offlineProgressFailed.value = 0;
+  offlineProgressLogs.value = [];
+
+  try {
+    const { successCount, failedCount, results } = await executeOfflineStockReduction({
+      items: itemsToSync,
+      destyToken: destyToken.value,
+      destyTenantId: destyTenantId.value,
+      defaultWarehouseId: store.destyMasterWarehouseId || "2042620805094077644",
+      onProgress: (p) => {
+        offlineProgressCurrent.value = p.current;
+        offlineProgressSuccess.value = p.success;
+        offlineProgressFailed.value = p.failed;
+        offlineProgressLogs.value.push(p.log);
+      },
+    });
+
+    offlineSyncResults.value = { ...offlineSyncResults.value, ...results };
+    await fetchLiveDestyStockForOffline();
+
+    statusVariant.value = failedCount === 0 ? "success" : "error";
+    statusMessage.value = `Koreksi stok Desty selesai: ${successCount} berhasil, ${failedCount} gagal.`;
+  } catch (err) {
+    console.error("Error executing stock reduction:", err);
+    statusVariant.value = "error";
+    statusMessage.value = err instanceof Error ? err.message : "Gagal memproses koreksi stok Desty.";
+  } finally {
+    isSyncingOfflineStock.value = false;
   }
 }
 
