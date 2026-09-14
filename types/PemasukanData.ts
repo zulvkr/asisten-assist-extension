@@ -110,19 +110,20 @@ export interface Appointment {
 }
 
 export interface Patient {
-  nama: string;
-  tanggalLahir: string;
-  address: {
-    jalan: string;
-    region: string;
-    city: string;
-    district: string;
-    postcode: string;
-    subdistrict: string;
-    post: number;
+  nama?: string;
+  name?: string;
+  tanggalLahir?: string;
+  address?: {
+    jalan?: string;
+    region?: string;
+    city?: string;
+    district?: string;
+    postcode?: string;
+    subdistrict?: string;
+    post?: number;
   };
-  address_domicile: string;
-  job: string;
+  address_domicile?: string;
+  job?: string;
 }
 
 export interface Practices {
@@ -155,6 +156,8 @@ export interface PemasukanData {
   appointId?: string;
   patientId?: string;
   Patients?: Patient;
+  Patient?: Patient;
+  paidName?: string;
 }
 
 export type PemasukanDataArray = PemasukanData[];

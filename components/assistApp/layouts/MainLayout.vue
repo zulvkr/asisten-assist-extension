@@ -60,6 +60,35 @@
             Token Desty Belum Diisi
             <q-tooltip>Klik untuk reload token Desty</q-tooltip>
           </q-badge>
+
+          <!-- Firebase Auth User Badge -->
+          <q-btn-dropdown
+            v-if="isAuthenticated"
+            dense
+            flat
+            color="white"
+            icon="account_circle"
+            :label="userEmail"
+            class="q-ml-sm text-capitalize"
+          >
+            <q-list dense>
+              <q-item clickable v-close-popup @click="logout">
+                <q-item-section avatar>
+                  <q-icon name="logout" color="negative" />
+                </q-item-section>
+                <q-item-section>Keluar (Logout)</q-item-section>
+              </q-item>
+            </q-list>
+          </q-btn-dropdown>
+          <q-badge
+            v-else-if="!authLoading"
+            color="amber-9"
+            text-color="white"
+            class="q-py-xs q-px-sm"
+          >
+            <q-icon name="lock" class="q-mr-xs" />
+            Belum Login
+          </q-badge>
         </div>
       </q-toolbar>
     </q-header>
@@ -291,6 +320,9 @@
         <slot />
       </q-page>
     </q-page-container>
+
+    <!-- Firebase Auth Login Dialog -->
+    <LoginDialog />
   </q-layout>
 </template>
 
@@ -298,6 +330,8 @@
 import { ref, onMounted } from "vue";
 import { useQuasar } from "quasar";
 import { useAssistStore } from "../stores/assistStore";
+import { useFirebaseAuth } from "../../../composables/useFirebaseAuth";
+import LoginDialog from "../components/LoginDialog.vue";
 
 const props = defineProps<{
   page: string;
@@ -309,6 +343,7 @@ const emit = defineEmits<{
 
 const $q = useQuasar();
 const store = useAssistStore();
+const { isAuthenticated, authLoading, userEmail, initAuthListener, logout } = useFirebaseAuth();
 
 const leftDrawerOpen = ref(false);
 const miniState = ref(true);
@@ -363,9 +398,10 @@ async function handleReloadDesty() {
   }
 }
 
-// Force light mode
+// Force light mode & initialize Firebase Auth listener
 onMounted(() => {
   $q.dark.set(false);
+  initAuthListener();
 });
 </script>
 

@@ -5,6 +5,17 @@
       <div class="text-h5 text-teal font-weight-bold row items-center">
         <q-icon name="analytics" class="q-mr-sm" />
         Rekomendasi Belanja
+        <q-chip
+          v-if="isAuthenticated"
+          dense
+          size="sm"
+          color="teal-1"
+          text-color="teal-9"
+          icon="cloud_sync"
+          class="q-ml-sm"
+        >
+          {{ isSyncing ? 'Menyinkronkan...' : (lastSyncTime ? `Sinkron (${lastSyncTime})` : 'Tersinkron Online') }}
+        </q-chip>
       </div>
       <div class="row q-gutter-sm">
         <q-btn
@@ -503,6 +514,8 @@ import {
   resolveShoppingRecommendationSettings,
   validateShoppingRecommendationSettings,
 } from "@/utils/shoppingRecommendations";
+import { useShoppingRecommendationSync } from "@/composables/useShoppingRecommendationSync";
+import { useFirebaseAuth } from "@/composables/useFirebaseAuth";
 
 interface FetchShoppingRecommendationsResponse {
   ok: true;
@@ -623,6 +636,29 @@ const formSettings = ref<ShoppingRecommendationSettings>({
 const filters = reactive<FiltersState>({ ...DEFAULT_FILTERS });
 const ignoredItemIds = ref<Record<string, boolean>>(loadStoredIgnoredItems());
 const skippedItemIds = ref<Record<string, boolean>>(loadStoredSkippedItems());
+
+const { isAuthenticated } = useFirebaseAuth();
+const { isSyncing, lastSyncTime, syncError, subscribeToSharedState, updateSharedState } =
+  useShoppingRecommendationSync();
+
+onMounted(() => {
+  subscribeToSharedState((sharedState) => {
+    if (sharedState.skippedItemIds !== undefined) {
+      skippedItemIds.value = sharedState.skippedItemIds;
+      saveStorage(SKIPPED_STORAGE_KEY, sharedState.skippedItemIds);
+    }
+    if (sharedState.ignoredItemIds !== undefined) {
+      ignoredItemIds.value = sharedState.ignoredItemIds;
+      saveStorage(IGNORED_STORAGE_KEY, sharedState.ignoredItemIds);
+    }
+    if (sharedState.settings !== undefined) {
+      const resolved = resolveShoppingRecommendationSettings(sharedState.settings);
+      activeSettings.value = { ...resolved };
+      formSettings.value = { ...resolved };
+      saveStorage(SETTINGS_STORAGE_KEY, resolved);
+    }
+  });
+});
 
 watch(
   filters,
@@ -811,6 +847,7 @@ async function applySettings() {
   activeSettings.value = { ...resolved };
   formSettings.value = { ...resolved };
   saveStorage(SETTINGS_STORAGE_KEY, activeSettings.value);
+  void updateSharedState({ settings: activeSettings.value });
   infoMessage.value = "Pengaturan tersimpan. Memuat ulang rekomendasi...";
   showSettingsPanel.value = false;
   await loadRecommendations(activeSettings.value);
@@ -1203,6 +1240,7 @@ function restoreItem(itemId: string) {
   delete nextIgnored[itemId];
   ignoredItemIds.value = nextIgnored;
   saveStoredIgnoredItems(ignoredItemIds.value);
+  void updateSharedState({ ignoredItemIds: nextIgnored });
   infoMessage.value = "Produk berhasil dikembalikan.";
 }
 
@@ -1259,6 +1297,7 @@ function toggleSkipItem(row: EnhancedRecommendationRow | ShoppingRecommendationR
   }
   skippedItemIds.value = nextSkipped;
   saveStoredSkippedItems(nextSkipped);
+  void updateSharedState({ skippedItemIds: nextSkipped });
 }
 
 function ignoreItem(itemId: string) {
@@ -1268,6 +1307,7 @@ function ignoreItem(itemId: string) {
       [itemId]: true,
     };
     saveStoredIgnoredItems(ignoredItemIds.value);
+    void updateSharedState({ ignoredItemIds: ignoredItemIds.value });
     infoMessage.value = "Produk berhasil diabaikan.";
   }
 }
