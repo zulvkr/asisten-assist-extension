@@ -145,52 +145,75 @@
       </q-card>
     </q-expansion-item>
 
-    <!-- KPI Summary Section -->
-    <div class="row q-col-gutter-md q-mb-md">
-      <div class="col-12 col-sm-6 col-md-3">
-        <q-card flat bordered class="bg-red-1 text-red-9">
-          <q-card-section>
-            <div class="text-caption text-uppercase text-weight-bold">MERAH (KRITIS - &le; LEAD TIME)</div>
-            <div class="text-h4 text-weight-bold">{{ kpis.redCount }}</div>
-            <div class="text-caption text-red-8 q-mt-xs">Harus diorder hari ini juga</div>
-          </q-card-section>
+    <!-- KPI Summary Section (Compact 1 Line) -->
+    <div class="row q-col-gutter-xs items-center q-mb-sm">
+      <div class="col">
+        <q-card 
+          flat 
+          bordered 
+          class="bg-red-1 text-red-9 q-pa-xs cursor-pointer hover-card"
+          @click="filters.statusGroup = 'red'"
+        >
+          <div class="row items-center justify-between q-px-xs">
+            <span class="text-caption text-weight-bold">🔴 MERAH</span>
+            <span class="text-subtitle2 text-weight-bolder">{{ kpis.redCount }}</span>
+          </div>
         </q-card>
       </div>
 
-      <div class="col-12 col-sm-6 col-md-3">
-        <q-card flat bordered class="bg-orange-1 text-orange-9">
-          <q-card-section>
-            <div class="text-caption text-uppercase text-weight-bold">KUNING (PERINGATAN - &le; 2X LEAD TIME)</div>
-            <div class="text-h4 text-weight-bold">{{ kpis.yellowCount }}</div>
-            <div class="text-caption text-orange-8 q-mt-xs">Zona aman belanja mingguan</div>
-          </q-card-section>
+      <div class="col">
+        <q-card 
+          flat 
+          bordered 
+          class="bg-orange-1 text-orange-9 q-pa-xs cursor-pointer hover-card"
+          @click="filters.statusGroup = 'yellow'"
+        >
+          <div class="row items-center justify-between q-px-xs">
+            <span class="text-caption text-weight-bold">🟡 KUNING</span>
+            <span class="text-subtitle2 text-weight-bolder">{{ kpis.yellowCount }}</span>
+          </div>
         </q-card>
       </div>
 
-      <div class="col-12 col-sm-6 col-md-3">
-        <q-card flat bordered class="bg-green-1 text-green-9">
-          <q-card-section>
-            <div class="text-caption text-uppercase text-weight-bold">HIJAU (AMAN - &gt; 2X LEAD TIME)</div>
-            <div class="text-h4 text-weight-bold">{{ kpis.greenCount }}</div>
-            <div class="text-caption text-green-8 q-mt-xs">Stok aman (&gt; 2x lead time)</div>
-          </q-card-section>
+      <div class="col">
+        <q-card 
+          flat 
+          bordered 
+          class="bg-green-1 text-green-9 q-pa-xs cursor-pointer hover-card"
+          @click="filters.statusGroup = 'green'"
+        >
+          <div class="row items-center justify-between q-px-xs">
+            <span class="text-caption text-weight-bold">🟢 HIJAU</span>
+            <span class="text-subtitle2 text-weight-bolder">{{ kpis.greenCount }}</span>
+          </div>
         </q-card>
       </div>
 
-      <div class="col-12 col-sm-6 col-md-3">
+      <div class="col">
+        <q-card 
+          flat 
+          bordered 
+          class="bg-grey-2 text-grey-9 q-pa-xs cursor-pointer hover-card"
+          @click="filters.orderedFilter = 'skip'"
+        >
+          <div class="row items-center justify-between q-px-xs">
+            <span class="text-caption text-weight-bold">⏭️ SKIP</span>
+            <span class="text-subtitle2 text-weight-bolder">{{ kpis.skipCount }}</span>
+          </div>
+        </q-card>
+      </div>
+
+      <div class="col-12 col-sm-4 col-md-3">
         <q-card
           flat
           bordered
-          class="bg-blue-1 text-blue-9 cursor-pointer hover-card"
+          class="bg-blue-1 text-blue-9 cursor-pointer hover-card q-pa-xs"
           @click="openDraftReview"
         >
-          <q-card-section>
-            <div class="text-caption text-uppercase text-weight-bold">DRAFT ORDER BELANJA</div>
-            <div class="text-h4 text-weight-bold">{{ draftRows.length }} Item</div>
-            <div class="text-caption text-blue-8 q-mt-xs text-weight-medium">
-              Estimasi: {{ formatRupiah(draftRows.reduce((s, r) => s + r.estimatedCost, 0)) }} (Klik Detail)
-            </div>
-          </q-card-section>
+          <div class="row items-center justify-between q-px-xs">
+            <span class="text-caption text-weight-bold">🛒 DRAFT ({{ draftRows.length }})</span>
+            <span class="text-caption text-weight-bold">{{ formatRupiah(draftRows.reduce((s, r) => s + r.estimatedCost, 0)) }}</span>
+          </div>
         </q-card>
       </div>
     </div>
@@ -284,7 +307,8 @@
             :options="[
               { label: '🛒 Belum Dipesan', value: 'not-ordered' },
               { label: '📋 Semua', value: 'all' },
-              { label: '📦 Sudah Dipesan', value: 'ordered' }
+              { label: '📦 Sudah Dipesan', value: 'ordered' },
+              { label: '⏭️ Skip', value: 'skip' }
             ]"
             label="Status Order"
             color="teal"
@@ -344,32 +368,6 @@
                   {{ ind.icon }} {{ ind.label }}
                 </q-badge>
               </div>
-              <div class="row q-gutter-xs q-mt-xs items-center">
-                <q-btn
-                  size="xs"
-                  dense
-                  flat
-                  color="teal"
-                  class="bg-teal-1 q-px-xs"
-                  icon="local_offer"
-                  label="Supplier"
-                  @click.stop="openPriceHistory(props.row)"
-                >
-                  <q-tooltip>Bandingkan Harga &amp; Supplier Historis</q-tooltip>
-                </q-btn>
-                <q-btn
-                  size="xs"
-                  dense
-                  flat
-                  color="blue"
-                  class="bg-blue-1 q-px-xs"
-                  icon="show_chart"
-                  label="Tren"
-                  @click.stop="openDrawerFor(props.row)"
-                >
-                  <q-tooltip>Lihat Tren Penjualan 30 Hari &amp; Detail Velocity</q-tooltip>
-                </q-btn>
-              </div>
             </q-td>
           </template>
 
@@ -399,6 +397,17 @@
                 :model-value="props.row.pendingOrderQty > 0"
                 @update:model-value="togglePendingOrder(props.row)"
                 color="teal"
+                dense
+              />
+            </q-td>
+          </template>
+
+          <template v-slot:body-cell-skipOrder="props">
+            <q-td :props="props" @click.stop class="text-center">
+              <q-checkbox
+                :model-value="Boolean(skippedItemIds[props.row.itemId])"
+                @update:model-value="toggleSkipItem(props.row)"
+                color="grey-7"
                 dense
               />
             </q-td>
@@ -467,133 +476,6 @@
       </q-card>
     </q-dialog>
 
-    <!-- Product Insights Dialog (Details panel on Row Click) -->
-    <q-dialog v-model="isInsightDialogOpen">
-      <q-card style="width: 600px; max-width: 90vw;" v-if="selectedInsightRow">
-        <q-card-section class="row items-center justify-between border-bottom bg-teal text-white">
-          <div>
-            <div class="text-h6 font-weight-bold">{{ selectedInsightRow.itemName }}</div>
-            <div class="text-caption font-mono text-teal-1">{{ selectedInsightRow.code }} • {{ selectedInsightRow.brandName || '-' }}</div>
-          </div>
-          <q-btn icon="close" flat round dense v-close-popup color="white" />
-        </q-card-section>
-
-        <q-card-section class="q-pa-md">
-          <div class="row q-col-gutter-sm q-mb-md">
-            <div class="col-6">
-              <div class="text-caption text-grey">Stok Saat Ini</div>
-              <div class="text-body1 text-weight-bold">{{ selectedInsightRow.stockTotal }} {{ selectedInsightRow.unit }}</div>
-            </div>
-            <div class="col-6">
-              <div class="text-caption text-grey">Sisa Hari Kerja Stok</div>
-              <div class="text-body1 text-weight-bold text-red" v-if="selectedInsightRow.statusColor === 'red'">
-                {{ formatDays(selectedInsightRow.estimatedDaysRemaining) }} hari (Kritis)
-              </div>
-              <div class="text-body1 text-weight-bold text-orange" v-else-if="selectedInsightRow.statusColor === 'yellow'">
-                {{ formatDays(selectedInsightRow.estimatedDaysRemaining) }} hari (Peringatan)
-              </div>
-              <div class="text-body1 text-weight-bold text-green" v-else>
-                {{ selectedInsightRow.estimatedDaysRemaining >= 9999 ? 'Pasif / Dormant' : `${formatDays(selectedInsightRow.estimatedDaysRemaining)} hari` }}
-              </div>
-            </div>
-          </div>
-
-          <q-separator class="q-my-sm" />
-
-          <div class="row q-col-gutter-sm q-mb-md">
-            <div class="col-6">
-              <div class="text-caption text-grey">Harga Beli / Satuan</div>
-              <div class="text-body1 text-weight-bold">{{ formatRupiah(selectedInsightRow.buyFee) }}</div>
-            </div>
-            <div class="col-6">
-              <div class="text-caption text-grey">Rata-rata Penjualan / Hari</div>
-              <div class="text-body1 text-weight-bold">{{ formatDailySales(selectedInsightRow.averageDailySales) }} {{ selectedInsightRow.unit }}</div>
-            </div>
-          </div>
-
-          <q-separator class="q-my-sm" />
-
-          <q-separator class="q-my-sm" />
-
-          <!-- Dual Velocity Breakdown -->
-          <div class="row q-col-gutter-sm q-mb-md">
-            <div class="col-6">
-              <div class="text-caption text-grey">Frekuensi Transaksi</div>
-              <div class="text-body2 text-weight-bold">{{ selectedInsightRow.salesEvents }}x order ({{ formatDailySales(selectedInsightRow.eventDailyVelocity) }}/hari)</div>
-              <div class="text-caption text-grey">Rata-rata: {{ formatDailySales(selectedInsightRow.avgUnitsPerTransaction) }} unit/order</div>
-            </div>
-            <div class="col-6">
-              <div class="text-caption text-grey">Pola Permintaan</div>
-              <div class="text-body2 text-weight-bold" :class="selectedInsightRow.isBulkSpike ? 'text-orange-9' : selectedInsightRow.isFastMoving ? 'text-teal-9' : 'text-grey-8'">
-                {{ selectedInsightRow.demandPattern }}
-              </div>
-              <div class="text-caption text-grey">True Velocity: {{ formatDailySales(selectedInsightRow.trueVelocity) }}/hari</div>
-            </div>
-          </div>
-
-          <!-- 30 Days Sales Trend Sparkline/Bar -->
-          <div class="q-mt-sm q-pa-sm bg-grey-1 rounded">
-            <div class="row items-center justify-between text-caption text-weight-bold text-grey-8 q-mb-xs">
-              <span>📊 Tren Penjualan 30 Hari</span>
-              <span class="text-caption text-grey">{{ selectedInsightRow.salesEvents }}x order • {{ selectedInsightRow.qtySold30Days }} unit</span>
-            </div>
-            <div class="row items-end no-wrap" style="height: 60px; padding: 4px 0; border-bottom: 1px solid #e0e0e0;">
-              <div
-                v-for="d in selectedInsightRow.dailySalesTrend"
-                :key="d.date"
-                class="col"
-                style="height: 100%; display: flex; align-items: flex-end; justify-content: center; padding: 0 1px;"
-                :title="`${d.date}: ${d.qty} unit (${d.events}x order)`"
-              >
-                <div
-                  :style="{
-                    height: `${Math.max(d.qty > 0 ? 15 : 0, Math.min(100, (d.qty / Math.max(1, maxDailyQty(selectedInsightRow))) * 100))}%`,
-                    width: '100%',
-                    background: d.qty > 0 ? '#009688' : '#e0e0e0',
-                    borderRadius: '2px 2px 0 0'
-                  }"
-                />
-              </div>
-            </div>
-            <div class="row justify-between text-caption text-grey-6 q-mt-xs" style="font-size: 10px;">
-              <span>30 hari lalu</span>
-              <span>Hari ini</span>
-            </div>
-          </div>
-
-          <!-- Calculation formulas explanation -->
-          <div class="bg-grey-1 q-pa-md rounded q-mt-md">
-            <div class="text-subtitle2 text-weight-bold q-mb-xs">Formula & Perhitungan:</div>
-            <ul class="q-pl-md q-my-none text-caption text-grey-8">
-              <li>Lead Time: <strong>{{ selectedInsightRow.leadTimeLimit }} hari</strong> {{ selectedInsightRow.isFastMoving ? '(Fast Moving)' : '(Reguler)' }}</li>
-              <li>Target Reorder Point (ROP): <strong>{{ selectedInsightRow.rop }} {{ selectedInsightRow.unit }}</strong></li>
-              <li>Target Maksimum Stok: <strong>{{ selectedInsightRow.targetStock }} {{ selectedInsightRow.unit }}</strong></li>
-              <li>Rekomendasi Suggested Belanja: <strong>{{ selectedInsightRow.calculatedSuggestedQty }} {{ selectedInsightRow.unit }}</strong></li>
-            </ul>
-          </div>
-        </q-card-section>
-
-        <q-card-actions align="between" class="q-pa-md bg-grey-1 border-top">
-          <q-btn
-            outline
-            color="teal"
-            icon="local_offer"
-            label="Bandingkan Supplier"
-            @click="openPriceHistory(selectedInsightRow); isInsightDialogOpen = false"
-          />
-          <div class="row q-gutter-sm">
-            <q-btn flat color="grey" label="Tutup" v-close-popup />
-            <q-btn
-              color="teal"
-              :icon="selectedInsightRow.pendingOrderQty > 0 ? 'check_circle' : 'add_shopping_cart'"
-              :label="selectedInsightRow.pendingOrderQty > 0 ? 'Hapus dari Draf' : 'Tambahkan ke Draf'"
-              @click="togglePendingOrder(selectedInsightRow); isInsightDialogOpen = false"
-            />
-          </div>
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
     <!-- Product Price History & Supplier Comparison Modal -->
     <ProductPriceHistoryDialog
       v-model="showPriceHistoryDialog"
@@ -606,7 +488,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import ProductPriceHistoryDialog from "@/components/rekomendasiBelanja/ProductPriceHistoryDialog.vue";
+import ProductPriceHistoryDialog from "../components/ProductPriceHistoryDialog.vue";
 import { useAssistStore } from "../stores/assistStore";
 import { requestAssistTokenFromOpenTabs } from "@/composables/assistTokenManager";
 import {
@@ -636,7 +518,7 @@ interface FiltersState {
   search: string;
   quickFilter: QuickFilterKey;
   statusGroup: "all" | "red-yellow" | "red" | "yellow" | "green";
-  orderedFilter: "all" | "ordered" | "not-ordered";
+  orderedFilter: "all" | "ordered" | "not-ordered" | "skip";
   showManualReview: boolean;
   showDormant: boolean;
 }
@@ -651,6 +533,7 @@ interface EnhancedRecommendationRow extends ShoppingRecommendationRow {
   draftedQty: number;
   remainingSuggestedQty: number;
   isCovered: boolean;
+  isSkipped: boolean;
 }
 
 interface DraftSummaryRow {
@@ -688,6 +571,7 @@ interface ItemIndicator {
 const SETTINGS_STORAGE_KEY = "shoppingRecommendation:settings";
 const FILTERS_STORAGE_KEY = "shoppingRecommendation:filters";
 const IGNORED_STORAGE_KEY = "shoppingRecommendation:ignoredItems";
+const SKIPPED_STORAGE_KEY = "shoppingRecommendation:skippedItems";
 
 const DEFAULT_FILTERS: FiltersState = {
   search: "",
@@ -716,8 +600,6 @@ const lookbackDays = ref(30);
 const reviewOpen = ref(false);
 const copyStatus = ref("");
 const manualSearch = ref("");
-const selectedInsightItemId = ref("");
-const isInsightDialogOpen = ref(false);
 const showSettingsPanel = ref(false);
 
 const showPriceHistoryDialog = ref(false);
@@ -727,11 +609,6 @@ const assistToken = ref("");
 function openPriceHistory(row: ShoppingRecommendationRow) {
   selectedPriceHistoryItem.value = row;
   showPriceHistoryDialog.value = true;
-}
-
-function openDrawerFor(row: ShoppingRecommendationRow) {
-  selectedInsightItemId.value = row.itemId;
-  isInsightDialogOpen.value = true;
 }
 
 function maxDailyQty(row: ShoppingRecommendationRow | null): number {
@@ -745,6 +622,7 @@ const formSettings = ref<ShoppingRecommendationSettings>({
 });
 const filters = reactive<FiltersState>({ ...DEFAULT_FILTERS });
 const ignoredItemIds = ref<Record<string, boolean>>(loadStoredIgnoredItems());
+const skippedItemIds = ref<Record<string, boolean>>(loadStoredSkippedItems());
 
 watch(
   filters,
@@ -759,18 +637,6 @@ const settingsDirty = computed(
     JSON.stringify(formSettings.value) !== JSON.stringify(activeSettings.value),
 );
 
-const selectedInsightRow = computed(() => {
-  if (!selectedInsightItemId.value) {
-    return null;
-  }
-
-  return (
-    enhancedRows.value.find(
-      (row) => row.itemId === selectedInsightItemId.value,
-    ) ?? null
-  );
-});
-
 const enhancedRows = computed<EnhancedRecommendationRow[]>(() => {
   return [...rows.value]
     .map((row) => {
@@ -783,12 +649,14 @@ const enhancedRows = computed<EnhancedRecommendationRow[]>(() => {
         row.calculatedSuggestedQty > 0 &&
         remainingSuggestedQty <= 0 &&
         draftedQty > 0;
+      const isSkipped = Boolean(skippedItemIds.value[row.itemId]);
 
       return {
         ...row,
         draftedQty,
         remainingSuggestedQty,
         isCovered,
+        isSkipped,
       };
     })
     .sort((left, right) => {
@@ -806,6 +674,20 @@ const filteredRows = computed(() => {
     // Exclude ignored items
     if (ignoredItemIds.value[row.itemId]) {
       return false;
+    }
+
+    const isSkipped = Boolean(skippedItemIds.value[row.itemId]);
+
+    if (filters.orderedFilter === "skip") {
+      if (!isSkipped) return false;
+    } else {
+      if (isSkipped) return false;
+
+      if (filters.orderedFilter === "ordered") {
+        if (row.pendingOrderQty <= 0) return false;
+      } else if (filters.orderedFilter === "not-ordered") {
+        if (row.pendingOrderQty > 0) return false;
+      }
     }
 
     const matchesSearch = !search
@@ -826,13 +708,6 @@ const filteredRows = computed(() => {
       matchesStatus = row.statusColor === "green";
     }
 
-    let matchesOrdered = true;
-    if (filters.orderedFilter === "ordered") {
-      matchesOrdered = row.pendingOrderQty > 0;
-    } else if (filters.orderedFilter === "not-ordered") {
-      matchesOrdered = row.pendingOrderQty <= 0;
-    }
-
     if (!filters.showManualReview && row.needsManualReview) {
       return false;
     }
@@ -840,13 +715,18 @@ const filteredRows = computed(() => {
       return false;
     }
 
-    return matchesSearch && matchesStatus && matchesOrdered && matchesQuickFilter(row);
+    return matchesSearch && matchesStatus && matchesQuickFilter(row);
   });
 });
 
 const draftRows = computed<DraftSummaryRow[]>(() => {
   return enhancedRows.value
-    .filter((row) => row.pendingOrderQty > 0)
+    .filter(
+      (row) =>
+        row.pendingOrderQty > 0 &&
+        !skippedItemIds.value[row.itemId] &&
+        !ignoredItemIds.value[row.itemId],
+    )
     .map((row) => ({
       itemId: row.itemId,
       itemType: row.itemType,
@@ -866,10 +746,19 @@ const draftRows = computed<DraftSummaryRow[]>(() => {
 });
 
 const kpis = computed(() => {
-  const redCount = rows.value.filter((row) => row.statusColor === "red").length;
-  const yellowCount = rows.value.filter((row) => row.statusColor === "yellow").length;
-  const greenCount = rows.value.filter((row) => row.statusColor === "green").length;
-  const estimatedBudget = rows.value
+  const activeRows = rows.value.filter(
+    (row) =>
+      !skippedItemIds.value[row.itemId] && !ignoredItemIds.value[row.itemId],
+  );
+  const redCount = activeRows.filter((row) => row.statusColor === "red").length;
+  const yellowCount = activeRows.filter((row) => row.statusColor === "yellow").length;
+  const greenCount = activeRows.filter((row) => row.statusColor === "green").length;
+  const skipCount = rows.value.filter(
+    (row) =>
+      Boolean(skippedItemIds.value[row.itemId]) &&
+      !ignoredItemIds.value[row.itemId],
+  ).length;
+  const estimatedBudget = activeRows
     .filter((row) => row.statusColor === "red" || row.statusColor === "yellow")
     .reduce((sum, row) => sum + (row.buyFee ?? 0) * row.replenishSuggestedQty, 0);
 
@@ -877,6 +766,7 @@ const kpis = computed(() => {
     redCount,
     yellowCount,
     greenCount,
+    skipCount,
     estimatedBudget,
   };
 });
@@ -886,6 +776,7 @@ const tableColumns = [
   { name: "itemName", label: "Nama Produk", align: "left", field: "itemName", sortable: true },
   { name: "stockTotal", label: "Stok", align: "right", field: "stockTotal", sortable: true },
   { name: "pendingOrder", label: "Sudah Dipesan", align: "center", field: "pendingOrderQty", sortable: true },
+  { name: "skipOrder", label: "Skip", align: "center", field: "isSkipped", sortable: true },
   { name: "estimatedDaysRemaining", label: "Sisa Hari", align: "right", field: "estimatedDaysRemaining", sortable: true },
   { name: "averageDailySales", label: "Jual/Hari", align: "right", field: "averageDailySales", sortable: true, format: (val: number) => formatDailySales(val) },
   { name: "statusColor", label: "Status", align: "center", field: "statusColor", sortable: true },
@@ -1165,8 +1056,7 @@ function handleRowClick(event: any, row: EnhancedRecommendationRow) {
     return;
   }
 
-  selectedInsightItemId.value = row.itemId;
-  isInsightDialogOpen.value = true;
+  openPriceHistory(row);
 }
 
 const $q = useQuasar();
@@ -1346,6 +1236,29 @@ function saveStoredIgnoredItems(value: Record<string, boolean>) {
 
 function loadStoredIgnoredItems(): Record<string, boolean> {
   return loadStorage<Record<string, boolean>>(IGNORED_STORAGE_KEY, {});
+}
+
+// Skipped items storage helpers
+function loadStoredSkippedItems(): Record<string, boolean> {
+  return loadStorage<Record<string, boolean>>(SKIPPED_STORAGE_KEY, {});
+}
+
+function saveStoredSkippedItems(value: Record<string, boolean>) {
+  saveStorage(SKIPPED_STORAGE_KEY, value);
+}
+
+function toggleSkipItem(row: EnhancedRecommendationRow | ShoppingRecommendationRow) {
+  const isSkipped = Boolean(skippedItemIds.value[row.itemId]);
+  const nextSkipped = { ...skippedItemIds.value };
+  if (isSkipped) {
+    delete nextSkipped[row.itemId];
+    infoMessage.value = `${row.itemName} dihapus dari status skip.`;
+  } else {
+    nextSkipped[row.itemId] = true;
+    infoMessage.value = `${row.itemName} ditandai sebagai skip.`;
+  }
+  skippedItemIds.value = nextSkipped;
+  saveStoredSkippedItems(nextSkipped);
 }
 
 function ignoreItem(itemId: string) {
