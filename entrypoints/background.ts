@@ -18,6 +18,7 @@ import {
 } from "@/utils/getSoldItemsByDate";
 import { buildPemasukanRequest } from "@/utils/pemasukanApi";
 import { runtimeConfig } from "@/config/runtimeConfig";
+import { fetchMarginMappings } from "@/services/marginStorage";
 import { buildAssistHeaders } from "@/services/integration/assistRequest";
 import {
   buildPendingOrderQuantityMap,
@@ -147,22 +148,11 @@ async function fetchAssistPemasukan(
 }
 
 async function fetchMarginSkuRows(): Promise<MarginSkuRow[]> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${runtimeConfig.sheets.spreadsheetId}/values/${encodeURIComponent(
-    runtimeConfig.sheets.range,
-  )}?key=${runtimeConfig.sheets.apiKey}`;
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Gagal mengambil data SKU margin: ${response.status}`);
-  }
-
-  const data = (await response.json()) as { values?: string[][] };
-  const rows = data.values ?? [];
-
-  return rows.map((row) => ({
-    kodeObat: String(row[0] ?? "").trim(),
-    namaObat: String(row[1] ?? "").trim(),
-    sku: String(row[5] ?? "").trim(),
+  const { items } = await fetchMarginMappings();
+  return items.map((item) => ({
+    kodeObat: item.kodeAssist.trim(),
+    namaObat: item.nama.trim(),
+    sku: (item.sku || "").trim(),
   }));
 }
 

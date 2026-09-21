@@ -3,6 +3,12 @@ import { ref } from "vue";
 import { resolveAssistToken } from "@/composables/assistTokenManager";
 import { resolveDestyToken } from "@/composables/destyOmniTokenManager";
 import { runtimeConfig } from "@/config/runtimeConfig";
+import {
+  fetchMarginMappings,
+  upsertMarginItem,
+  batchUpsertMarginItems,
+  type MarginMappingItem,
+} from "@/services/marginStorage";
 
 const DEFAULT_ASSIST_ACCOUNT_TX_ID = "68b6f3bea945e5b08b004236";
 
@@ -112,23 +118,17 @@ export const useAssistStore = defineStore("assist", () => {
   }
 
   const marginData = ref<any[]>([]);
-  const googleAppsScriptUrl = ref(localStorage.getItem("google_apps_script_url") || "https://script.google.com/macros/s/AKfycbzIyzsgsQNyGsB_3LrZ96xaFJugoshuNLAnarRBJj0Wk3nAwkGKfvzf17iYSrRa8wY/exec");
+  const googleAppsScriptUrl = ref(localStorage.getItem("google_apps_script_url") || "");
   const googleAppsScriptToken = ref(localStorage.getItem("google_apps_script_token") || "");
 
   async function fetchMarginData() {
     try {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${runtimeConfig.sheets.spreadsheetId}/values/${encodeURIComponent(
-        runtimeConfig.sheets.range
-      )}?key=${runtimeConfig.sheets.apiKey}`;
-      const response = await fetch(url);
-      const data = await response.json();
-      if (data.values) {
-        marginData.value = data.values;
-        // Keep window.marginData synchronized for content script access
-        window.marginData = data.values;
-      }
+      const { rows } = await fetchMarginMappings();
+      marginData.value = rows;
+      // Keep window.marginData synchronized for content script access
+      window.marginData = rows;
     } catch (err) {
-      console.error("Gagal memuat data margin dari Google Sheet:", err);
+      console.error("Gagal memuat data margin dari Firestore:", err);
     }
   }
 
@@ -140,13 +140,6 @@ export const useAssistStore = defineStore("assist", () => {
   }
 
   async function upsertMargin(kodeObat: string, namaObat: string, marginObat: string) {
-    if (!googleAppsScriptUrl.value) {
-      throw new Error("URL Google Apps Script belum dikonfigurasi di Pengaturan.");
-    }
-    if (!googleAppsScriptToken.value) {
-      throw new Error("Security Token Google Apps Script belum dikonfigurasi di Pengaturan.");
-    }
-
     // 1. Optimistic Update (Locally save prev value for rollback)
     const existingIndex = marginData.value.findIndex(row => row[0] === kodeObat);
     let prevVal = "";
@@ -160,31 +153,14 @@ export const useAssistStore = defineStore("assist", () => {
     }
     window.marginData = [...marginData.value];
 
-    // 2. Perform API call
+    // 2. Perform Firestore call
     try {
-      const response = await fetch(googleAppsScriptUrl.value, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8"
-        },
-        body: JSON.stringify({
-          token: googleAppsScriptToken.value,
-          action: "upsertMargin",
-          kodeObat,
-          namaObat,
-          marginObat
-        })
+      await upsertMarginItem({
+        kodeAssist: kodeObat,
+        nama: namaObat,
+        margin: marginObat,
       });
-
-      if (!response.ok) {
-        throw new Error(`Apps Script returned status ${response.status}`);
-      }
-
-      const resData = await response.json();
-      if (!resData.success) {
-        throw new Error(resData.message || "Gagal menyimpan margin.");
-      }
-      return resData;
+      return { success: true };
     } catch (err) {
       // 3. Rollback on failure
       const rollbackIndex = marginData.value.findIndex(row => row[0] === kodeObat);
@@ -201,13 +177,6 @@ export const useAssistStore = defineStore("assist", () => {
   }
 
   async function upsertSku(kodeObat: string, namaObat: string, sku: string) {
-    if (!googleAppsScriptUrl.value) {
-      throw new Error("URL Google Apps Script belum dikonfigurasi di Pengaturan.");
-    }
-    if (!googleAppsScriptToken.value) {
-      throw new Error("Security Token Google Apps Script belum dikonfigurasi di Pengaturan.");
-    }
-
     // 1. Optimistic Update
     const existingIndex = marginData.value.findIndex(row => row[0] === kodeObat);
     let prevVal = "";
@@ -221,31 +190,14 @@ export const useAssistStore = defineStore("assist", () => {
     }
     window.marginData = [...marginData.value];
 
-    // 2. Perform API call
+    // 2. Perform Firestore call
     try {
-      const response = await fetch(googleAppsScriptUrl.value, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8"
-        },
-        body: JSON.stringify({
-          token: googleAppsScriptToken.value,
-          action: "upsertSku",
-          kodeObat,
-          namaObat,
-          sku
-        })
+      await upsertMarginItem({
+        kodeAssist: kodeObat,
+        nama: namaObat,
+        sku: sku,
       });
-
-      if (!response.ok) {
-        throw new Error(`Apps Script returned status ${response.status}`);
-      }
-
-      const resData = await response.json();
-      if (!resData.success) {
-        throw new Error(resData.message || "Gagal menyimpan pemetaan SKU.");
-      }
-      return resData;
+      return { success: true };
     } catch (err) {
       // 3. Rollback
       const rollbackIndex = marginData.value.findIndex(row => row[0] === kodeObat);
@@ -262,12 +214,10 @@ export const useAssistStore = defineStore("assist", () => {
   }
 
   async function syncNamesWithGoogleSheets() {
-    if (!googleAppsScriptUrl.value) {
-      throw new Error("URL Google Apps Script belum dikonfigurasi di Pengaturan.");
-    }
-    if (!googleAppsScriptToken.value) {
-      throw new Error("Security Token Google Apps Script belum dikonfigurasi di Pengaturan.");
-    }
+    return syncNamesWithFirestore();
+  }
+
+  async function syncNamesWithFirestore() {
     if (!assistToken.value) {
       throw new Error("Token Assist belum terdeteksi. Silakan segarkan token di header.");
     }
@@ -336,32 +286,45 @@ export const useAssistStore = defineStore("assist", () => {
       throw new Error("Tidak ada item obat atau BHP yang ditemukan untuk disinkronkan.");
     }
 
-    // 3. Send bulkSyncNames to Google Apps Script
-    const response = await fetch(googleAppsScriptUrl.value, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8"
-      },
-      body: JSON.stringify({
-        token: googleAppsScriptToken.value,
-        action: "bulkSyncNames",
-        items: itemsToSync
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Google Apps Script returned status ${response.status}`);
+    // 3. Update existing items in Firestore
+    const { items: existingItems } = await fetchMarginMappings();
+    const existingMap = new Map(existingItems.map(item => [item.kodeAssist.toUpperCase(), item]));
+    
+    const itemsToUpdate: MarginMappingItem[] = [];
+    for (const assistItem of itemsToSync) {
+      const key = assistItem.kodeObat.toUpperCase();
+      const existing = existingMap.get(key);
+      if (existing) {
+        if (existing.nama !== assistItem.namaObat) {
+          itemsToUpdate.push({
+            ...existing,
+            nama: assistItem.namaObat,
+            updatedAt: new Date().toISOString()
+          });
+        }
+      } else {
+        itemsToUpdate.push({
+          kodeAssist: assistItem.kodeObat,
+          nama: assistItem.namaObat,
+          margin: "",
+          sku: "",
+          updatedAt: new Date().toISOString()
+        });
+      }
     }
 
-    const resData = await response.json();
-    if (!resData.success) {
-      throw new Error(resData.message || "Gagal sinkronisasi nama ke Google Sheet.");
+    if (itemsToUpdate.length > 0) {
+      await batchUpsertMarginItems(itemsToUpdate);
     }
 
     // 4. Reload local marginData cache
     await fetchMarginData();
 
-    return resData;
+    return {
+      success: true,
+      message: `Berhasil sinkronisasi ${itemsToUpdate.length} nama barang ke Firestore.`,
+      updatedCount: itemsToUpdate.length
+    };
   }
 
   const excludedDestySkuPrefixes = ref(localStorage.getItem("settings:excludedDestySkuPrefixes") || "ISA-");
@@ -400,6 +363,7 @@ export const useAssistStore = defineStore("assist", () => {
     upsertMargin,
     upsertSku,
     syncNamesWithGoogleSheets,
+    syncNamesWithFirestore,
     saveComparisonSettings
   };
 });

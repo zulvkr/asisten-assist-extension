@@ -2,50 +2,69 @@
   <div>
     <div class="text-h5 q-mb-md text-teal font-weight-bold">
       <q-icon name="settings" class="q-mr-sm" />
-      Pengaturan Google Sheets
+      Pengaturan & Integrasi Database
     </div>
 
-    <!-- Configuration Card -->
+    <!-- Firestore Margin & SKU CSV Import Card -->
     <q-card flat bordered class="q-mb-md">
       <q-card-section>
-        <div class="text-subtitle1 text-weight-bold text-teal q-mb-md">
-          Konfigurasi Google Apps Script (Ubah Margin)
+        <div class="text-subtitle1 text-weight-bold text-teal q-mb-xs">
+          <q-icon name="cloud_upload" class="q-mr-xs" />
+          Impor Data Margin & Pemetaan SKU ke Firestore
+        </div>
+        <div class="text-caption text-grey-7 q-mb-md">
+          Unggah file CSV tabel margin (misal <code>Margin - Assist.csv</code>) untuk memperbarui database Firestore secara langsung dan menggantikan Google Sheets.
         </div>
 
-        <form @submit.prevent="save">
-          <div class="q-gutter-y-md">
-            <q-input
-              v-model="scriptUrl"
-              label="Google Apps Script Web App URL"
+        <div class="row q-col-gutter-md items-center">
+          <div class="col-12 col-md-8">
+            <q-file
+              v-model="csvFile"
               outlined
               dense
-              placeholder="https://script.google.com/macros/s/.../exec"
+              label="Pilih File CSV Margin (.csv)"
+              accept=".csv"
               color="teal"
-              hint="URL Web App dari deployment Google Apps Script Anda"
-            />
-
-            <q-input
-              v-model="scriptToken"
-              label="Security Token"
-              outlined
-              dense
-              type="password"
-              placeholder="Masukkan token keamanan buatan Anda"
-              color="teal"
-              hint="Token ini harus sama dengan token yang diset di Google Apps Script Anda"
-            />
-
-            <div class="row q-mt-lg">
-              <q-btn
-                type="submit"
-                label="Simpan Pengaturan"
-                color="teal"
-                icon="save"
-                class="q-px-md"
-              />
-            </div>
+              @update:model-value="onCsvFileSelected"
+            >
+              <template v-slot:prepend>
+                <q-icon name="attach_file" color="teal" />
+              </template>
+              <template v-if="csvFile" v-slot:append>
+                <q-icon name="close" @click.stop="clearCsvFile" class="cursor-pointer" />
+              </template>
+            </q-file>
           </div>
-        </form>
+          <div class="col-12 col-md-4">
+            <q-btn
+              color="teal"
+              icon="cloud_upload"
+              label="Unggah ke Firestore"
+              class="full-width"
+              :loading="uploadingCsv"
+              :disable="!parsedCsvItems.length || uploadingCsv"
+              @click="uploadCsvToFirestore"
+            />
+          </div>
+        </div>
+
+        <!-- Preview Info -->
+        <div v-if="parsedCsvItems.length > 0" class="q-mt-sm text-caption text-teal-8">
+          <q-icon name="check_circle" color="positive" class="q-mr-xs" />
+          Siap diunggah: <strong>{{ parsedCsvItems.length }}</strong> baris data ({{ parsedWithSkuCount }} dengan SKU, {{ parsedWithMarginCount }} dengan Margin).
+        </div>
+
+        <q-linear-progress
+          v-if="uploadingCsv"
+          :value="uploadProgress"
+          color="teal"
+          class="q-mt-md"
+          rounded
+          stripe
+        />
+        <div v-if="uploadingCsv" class="text-caption text-grey-7 q-mt-xs text-right">
+          {{ uploadProgressText }}
+        </div>
       </q-card-section>
     </q-card>
 
@@ -130,6 +149,50 @@
             @update:model-value="toggleDeveloperMode"
           />
         </div>
+      </q-card-section>
+    </q-card>
+
+    <!-- Legacy Apps Script Card (Developer Mode) -->
+    <q-card v-if="developerMode" flat bordered class="q-mb-md">
+      <q-card-section>
+        <div class="text-subtitle1 text-weight-bold text-grey-8 q-mb-md">
+          Konfigurasi Google Apps Script (Legacy / Opsional)
+        </div>
+
+        <form @submit.prevent="save">
+          <div class="q-gutter-y-md">
+            <q-input
+              v-model="scriptUrl"
+              label="Google Apps Script Web App URL"
+              outlined
+              dense
+              placeholder="https://script.google.com/macros/s/.../exec"
+              color="teal"
+              hint="URL Web App dari deployment Google Apps Script Anda"
+            />
+
+            <q-input
+              v-model="scriptToken"
+              label="Security Token"
+              outlined
+              dense
+              type="password"
+              placeholder="Masukkan token keamanan buatan Anda"
+              color="teal"
+              hint="Token ini harus sama dengan token yang diset di Google Apps Script Anda"
+            />
+
+            <div class="row q-mt-lg">
+              <q-btn
+                type="submit"
+                label="Simpan Pengaturan Apps Script"
+                color="grey-8"
+                icon="save"
+                class="q-px-md"
+              />
+            </div>
+          </div>
+        </form>
       </q-card-section>
     </q-card>
 
@@ -234,10 +297,10 @@
     <q-card flat bordered class="q-mb-md">
       <q-card-section>
         <div class="text-subtitle1 text-weight-bold text-teal q-mb-xs">
-          Sinkronisasi Nama Barang ke Google Sheets
+          Sinkronisasi Nama Barang ke Firestore
         </div>
         <div class="text-caption text-grey-7 q-mb-md">
-          Alat ini akan mengambil seluruh daftar nama obat & BHP terbaru dari Assist, mencocokkannya dengan baris di sheet margin berdasarkan kode SKU, dan memperbarui nama barang di Google Sheets agar tersinkronisasi.
+          Alat ini akan mengambil seluruh daftar nama obat & BHP terbaru dari Assist, mencocokkannya dengan baris di Firestore berdasarkan kode assist, dan memperbarui nama barang di database Firestore agar tersinkronisasi.
         </div>
 
         <q-btn
@@ -245,12 +308,9 @@
           icon="sync"
           label="Sinkronkan Nama Sekarang"
           :loading="syncing"
-          :disabled="!store.googleAppsScriptUrl || !store.googleAppsScriptToken || !store.assistToken"
+          :disabled="!store.assistToken"
           @click="startSync"
         />
-        <div v-if="!store.googleAppsScriptToken" class="text-caption text-red q-mt-sm">
-          * Harap isi Security Token di konfigurasi di atas sebelum mensinkronisasikan nama.
-        </div>
         <div v-if="!store.assistToken" class="text-caption text-red q-mt-sm">
           * Harap hubungkan token Assist terlebih dahulu sebelum mensinkronisasikan nama.
         </div>
@@ -260,9 +320,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { useQuasar } from "quasar";
 import { useAssistStore } from "../stores/assistStore";
+import {
+  parseMarginCsv,
+  batchUpsertMarginItems,
+  type MarginMappingItem,
+} from "@/services/marginStorage";
 import {
   decryptPayload,
   decryptWrappedPayload,
@@ -285,6 +350,99 @@ const cryptoPlaintext = ref("");
 const cryptoEncryptedInput = ref("");
 const cryptoEncryptedOutput = ref("");
 const cryptoDecryptedOutput = ref("");
+
+// CSV Upload State
+const csvFile = ref<File | null>(null);
+const parsedCsvItems = ref<MarginMappingItem[]>([]);
+const uploadingCsv = ref(false);
+const uploadProgress = ref(0);
+const uploadProgressText = ref("");
+
+const parsedWithSkuCount = computed(
+  () => parsedCsvItems.value.filter((i) => Boolean(i.sku)).length,
+);
+const parsedWithMarginCount = computed(
+  () => parsedCsvItems.value.filter((i) => Boolean(i.margin)).length,
+);
+
+async function onCsvFileSelected(file: File | null) {
+  if (!file) {
+    clearCsvFile();
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const items = parseMarginCsv(text);
+    if (items.length === 0) {
+      $q.notify({
+        type: "warning",
+        message: "File CSV tidak memiliki baris data yang valid.",
+        position: "top",
+      });
+      clearCsvFile();
+      return;
+    }
+
+    parsedCsvItems.value = items;
+    $q.notify({
+      type: "positive",
+      message: `Berhasil membaca ${items.length} data dari file CSV.`,
+      position: "top",
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    $q.notify({
+      type: "negative",
+      message: `Gagal membaca file CSV: ${msg}`,
+      position: "top",
+    });
+    clearCsvFile();
+  }
+}
+
+function clearCsvFile() {
+  csvFile.value = null;
+  parsedCsvItems.value = [];
+  uploadProgress.value = 0;
+  uploadProgressText.value = "";
+}
+
+async function uploadCsvToFirestore() {
+  if (parsedCsvItems.value.length === 0 || uploadingCsv.value) return;
+
+  uploadingCsv.value = true;
+  uploadProgress.value = 0;
+  uploadProgressText.value = `Mengunggah 0 / ${parsedCsvItems.value.length}...`;
+
+  try {
+    await batchUpsertMarginItems(
+      parsedCsvItems.value,
+      (processed, total) => {
+        uploadProgress.value = processed / total;
+        uploadProgressText.value = `Mengunggah ${processed} / ${total} data...`;
+      },
+    );
+
+    // Refresh store local cache
+    await store.fetchMarginData();
+
+    $q.notify({
+      type: "positive",
+      message: `Berhasil mengunggah ${parsedCsvItems.value.length} data margin & SKU ke Firestore!`,
+      position: "top",
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    $q.notify({
+      type: "negative",
+      message: `Gagal mengunggah ke Firestore: ${msg}`,
+      position: "top",
+    });
+  } finally {
+    uploadingCsv.value = false;
+  }
+}
 
 function save() {
   store.saveAppsScriptConfig(scriptUrl.value.trim(), scriptToken.value.trim());
@@ -410,17 +568,17 @@ async function copyCryptoValue(value: string) {
 async function startSync() {
   syncing.value = true;
   try {
-    const res = await store.syncNamesWithGoogleSheets();
+    const res = await store.syncNamesWithFirestore();
     $q.notify({
       type: "positive",
-      message: res.message || "Nama barang berhasil disinkronkan ke Google Sheet!",
+      message: res.message || "Nama barang berhasil disinkronkan ke Firestore!",
       position: "top"
     });
   } catch (err: any) {
     console.error(err);
     $q.notify({
       type: "negative",
-      message: err.message || "Gagal sinkronisasi nama barang.",
+      message: err.message || "Gagal sinkronisasi nama barang ke Firestore.",
       position: "top"
     });
   } finally {

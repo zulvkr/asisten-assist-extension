@@ -1,12 +1,13 @@
-import { runtimeConfig } from "@/config/runtimeConfig";
+import { fetchMarginMappings, type MarginTableRow } from "@/services/marginStorage";
 
-export async function fetchMarginTable() {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${runtimeConfig.sheets.spreadsheetId}/values/${encodeURIComponent(
-    runtimeConfig.sheets.range,
-  )}?key=${runtimeConfig.sheets.apiKey}`;
-  const response = await fetch(url);
-  const data = await response.json();
-
-  window.marginData = data.values;
-  console.log("Fetched margin data:", window.marginData);
+export async function fetchMarginTable(): Promise<MarginTableRow[]> {
+  try {
+    const { rows } = await fetchMarginMappings();
+    (window as any).marginData = rows;
+    console.log("Fetched margin data from Firestore:", rows.length, "items");
+    return rows;
+  } catch (err) {
+    console.error("Gagal mengambil data margin dari Firestore:", err);
+    return [];
+  }
 }
