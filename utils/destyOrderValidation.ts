@@ -23,6 +23,14 @@ function catalogById(items: AssistCatalogItem[] | undefined): Map<string, Assist
   return new Map((items ?? []).map((item) => [item.id.trim(), item]));
 }
 
+function catalogByCode(items: AssistCatalogItem[] | undefined): Map<string, AssistCatalogItem> {
+  return new Map(
+    (items ?? [])
+      .filter((item) => Boolean(item.code))
+      .map((item) => [normalized(item.code), item]),
+  );
+}
+
 function addIssue(
   issues: DestyOrderValidationIssue[],
   issue: DestyOrderValidationIssue,
@@ -39,6 +47,7 @@ export function validateDestyOrder(
   const mappedItems: DestyOrderValidationResult["mappedItems"] = [];
   const mappings = mappingBySku(context.mappings);
   const catalog = catalogById(context.assistCatalog);
+  const catalogCodes = catalogByCode(context.assistCatalog);
   const duplicates = new Set(
     Array.from(context.duplicateOrderNumbers ?? [], (value) => normalized(String(value))),
   );
@@ -73,7 +82,26 @@ export function validateDestyOrder(
       continue;
     }
 
-    const mapping = mappings.get(normalized(sku));
+    let mapping = mappings.get(normalized(sku));
+    // Fallback 1:1 to Assist catalog by SKU code if no explicit mapping exists
+    if (!mapping && context.assistCatalog) {
+      const fallbackCatalogItem = catalogCodes.get(normalized(sku));
+      if (fallbackCatalogItem) {
+        mapping = {
+          destySku: sku,
+          assistCode: fallbackCatalogItem.code,
+          assistType: fallbackCatalogItem.type,
+          assistId: fallbackCatalogItem.id,
+          assistName: fallbackCatalogItem.name,
+          destyUnit: fallbackCatalogItem.unit,
+          assistUnit: fallbackCatalogItem.unit,
+          depotId: fallbackCatalogItem.depotId || context.defaultDepotId,
+          conversionFactor: 1,
+          active: true,
+        };
+      }
+    }
+
     if (!mapping) {
       addIssue(issues, {
         code: "unmapped-sku",

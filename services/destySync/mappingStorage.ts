@@ -1,3 +1,11 @@
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+} from "firebase/firestore";
+import { db } from "@/config/firebase";
 import type {
   AssistCatalogItem,
   DestySheetSkuFallback,
@@ -7,6 +15,7 @@ import type {
 
 /** Only explicit user overrides are persisted. Effective Sheet/catalog mappings stay in memory. */
 export const DESTY_SKU_MAPPINGS_STORAGE_KEY = "destySync:skuOverrides";
+export const DESTY_MAPPING_COLLECTION = "desty_sku_mappings";
 export const DEFAULT_ASSIST_DEPOT_ID = "68b7af1e072af0c71ed65d3a";
 
 function asTrimmedString(value: unknown): string {
@@ -125,6 +134,91 @@ export async function saveDestySkuMappings(
   return validated;
 }
 
+export async function fetchDestySkuMappingsFromFirestore(): Promise<DestySkuMapping[]> {
+  try {
+    if (!db) return [];
+    const collRef = collection(db, DESTY_MAPPING_COLLECTION);
+    const snapshot = await getDocs(collRef);
+    const mappings: DestySkuMapping[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      const validation = validateDestySkuMapping(data);
+      if (validation.valid) {
+        mappings.push(validation.mapping);
+      }
+    });
+    return mappings;
+  } catch (err) {
+    console.warn("Gagal membaca mapping dari Firestore (menggunakan local cache):", err);
+    return [];
+  }
+}
+
+function sanitizeFirestorePayload(mapping: DestySkuMapping): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    destySku: mapping.destySku,
+    assistCode: mapping.assistCode,
+    assistType: mapping.assistType,
+    assistId: mapping.assistId,
+    assistName: mapping.assistName,
+    conversionFactor: mapping.conversionFactor,
+    active: mapping.active,
+    updatedAt: mapping.updatedAt || new Date().toISOString(),
+  };
+  if (mapping.destyUnit) payload.destyUnit = mapping.destyUnit;
+  if (mapping.assistUnit) payload.assistUnit = mapping.assistUnit;
+  if (mapping.depotId) payload.depotId = mapping.depotId;
+  return payload;
+}
+
+export async function upsertDestySkuMappingToFirestore(mapping: DestySkuMapping): Promise<void> {
+  try {
+    if (!db) return;
+    const cleanId = mapping.destySku.trim().toUpperCase().replace(/[\/\.#$\[\]]/g, "_");
+    const docRef = doc(db, DESTY_MAPPING_COLLECTION, cleanId);
+    const payload = sanitizeFirestorePayload(mapping);
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    console.warn("Gagal menyimpan mapping ke Firestore:", err);
+  }
+}
+
+export async function deleteDestySkuMappingFromFirestore(destySku: string): Promise<void> {
+  try {
+    if (!db) return;
+    const cleanId = destySku.trim().toUpperCase().replace(/[\/\.#$\[\]]/g, "_");
+    const docRef = doc(db, DESTY_MAPPING_COLLECTION, cleanId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.warn("Gagal menghapus mapping dari Firestore:", err);
+  }
+}
+
+export async function syncDestySkuMappings(): Promise<DestySkuMapping[]> {
+  const localMappings = await getDestySkuMappings();
+  const remoteMappings = await fetchDestySkuMappingsFromFirestore();
+  if (!remoteMappings.length) {
+    return localMappings;
+  }
+
+  // Merge remote with local (remote has highest precedence for shared cache)
+  const mergedMap = new Map<string, DestySkuMapping>();
+  for (const m of localMappings) {
+    mergedMap.set(m.destySku.trim().toUpperCase(), m);
+  }
+  for (const rm of remoteMappings) {
+    const key = rm.destySku.trim().toUpperCase();
+    const local = mergedMap.get(key);
+    if (!local || (rm.updatedAt && (!local.updatedAt || rm.updatedAt >= local.updatedAt))) {
+      mergedMap.set(key, rm);
+    }
+  }
+
+  const merged = Array.from(mergedMap.values());
+  await saveDestySkuMappings(merged);
+  return merged;
+}
+
 export async function upsertDestySkuMapping(
   mapping: DestySkuMappingInput,
 ): Promise<DestySkuMapping[]> {
@@ -136,16 +230,61 @@ export async function upsertDestySkuMapping(
   const index = mappings.findIndex((item) => item.destySku.toUpperCase() === key);
   if (index === -1) mappings.push(result.mapping);
   else mappings[index] = result.mapping;
-  return saveDestySkuMappings(mappings);
+  
+  const saved = await saveDestySkuMappings(mappings);
+  void upsertDestySkuMappingToFirestore(result.mapping);
+  return saved;
+}
+
+export async function updateSkuConversionFactor(
+  destySku: string,
+  conversionFactor: number,
+  fallbackItem?: Partial<DestySkuMappingInput>,
+): Promise<DestySkuMapping[]> {
+  const factor = Number(conversionFactor);
+  if (!Number.isFinite(factor) || factor <= 0) {
+    throw new Error("Faktor konversi harus berupa angka lebih besar dari 0");
+  }
+  const mappings = await getDestySkuMappings();
+  const key = destySku.trim().toUpperCase();
+  const index = mappings.findIndex((m) => m.destySku.trim().toUpperCase() === key);
+
+  if (index !== -1) {
+    mappings[index] = {
+      ...mappings[index],
+      conversionFactor: factor,
+      updatedAt: new Date().toISOString(),
+    };
+    const saved = await saveDestySkuMappings(mappings);
+    void upsertDestySkuMappingToFirestore(mappings[index]);
+    return saved;
+  } else if (fallbackItem && fallbackItem.assistId && fallbackItem.assistCode) {
+    const newMapping: DestySkuMappingInput = {
+      destySku: destySku.trim(),
+      assistCode: fallbackItem.assistCode,
+      assistType: fallbackItem.assistType || "prescription",
+      assistId: fallbackItem.assistId,
+      assistName: fallbackItem.assistName || destySku,
+      assistUnit: fallbackItem.assistUnit,
+      destyUnit: fallbackItem.destyUnit,
+      depotId: fallbackItem.depotId || DEFAULT_ASSIST_DEPOT_ID,
+      conversionFactor: factor,
+      active: true,
+      updatedAt: new Date().toISOString(),
+    };
+    return upsertDestySkuMapping(newMapping);
+  }
+  return mappings;
 }
 
 export async function removeDestySkuMapping(destySku: string): Promise<DestySkuMapping[]> {
   const key = destySku.trim().toUpperCase();
   if (!key) throw new Error("destySku wajib diisi.");
   const mappings = await getDestySkuMappings();
-  return saveDestySkuMappings(
-    mappings.filter((item) => item.destySku.toUpperCase() !== key),
-  );
+  const updated = mappings.filter((item) => item.destySku.toUpperCase() !== key);
+  const saved = await saveDestySkuMappings(updated);
+  void deleteDestySkuMappingFromFirestore(destySku);
+  return saved;
 }
 
 export function exportDestySkuMappings(mappings: DestySkuMapping[]): string {
@@ -161,7 +300,11 @@ export async function importDestySkuMappings(
   } catch {
     throw new Error("File mapping bukan JSON yang valid.");
   }
-  return saveDestySkuMappings(parsed);
+  const saved = await saveDestySkuMappings(parsed);
+  for (const m of saved) {
+    void upsertDestySkuMappingToFirestore(m);
+  }
+  return saved;
 }
 
 /** Reads the existing Google Sheet convention: code in column A, name in B, SKU in F. */
@@ -240,4 +383,35 @@ export function findDestySkuMapping(
   return mappings.find((mapping) =>
     mapping.active && mapping.destySku.trim().toUpperCase() === key,
   );
+}
+
+export function resolveEffectiveDestySkuMapping(
+  destySku: string,
+  mappings: DestySkuMapping[],
+  assistCatalog: AssistCatalogItem[] = [],
+  defaultDepotId: string = DEFAULT_ASSIST_DEPOT_ID,
+): DestySkuMapping | undefined {
+  const explicit = findDestySkuMapping(mappings, destySku);
+  if (explicit) return explicit;
+
+  const key = destySku.trim().toUpperCase();
+  if (!key || !assistCatalog.length) return undefined;
+
+  const catalogItem = assistCatalog.find(
+    (item) => item.code && item.code.trim().toUpperCase() === key,
+  );
+  if (!catalogItem) return undefined;
+
+  return {
+    destySku: destySku.trim(),
+    assistCode: catalogItem.code,
+    assistType: catalogItem.type,
+    assistId: catalogItem.id,
+    assistName: catalogItem.name,
+    destyUnit: catalogItem.unit,
+    assistUnit: catalogItem.unit,
+    depotId: catalogItem.depotId || defaultDepotId,
+    conversionFactor: 1,
+    active: true,
+  };
 }

@@ -3,8 +3,8 @@
     <!-- Header Section -->
     <div class="row items-center justify-between q-mb-md">
       <div class="text-h5 text-teal font-weight-bold row items-center">
-        <q-icon name="sync" class="q-mr-sm" />
-        PLDMP (Desty Helper Integration)
+        <q-icon name="sync_alt" class="q-mr-sm" />
+        Desty Omni Integration & PLDMP Helper
       </div>
     </div>
 
@@ -30,60 +30,7 @@
       </ul>
     </q-banner>
 
-    <!-- Filters & Actions Card -->
-    <q-card flat bordered class="q-mb-md">
-      <q-card-section class="row q-col-gutter-md items-center">
-        <!-- Status Dropdown Selector -->
-        <div class="col-12 col-md-4">
-          <q-select
-            v-model="selectedStatus"
-            outlined
-            dense
-            emit-value
-            map-options
-            :options="statusOptions.map(o => ({
-              label: `${o.label} (${statusCounts[o.countKey] !== undefined ? statusCounts[o.countKey] : '0'})`,
-              value: o.value
-            }))"
-            label="Status Pesanan Desty"
-            color="teal"
-            :disabled="!destyToken"
-          />
-        </div>
-
-        <q-space />
-
-        <!-- Control Buttons -->
-        <div class="col-12 col-md-6 row q-gutter-sm justify-end">
-          <q-btn
-            color="teal"
-            icon="download"
-            :loading="loading"
-            :label="loading ? `Memuat (${progressText})...` : 'Tarik Data'"
-            @click="fetchOrders"
-            :disabled="!destyToken"
-          />
-          <q-btn
-            color="teal"
-            outline
-            icon="content_copy"
-            :disabled="!flattenedItems.length || loading"
-            :label="copyStatusText"
-            @click="copyToClipboard"
-          />
-          <q-btn
-            color="positive"
-            icon="file_download"
-            :disabled="!flattenedItems.length || loading"
-            :loading="exporting"
-            label="Ekspor Excel"
-            @click="exportToExcel"
-          />
-        </div>
-      </q-card-section>
-    </q-card>
-
-    <!-- Status Alerts -->
+    <!-- Global Status Message Banner -->
     <q-banner
       v-if="statusMessage"
       rounded
@@ -96,36 +43,262 @@
       {{ statusMessage }}
     </q-banner>
 
-    <!-- Desty Sales Synchronization -->
+    <!-- Main Navigation Tabs Card -->
     <q-card flat bordered class="q-mb-md">
-      <q-card-section>
-        <div class="text-subtitle1 text-weight-bold text-teal q-mb-sm">
-          Sinkronisasi Penjualan Desty → Assist
-        </div>
-        <q-tabs v-model="syncTab" dense active-color="teal" indicator-color="teal" align="left">
-          <q-tab name="import" label="Impor Pesanan (Online)" />
-          <q-tab name="offline_sync" label="SO Stok Offline (Assist → Desty)" />
-          <q-tab v-if="store.developerMode" name="mapping" label="Pemetaan/Override SKU" />
-          <q-tab name="log" label="Log Impor" />
+      <q-card-section class="q-pa-none">
+        <q-tabs
+          v-model="syncTab"
+          dense
+          active-color="teal"
+          indicator-color="teal"
+          align="left"
+          class="bg-grey-1"
+        >
+          <q-tab name="pldmp" icon="table_chart" label="PLDMP (Ekspor Pesanan)" />
+          <q-tab name="import" icon="cloud_download" label="Impor Pesanan (Desty → Assist)" />
+          <q-tab name="offline_sync" icon="sync" label="SO Stok Offline (Assist → Desty)" />
+          <q-tab name="mapping" icon="tune" label="Pemetaan & Konversi SKU" />
+          <q-tab name="log" icon="history" label="Log Impor" />
         </q-tabs>
         <q-separator />
+
         <q-tab-panels v-model="syncTab" animated>
-          <q-tab-panel name="import" class="q-px-none">
-            <div class="row q-col-gutter-sm items-end">
-              <div class="col-12 col-md-6">
+          <!-- TAB 1: PLDMP (Ekspor Data Pesanan Desty) -->
+          <q-tab-panel name="pldmp" class="q-pa-md">
+            <!-- Filter & Action Bar for PLDMP -->
+            <div class="row q-col-gutter-md items-center q-mb-md">
+              <div class="col-12 col-md-4">
                 <q-select
-                  v-model="selectedOrderKey"
-                  :options="orderOptions"
-                  emit-value
-                  map-options
+                  v-model="selectedStatus"
                   outlined
                   dense
-                  label="Order yang akan direview"
-                  :disable="!orders.length"
+                  emit-value
+                  map-options
+                  :options="statusOptions.map(o => ({
+                    label: `${o.label} (${statusCounts[o.countKey] !== undefined ? statusCounts[o.countKey] : '0'})`,
+                    value: o.value
+                  }))"
+                  label="Status Pesanan Desty"
+                  color="teal"
+                  :disabled="!destyToken"
+                />
+              </div>
+
+              <q-space />
+
+              <div class="col-12 col-md-6 row q-gutter-sm justify-end">
+                <q-btn
+                  color="teal"
+                  icon="download"
+                  :loading="loading"
+                  :label="loading ? `Memuat (${progressText})...` : 'Tarik Data'"
+                  @click="fetchOrders"
+                  :disabled="!destyToken"
+                />
+                <q-btn
+                  color="teal"
+                  outline
+                  icon="content_copy"
+                  :disabled="!flattenedItems.length || loading"
+                  :label="copyStatusText"
+                  @click="copyToClipboard"
+                />
+                <q-btn
+                  color="positive"
+                  icon="file_download"
+                  :disabled="!flattenedItems.length || loading"
+                  :loading="exporting"
+                  label="Ekspor Excel PLDMP"
+                  @click="exportToExcel"
+                />
+              </div>
+            </div>
+
+            <!-- Summary header -->
+            <div v-if="flattenedItems.length" class="row items-center justify-between q-px-md q-py-sm bg-grey-1 rounded-borders q-mb-sm text-caption">
+              <div>
+                Total: <strong>{{ orders.length }} pesanan</strong> ({{ flattenedItems.length }} baris barang)
+              </div>
+              <div class="text-grey-7">
+                Format formula excel modal: <code>=E[baris]*H[baris]</code>
+              </div>
+            </div>
+
+            <!-- PLDMP Dedicated Table -->
+            <q-table
+              :rows="flattenedItems"
+              :columns="pldmpTableColumns"
+              row-key="rowId"
+              flat
+              bordered
+              :loading="loading"
+              :pagination="{ rowsPerPage: 15 }"
+              no-data-label="Belum ada data pesanan PLDMP. Klik 'Tarik Data' untuk memuat."
+            >
+              <template v-slot:body-cell-no="props">
+                <q-td :props="props" class="text-center font-mono">
+                  {{ props.rowIndex + 1 }}
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-mappingStatus="props">
+                <q-td :props="props" class="text-center">
+                  <div v-if="props.row.mappedItem">
+                    <div class="row items-center justify-center q-gutter-x-xs no-wrap">
+                      <q-badge
+                        :color="props.row.is1to1Fallback ? 'teal-1' : 'positive'"
+                        :text-color="props.row.is1to1Fallback ? 'teal-9' : 'white'"
+                        class="q-px-sm text-weight-bold cursor-pointer"
+                      >
+                        <q-icon :name="props.row.is1to1Fallback ? 'sync_alt' : 'check_circle'" size="xs" class="q-mr-xs" />
+                        {{ props.row.is1to1Fallback ? '1:1 Auto' : 'Termapping' }}
+                        <q-tooltip anchor="top middle" self="bottom middle">
+                          <div class="text-weight-bold">{{ props.row.is1to1Fallback ? 'Cocok 1:1 Katalog Assist:' : 'Terpetakan (Firebase):' }}</div>
+                          <div>Kode: {{ props.row.mappedItem.assistCode }}</div>
+                          <div>Nama: {{ props.row.mappedItem.assistName }}</div>
+                          <div v-if="props.row.mappedItem.conversionFactor !== 1">Faktor: {{ props.row.mappedItem.conversionFactor }}</div>
+                        </q-tooltip>
+                      </q-badge>
+                      <q-btn
+                        size="xs"
+                        flat
+                        round
+                        color="teal"
+                        icon="tune"
+                        @click="openSkuRecommendationDialog(props.row.sku, props.row.productName)"
+                      >
+                        <q-tooltip>Ubah pemetaan SKU ini</q-tooltip>
+                      </q-btn>
+                    </div>
+                    <div class="text-2xs font-mono text-grey-7 ellipsis q-mt-2xs" style="max-width: 140px;" :title="props.row.mappedItem.assistName">
+                      {{ props.row.mappedItem.assistCode }}
+                    </div>
+                  </div>
+                  <div v-else class="column items-center q-gutter-y-2xs">
+                    <q-badge
+                      color="negative"
+                      class="q-px-sm cursor-pointer"
+                    >
+                      <q-icon name="link_off" size="xs" class="q-mr-xs" />
+                      Belum Termapping
+                      <q-tooltip anchor="top middle" self="bottom middle">
+                        SKU Desty belum dipetakan ke katalog Assist di Firebase
+                      </q-tooltip>
+                    </q-badge>
+
+                    <!-- Quick SKU matching recommendation if unmapped -->
+                    <div v-if="getSkuRecommendation(props.row.sku, props.row.productName).bestMatch" class="row items-center justify-center no-wrap q-mt-2xs">
+                      <q-btn
+                        size="xs"
+                        color="teal"
+                        icon="auto_fix_high"
+                        :label="`Match (${Math.round((getSkuRecommendation(props.row.sku, props.row.productName).bestMatch?.score ?? 0) * 100)}%)`"
+                        :loading="syncBusy"
+                        @click="applyQuickMapping(props.row.sku, getSkuRecommendation(props.row.sku, props.row.productName).bestMatch!)"
+                      >
+                        <q-tooltip>
+                          Hubungkan ke: {{ getSkuRecommendation(props.row.sku, props.row.productName).bestMatch?.catalogItem.code }} - {{ getSkuRecommendation(props.row.sku, props.row.productName).bestMatch?.catalogItem.name }} (Disimpan ke Firebase)
+                        </q-tooltip>
+                      </q-btn>
+                      <q-btn
+                        size="xs"
+                        flat
+                        round
+                        color="teal"
+                        icon="edit"
+                        class="q-ml-2xs"
+                        @click="openSkuRecommendationDialog(props.row.sku, props.row.productName)"
+                      >
+                        <q-tooltip>Pilih rekomendasi lain</q-tooltip>
+                      </q-btn>
+                    </div>
+                    <div v-else class="q-mt-2xs">
+                      <q-btn
+                        size="xs"
+                        outline
+                        color="teal"
+                        label="Petakan SKU"
+                        icon="link"
+                        @click="openSkuRecommendationDialog(props.row.sku, props.row.productName)"
+                      />
+                    </div>
+                  </div>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-platformName="props">
+                <q-td :props="props" class="text-center">
+                  <q-badge
+                    :color="props.value === 'SHOPEE' ? 'orange' : props.value.includes('TIKTOK') ? 'black' : 'teal'"
+                    class="q-px-sm text-weight-bold"
+                  >
+                    {{ props.value }}
+                  </q-badge>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-inputKeAssist="props">
+                <q-td :props="props">
+                  <q-badge
+                    :color="props.value.startsWith('Sudah diimpor') ? 'positive' : props.value.includes('Void') ? 'orange' : props.value.startsWith('Belum') ? 'grey-6' : 'negative'"
+                    class="q-px-sm"
+                  >
+                    {{ props.value }}
+                  </q-badge>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-quantity="props">
+                <q-td :props="props" class="text-right">
+                  <q-badge color="teal-1" text-color="teal-9" class="q-px-sm text-weight-bold text-subtitle2">
+                    {{ props.value }}
+                  </q-badge>
+                </q-td>
+              </template>
+            </q-table>
+          </q-tab-panel>
+
+          <!-- TAB 2: IMPOR PESANAN ONLINE (Desty → Assist) -->
+          <q-tab-panel name="import" class="q-pa-md">
+            <!-- Controls for Online Import -->
+            <div class="row q-col-gutter-sm items-center q-mb-md">
+              <div class="col-12 col-md-3">
+                <q-select
+                  v-model="selectedStatus"
+                  outlined
+                  dense
+                  emit-value
+                  map-options
+                  :options="statusOptions.map(o => ({
+                    label: `${o.label} (${statusCounts[o.countKey] !== undefined ? statusCounts[o.countKey] : '0'})`,
+                    value: o.value
+                  }))"
+                  label="Status Pesanan Desty"
+                  color="teal"
+                  :disabled="!destyToken"
                 />
               </div>
               <div class="col-auto">
-                <q-btn outline color="blue-grey-8" label="Muat Katalog Assist" :loading="syncBusy" @click="loadSyncCatalog" />
+                <q-btn
+                  color="teal"
+                  icon="download"
+                  :loading="loading"
+                  label="Tarik Pesanan"
+                  @click="fetchOrders"
+                  :disabled="!destyToken"
+                />
+              </div>
+              <div class="col-auto">
+                <q-btn
+                  outline
+                  color="blue-grey-8"
+                  icon="refresh"
+                  label="Segarkan Katalog"
+                  :loading="syncBusy"
+                  @click="loadSyncCatalog"
+                >
+                  <q-tooltip>Muat ulang katalog dan stok Assist terbaru</q-tooltip>
+                </q-btn>
               </div>
               <div v-if="store.developerMode" class="col-auto">
                 <q-btn outline color="teal" label="Validasi" :disable="!selectedOrder" @click="validateSelectedOrder" />
@@ -134,50 +307,356 @@
                 <q-btn color="teal" label="Dry-run" :disable="!selectedOrder" :loading="syncBusy" @click="dryRunSelectedOrder" />
               </div>
               <div class="col-auto">
-                <q-btn color="positive" label="Impor ke Assist" :disable="!selectedOrder || !store.assistAccountTxId" :loading="syncBusy" @click="importSelectedOrder" />
-              </div>
-              <div class="col-auto">
                 <q-btn
                   color="positive"
                   :label="selectedOrdersCount > 0 ? `Impor Terpilih (${selectedOrdersCount})` : 'Impor Terpilih'"
+                  icon="cloud_upload"
                   :disable="!selectedOrdersCount || !store.assistAccountTxId"
                   :loading="syncBusy"
                   @click="importSelectedCheckedOrders"
                 >
-                  <q-tooltip v-if="!selectedOrdersCount">Pilih pesanan pada tabel dengan mencentang checkbox</q-tooltip>
+                  <q-tooltip v-if="!selectedOrdersCount">Pilih pesanan valid pada tabel di bawah dengan mencentang checkbox</q-tooltip>
                 </q-btn>
               </div>
               <div class="col-auto">
-                <q-btn color="positive" outline label="Impor Semua Valid" :disable="!orders.length || !store.assistAccountTxId" :loading="syncBusy" @click="bulkImportOrders" />
+                <q-btn
+                  color="positive"
+                  outline
+                  label="Impor Semua Valid"
+                  icon="done_all"
+                  :disable="!orders.length || !store.assistAccountTxId"
+                  :loading="syncBusy"
+                  @click="bulkImportOrders"
+                />
               </div>
             </div>
-            <div v-if="!store.assistAccountTxId" class="text-caption text-red q-mt-sm">
-              Isi accountTxId akun Kas di Pengaturan sebelum mengirim transaksi.
+
+            <div v-if="!store.assistAccountTxId" class="text-caption text-red q-mb-sm">
+              Isi accountTxId akun Kas di Pengaturan sebelum mengirim transaksi ke Assist.
             </div>
-            <q-banner v-if="syncValidationMessage" rounded class="q-mt-md bg-grey-2">
-              {{ syncValidationMessage }}
+
+            <!-- Unmapped SKUs Recommendation Banner -->
+            <q-banner
+              v-if="unmappedSkusInOrders.length > 0"
+              rounded
+              class="bg-amber-1 text-black q-mb-md border-amber"
+            >
+              <template v-slot:avatar>
+                <q-icon name="auto_fix_high" color="amber-9" size="md" />
+              </template>
+              <div class="row items-center justify-between">
+                <div class="col-12 col-md-8">
+                  <div class="text-subtitle2 text-weight-bold text-amber-10">
+                    Ditemukan {{ unmappedSkusInOrders.length }} SKU Desty yang belum dipetakan
+                  </div>
+                  <div class="text-caption text-grey-9">
+                    Tersedia {{ highConfidenceUnmappedCount }} rekomendasi otomatis dengan tingkat kecocokan tinggi berdasarkan kesamaan kode, kemasan, dosis, dan nama obat.
+                  </div>
+                </div>
+                <div class="col-12 col-md-4 row q-gutter-xs justify-end q-mt-xs-sm">
+                  <q-btn
+                    v-if="highConfidenceUnmappedCount > 0"
+                    color="positive"
+                    icon="done_all"
+                    :label="`Petakan Otomatis (${highConfidenceUnmappedCount})`"
+                    :loading="syncBusy"
+                    @click="applyAllHighConfidenceRecommendations"
+                  >
+                    <q-tooltip>Simpan semua rekomendasi SKU berakurasi tinggi</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    outline
+                    color="teal"
+                    icon="manage_search"
+                    label="Review Rekomendasi"
+                    @click="openSkuRecommendationDialog(unmappedSkusInOrders[0].sku, unmappedSkusInOrders[0].productName)"
+                  />
+                </div>
+              </div>
             </q-banner>
-            <q-list v-if="syncIssues.length" bordered separator class="q-mt-md">
+
+            <!-- Sync Issues List with In-Place Recommendation Matching -->
+            <q-list v-if="syncIssues.length" bordered separator class="q-mb-md">
               <q-item v-for="issue in syncIssues" :key="`${issue.code}-${issue.sku ?? issue.message}`">
                 <q-item-section avatar><q-icon name="error" color="negative" /></q-item-section>
-                <q-item-section>{{ issue.message }}</q-item-section>
+                <q-item-section>
+                  <q-item-label class="text-weight-bold text-red-9">{{ issue.message }}</q-item-label>
+                  <div v-if="issue.code === 'unmapped-sku' && issue.sku" class="q-mt-xs">
+                    <template v-if="getSkuRecommendation(issue.sku).bestMatch">
+                      <div class="row items-center q-gutter-x-sm q-gutter-y-xs q-mt-2xs">
+                        <q-badge
+                          :color="getSkuRecommendation(issue.sku).bestMatch?.confidence === 'high' ? 'green-1' : 'amber-1'"
+                          :text-color="getSkuRecommendation(issue.sku).bestMatch?.confidence === 'high' ? 'green-9' : 'amber-10'"
+                          class="q-pa-xs text-weight-bold"
+                        >
+                          <q-icon name="auto_fix_high" size="14px" class="q-mr-xs" />
+                          Rekomendasi ({{ Math.round((getSkuRecommendation(issue.sku).bestMatch?.score ?? 0) * 100) }}% Cocok):
+                          <span class="font-mono q-ml-xs">{{ getSkuRecommendation(issue.sku).bestMatch?.catalogItem.code }}</span>
+                          <span class="q-mx-xs">-</span>
+                          <span>{{ getSkuRecommendation(issue.sku).bestMatch?.catalogItem.name }}</span>
+                        </q-badge>
+                        <q-btn
+                          size="sm"
+                          color="teal"
+                          icon="link"
+                          label="Hubungkan Sekarang"
+                          :loading="syncBusy"
+                          @click="applyQuickMapping(issue.sku, getSkuRecommendation(issue.sku).bestMatch!)"
+                        />
+                        <q-btn
+                          size="sm"
+                          outline
+                          color="teal"
+                          icon="manage_search"
+                          label="Pilih / Cari Lainnya"
+                          @click="openSkuRecommendationDialog(issue.sku)"
+                        />
+                      </div>
+                      <div class="text-caption text-grey-7 q-mt-2xs" style="font-size: 11px;">
+                        Alasan: {{ getSkuRecommendation(issue.sku).bestMatch?.matchReasons.join(" • ") }}
+                      </div>
+                    </template>
+                  </div>
+                </q-item-section>
               </q-item>
             </q-list>
-            <q-input
-              v-if="store.developerMode && syncPayloadPreview"
-              v-model="syncPayloadPreview"
-              class="q-mt-md"
-              type="textarea"
-              outlined
-              readonly
-              autogrow
-              label="Preview payload (dry-run)"
-              :input-style="{ fontFamily: 'monospace', fontSize: '11px' }"
-            />
+
+            <!-- Table Header Control Bar -->
+            <div v-if="flattenedItems.length" class="row items-center justify-between q-px-md q-py-sm bg-grey-1 rounded-borders q-mb-sm text-caption">
+              <div class="row items-center q-gutter-sm">
+                <span class="text-weight-medium text-grey-8">
+                  Terpilih: <strong class="text-teal-9">{{ selectedOrdersCount }} order</strong> ({{ selectedRows.length }} baris)
+                </span>
+                <q-btn size="sm" flat dense color="teal" label="Pilih Semua Valid" @click="selectAllValid" />
+                <q-btn size="sm" flat dense color="grey-7" label="Batal Pilih" @click="clearSelection" :disable="!selectedRows.length" />
+              </div>
+              <div class="row items-center q-gutter-sm">
+                <div v-if="!assistCatalog.length && syncBusy" class="text-teal row items-center">
+                  <q-spinner size="xs" class="q-mr-xs" />
+                  Memuat katalog Assist otomatis...
+                </div>
+                <div v-else-if="assistCatalog.length" class="text-teal-9 row items-center">
+                  <q-icon name="check_circle" size="xs" color="positive" class="q-mr-xs" />
+                  Katalog Assist Aktif ({{ assistCatalog.length }} item)
+                </div>
+              </div>
+            </div>
+
+            <!-- Dedicated Import Table with Conversion Factor Adjustment Column -->
+            <q-table
+              :rows="flattenedItems"
+              :columns="importTableColumns"
+              row-key="rowId"
+              selection="multiple"
+              v-model:selected="selectedRows"
+              flat
+              bordered
+              :loading="loading"
+              :pagination="{ rowsPerPage: 15 }"
+              no-data-label="Belum ada data pesanan. Klik 'Tarik Pesanan' untuk memuat."
+            >
+              <!-- Selection header -->
+              <template v-slot:header-selection="scope">
+                <q-checkbox
+                  :model-value="allValidSelected"
+                  :indeterminate="someValidSelected && !allValidSelected"
+                  :disable="!validItems.length"
+                  color="teal"
+                  @update:model-value="toggleSelectAllValid"
+                >
+                  <q-tooltip v-if="!validItems.length">Tidak ada pesanan valid yang dapat dipilih</q-tooltip>
+                  <q-tooltip v-else>Pilih semua pesanan valid</q-tooltip>
+                </q-checkbox>
+              </template>
+
+              <!-- Selection body -->
+              <template v-slot:body-selection="scope">
+                <q-checkbox
+                  v-model="scope.selected"
+                  :disable="!scope.row.isValid"
+                  color="teal"
+                >
+                  <q-tooltip v-if="!scope.row.isValid">Pesanan tidak valid tidak dapat dipilih untuk impor</q-tooltip>
+                </q-checkbox>
+              </template>
+
+              <template v-slot:body-cell-no="props">
+                <q-td :props="props" class="text-center font-mono">
+                  {{ props.rowIndex + 1 }}
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-validationStatus="props">
+                <q-td :props="props" class="text-center">
+                  <q-badge
+                    v-if="props.row.isValid"
+                    color="positive"
+                    class="q-px-sm cursor-pointer"
+                  >
+                    <q-icon name="check_circle" size="xs" class="q-mr-xs" />
+                    Valid
+                    <q-tooltip anchor="top middle" self="bottom middle">
+                      Order valid dan siap diimpor ke Assist
+                    </q-tooltip>
+                  </q-badge>
+                  <q-badge
+                    v-else
+                    color="negative"
+                    class="q-px-sm cursor-pointer"
+                  >
+                    <q-icon name="error" size="xs" class="q-mr-xs" />
+                    Tidak Valid
+                    <q-tooltip anchor="top middle" self="bottom middle" max-width="360px">
+                      <div class="text-weight-bold q-mb-xs">Masalah Validasi:</div>
+                      <div v-for="(msg, i) in props.row.validationMessages" :key="i">• {{ msg }}</div>
+                    </q-tooltip>
+                  </q-badge>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-orderSn="props">
+                <q-td :props="props" style="max-width: 140px;">
+                  <div class="font-mono text-weight-bold text-slate-900 ellipsis" :title="props.row.displayedOrderSn || props.row.orderKey">
+                    {{ props.row.displayedOrderSn || props.row.orderKey }}
+                  </div>
+                  <div class="row items-center q-gutter-x-xs q-mt-2xs no-wrap ellipsis">
+                    <q-badge
+                      :color="props.row.platformName === 'SHOPEE' ? 'orange' : props.row.platformName.includes('TIKTOK') ? 'black' : 'teal'"
+                      class="text-2xs"
+                    >
+                      {{ props.row.platformName }}
+                    </q-badge>
+                    <span v-if="props.row.courier" class="text-caption text-grey-7 text-2xs ellipsis" :title="props.row.courier">{{ props.row.courier }}</span>
+                  </div>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-destyItem="props">
+                <q-td :props="props" style="max-width: 180px;">
+                  <div class="text-weight-bold text-slate-900 ellipsis-2-lines" :title="props.row.productName">{{ props.row.productName }}</div>
+                  <div class="font-mono text-caption text-primary ellipsis" :title="props.row.sku">
+                    SKU: {{ props.row.sku || "(kosong)" }}
+                  </div>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-quantity="props">
+                <q-td :props="props" class="text-center" style="width: 75px;">
+                  <div class="text-weight-bold text-subtitle2 text-teal">
+                    {{ props.row.quantity }} <span class="text-caption text-grey-7">{{ props.row.satuan || 'Pcs' }}</span>
+                  </div>
+                </q-td>
+              </template>
+
+              <!-- Assist Mapped Item Details -->
+              <template v-slot:body-cell-assistItem="props">
+                <q-td :props="props" style="max-width: 180px;">
+                  <div v-if="props.row.mappedItem">
+                    <div class="text-weight-bold text-slate-900 ellipsis-2-lines" :title="props.row.mappedItem.assistName">{{ props.row.mappedItem.assistName }}</div>
+                    <div class="text-caption font-mono text-grey-7 ellipsis" :title="props.row.mappedItem.assistCode">
+                      Kode: {{ props.row.mappedItem.assistCode }}
+                      <q-badge color="blue-grey-2" text-color="blue-grey-9" class="q-ml-xs text-2xs">
+                        {{ props.row.mappedItem.assistType }}
+                      </q-badge>
+                      <q-badge v-if="props.row.is1to1Fallback" color="teal-1" text-color="teal-9" class="q-ml-xs text-2xs">
+                        1:1 Auto
+                      </q-badge>
+                    </div>
+                  </div>
+                  <div v-else class="text-caption text-negative row items-center no-wrap">
+                    <q-icon name="warning" size="14px" class="q-mr-xs" />
+                    <span class="ellipsis">Belum Dipetakan</span>
+                    <q-btn
+                      size="xs"
+                      flat
+                      color="teal"
+                      label="Petakan"
+                      class="q-ml-xs"
+                      @click="openSkuRecommendationDialog(props.row.sku, props.row.productName)"
+                    />
+                  </div>
+                </q-td>
+              </template>
+
+              <!-- Editable Conversion Factor Column -->
+              <template v-slot:body-cell-conversionFactor="props">
+                <q-td :props="props" style="width: 110px;">
+                  <div class="row items-center no-wrap">
+                    <q-input
+                      :model-value="props.row.conversionFactor"
+                      @update:model-value="(val) => updateRowConversionFactor(props.row, val)"
+                      type="number"
+                      min="0.0001"
+                      step="any"
+                      outlined
+                      dense
+                      color="teal"
+                      hide-bottom-space
+                      style="width: 75px;"
+                    >
+                      <template v-slot:prepend>
+                        <span class="text-2xs text-grey-6 font-mono">1:</span>
+                      </template>
+                    </q-input>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      size="xs"
+                      color="teal"
+                      icon="tune"
+                      class="q-ml-xs"
+                      @click="openSkuRecommendationDialog(props.row.sku, props.row.productName)"
+                    >
+                      <q-tooltip>Sesuaikan mapping & referensi konversi</q-tooltip>
+                    </q-btn>
+                  </div>
+                  <div class="text-2xs text-grey-6 q-mt-2xs">
+                    Disimpan otomatis
+                  </div>
+                </q-td>
+              </template>
+
+              <!-- Calculated Assist Quantity -->
+              <template v-slot:body-cell-assistQty="props">
+                <q-td :props="props" class="text-center" style="width: 75px;">
+                  <div class="text-weight-bold text-subtitle2 text-positive">
+                    {{ props.row.assistQty }} <span class="text-caption text-grey-7">{{ props.row.assistUnit || 'Pcs' }}</span>
+                  </div>
+                </q-td>
+              </template>
+
+              <!-- Assist Stock Level -->
+              <template v-slot:body-cell-assistStock="props">
+                <q-td :props="props" class="text-center" style="width: 85px;">
+                  <div v-if="props.row.assistStock !== null && props.row.assistStock !== undefined">
+                    <q-badge
+                      :color="props.row.assistStock >= props.row.assistQty ? 'green-1' : 'red-1'"
+                      :text-color="props.row.assistStock >= props.row.assistQty ? 'green-9' : 'red-9'"
+                      class="text-weight-bold"
+                    >
+                      {{ props.row.assistStock }} {{ props.row.assistUnit || 'Pcs' }}
+                    </q-badge>
+                  </div>
+                  <div v-else class="text-caption text-grey-5">-</div>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-inputKeAssist="props">
+                <q-td :props="props" style="width: 120px;">
+                  <q-badge
+                    :color="props.value.startsWith('Sudah diimpor') ? 'positive' : props.value.includes('Void') ? 'orange' : props.value.startsWith('Belum') ? 'grey-6' : 'negative'"
+                    class="q-px-sm"
+                  >
+                    {{ props.value }}
+                  </q-badge>
+                </q-td>
+              </template>
+            </q-table>
           </q-tab-panel>
 
-          <!-- Offline Sales to Desty Stock Reduction Panel -->
-          <q-tab-panel name="offline_sync" class="q-px-none">
+          <!-- TAB 3: SO STOK OFFLINE (Assist → Desty Stock Reduction) -->
+          <q-tab-panel name="offline_sync" class="q-pa-md">
             <!-- Filter Bar -->
             <div class="row q-col-gutter-md items-center q-mb-md">
               <div class="col-12 col-md-3">
@@ -327,18 +806,18 @@
                           dense
                         />
                       </th>
-                      <th class="text-left">Produk Assist (POS)</th>
-                      <th class="text-center">Terjual Offline</th>
-                      <th class="text-center">Stok Assist Saat Ini</th>
-                      <th class="text-left">Pemetaan SKU Desty</th>
-                      <th class="text-center">Stok Desty Live</th>
-                      <th class="text-left" style="min-width: 200px;">Pengurangan Stok (-)</th>
-                      <th class="text-center">Status Validasi</th>
+                      <th class="text-left" style="max-width: 220px;">Produk Assist (POS)</th>
+                      <th class="text-center" style="width: 95px;">Terjual Offline</th>
+                      <th class="text-center" style="width: 105px;">Stok Assist</th>
+                      <th class="text-left" style="max-width: 170px;">Pemetaan SKU Desty</th>
+                      <th class="text-center" style="width: 120px;">Stok Desty Live</th>
+                      <th class="text-left" style="width: 170px;">Pengurangan Stok (-)</th>
+                      <th class="text-center" style="width: 120px;">Status Validasi</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="item in filteredOfflineReductionItems" :key="item.rowKey">
-                      <td class="text-center">
+                      <td class="text-center" style="width: 48px;">
                         <q-checkbox
                           :model-value="item.checked"
                           @update:model-value="(val) => updateOfflineRowChecked(item.rowKey, val)"
@@ -347,55 +826,54 @@
                           dense
                         />
                       </td>
-                      <td>
-                        <div class="text-weight-bold text-slate-900">{{ item.assistItemName }}</div>
-                        <div class="text-caption font-mono text-grey-7">
+                      <td style="max-width: 220px;">
+                        <div class="text-weight-bold text-slate-900 ellipsis-2-lines" :title="item.assistItemName">{{ item.assistItemName }}</div>
+                        <div class="text-caption font-mono text-grey-7 ellipsis" :title="item.assistCode || item.assistItemId">
                           Kode: {{ item.assistCode || item.assistItemId || "-" }}
                           <q-badge color="blue-grey-2" text-color="blue-grey-9" class="q-ml-xs text-2xs">
                             {{ item.assistItemType }}
                           </q-badge>
                         </div>
                       </td>
-                      <td class="text-center">
+                      <td class="text-center" style="width: 95px;">
                         <div class="text-weight-bold text-subtitle2 text-teal">
                           {{ item.offlineQty }} <span class="text-caption text-grey-6">{{ item.assistUnit }}</span>
                         </div>
                       </td>
-                      <td class="text-center">
+                      <td class="text-center" style="width: 105px;">
                         <div v-if="item.assistStock !== null && item.assistStock !== undefined">
                           <div class="text-weight-bold text-subtitle2 text-slate-900">
                             {{ item.assistStock }} <span class="text-caption text-grey-6">{{ item.assistUnit }}</span>
                           </div>
                         </div>
                         <div v-else class="text-caption text-grey-5 flex items-center justify-center">
-                          <q-icon name="help_outline" size="14px" class="q-mr-xs text-grey-5" />
                           -
                         </div>
                       </td>
-                      <td>
-                        <div class="row items-center q-gutter-x-xs">
-                          <span class="font-mono text-weight-bold text-primary">{{ item.destySku }}</span>
+                      <td style="max-width: 170px;">
+                        <div class="row items-center q-gutter-x-xs no-wrap">
+                          <span class="font-mono text-weight-bold text-primary ellipsis" :title="item.destySku">{{ item.destySku }}</span>
                           <q-badge color="teal-1" text-color="teal-9" v-if="item.isMapped" class="text-2xs">
                             Mapped
                           </q-badge>
                           <q-badge color="grey-2" text-color="grey-8" v-else class="text-2xs">
-                            Auto 1:1
+                            1:1
                           </q-badge>
                         </div>
-                        <div class="text-caption text-grey-6 q-mt-2xs" v-if="item.conversionFactor !== 1">
+                        <div class="text-caption text-grey-6 q-mt-2xs ellipsis" v-if="item.conversionFactor !== 1">
                           1 {{ item.destyUnit }} = {{ item.conversionFactor }} {{ item.assistUnit }}
                         </div>
                         <div class="text-caption text-primary text-weight-bold q-mt-2xs">
-                          Ekuivalen Desty: {{ item.qtyDesty }} {{ item.destyUnit }}
+                          Eq: {{ item.qtyDesty }} {{ item.destyUnit }}
                         </div>
                       </td>
-                      <td class="text-center">
+                      <td class="text-center" style="width: 120px;">
                         <div v-if="item.destyStockFound" class="q-gutter-y-2xs">
                           <div class="row items-center justify-center q-gutter-x-xs text-caption">
                             <span>Fisik: <strong class="text-slate-900">{{ item.destyFisik }}</strong></span>
                             <span class="text-grey-4">|</span>
                             <span :class="item.destyReserved > 0 ? 'text-amber-9 text-weight-bold' : 'text-grey-6'">
-                              Pesanan: {{ item.destyReserved }}
+                              Rsv: {{ item.destyReserved }}
                             </span>
                           </div>
                           <div>
@@ -410,10 +888,10 @@
                         </div>
                         <div v-else class="text-caption text-grey-5 flex items-center justify-center">
                           <q-icon name="cloud_off" size="14px" class="q-mr-xs text-grey-5" />
-                          Tidak Ditemukan
+                          Tidak Ada
                         </div>
                       </td>
-                      <td>
+                      <td style="width: 170px;">
                         <div v-if="item.destySkuId">
                           <q-input
                             :model-value="item.reductionQty"
@@ -425,19 +903,20 @@
                             color="teal"
                             :disable="item.status === 'synced'"
                             hide-bottom-space
+                            style="width: 120px;"
                           >
                             <template v-slot:append>
                               <span class="text-caption text-grey-7 font-weight-bold">{{ item.destyUnit }}</span>
                             </template>
                           </q-input>
                           <div class="text-caption text-grey-7 q-mt-xs flex items-center justify-between">
-                            <span>Fisik Baru: <strong>{{ item.calculatedFisikBaru !== null ? item.calculatedFisikBaru : '-' }}</strong></span>
+                            <span>Fisik: <strong>{{ item.calculatedFisikBaru !== null ? item.calculatedFisikBaru : '-' }}</strong></span>
                             <span>Tersedia: <strong :class="(item.calculatedTersediaBaru ?? 0) < 0 ? 'text-red font-weight-bold' : 'text-teal'">{{ item.calculatedTersediaBaru !== null ? item.calculatedTersediaBaru : '-' }}</strong></span>
                           </div>
                         </div>
                         <span v-else class="text-caption text-grey-4">-</span>
                       </td>
-                      <td class="text-center" style="max-width: 180px;">
+                      <td class="text-center" style="width: 120px;">
                         <q-badge
                           :color="item.badgeColor"
                           class="q-px-sm q-py-xs"
@@ -466,26 +945,120 @@
             </div>
           </q-tab-panel>
 
-          <q-tab-panel v-if="store.developerMode" name="mapping" class="q-px-none">
-            <div class="row q-col-gutter-sm">
-              <div class="col-12 col-md-3"><q-input v-model="mappingDraft.destySku" outlined dense label="SKU Desty" /></div>
+          <!-- TAB 4: PEMETAAN & KONVERSI SKU -->
+          <q-tab-panel name="mapping" class="q-pa-md">
+            <!-- Unmapped SKU Suggestions Box -->
+            <div v-if="unmappedSkuRecommendations.length" class="q-mb-md q-pa-sm bg-grey-1 rounded-borders border">
+              <div class="text-caption text-weight-bold text-teal row items-center justify-between q-mb-xs">
+                <span>
+                  <q-icon name="auto_fix_high" class="q-mr-xs" />
+                  SKU Belum Dipetakan dari Pesanan Desty ({{ unmappedSkuRecommendations.length }} SKU):
+                </span>
+                <q-btn
+                  v-if="highConfidenceUnmappedCount > 0"
+                  size="xs"
+                  color="positive"
+                  icon="done_all"
+                  :label="`Petakan Otomatis Semua (${highConfidenceUnmappedCount})`"
+                  :loading="syncBusy"
+                  @click="applyAllHighConfidenceRecommendations"
+                />
+              </div>
+              <div class="row q-col-gutter-xs">
+                <div v-for="item in unmappedSkuRecommendations" :key="item.sku" class="col-12 col-md-6">
+                  <q-card flat bordered class="q-pa-xs bg-white">
+                    <div class="row items-center justify-between no-wrap">
+                      <div class="ellipsis q-mr-sm" style="max-width: 65%;">
+                        <span class="font-mono text-weight-bold text-primary">{{ item.sku }}</span>
+                        <div class="text-caption text-grey-8 ellipsis" :title="item.productName">{{ item.productName }}</div>
+                      </div>
+                      <div class="row q-gutter-x-2xs items-center">
+                        <template v-if="item.recommendation.bestMatch">
+                          <q-badge
+                            :color="item.recommendation.bestMatch.confidence === 'high' ? 'green-1' : 'amber-1'"
+                            :text-color="item.recommendation.bestMatch.confidence === 'high' ? 'green-9' : 'amber-10'"
+                            class="text-weight-bold"
+                          >
+                            {{ Math.round(item.recommendation.bestMatch.score * 100) }}%
+                          </q-badge>
+                          <q-btn
+                            size="xs"
+                            color="teal"
+                            icon="link"
+                            label="Hubungkan"
+                            :loading="syncBusy"
+                            @click="applyQuickMapping(item.sku, item.recommendation.bestMatch)"
+                          >
+                            <q-tooltip>
+                              Hubungkan ke: {{ item.recommendation.bestMatch.catalogItem.code }} - {{ item.recommendation.bestMatch.catalogItem.name }}
+                            </q-tooltip>
+                          </q-btn>
+                        </template>
+                        <q-btn
+                          size="xs"
+                          flat
+                          round
+                          color="teal"
+                          icon="edit"
+                          @click="openSkuRecommendationDialog(item.sku, item.productName)"
+                        >
+                          <q-tooltip>Pilih item atau sesuaikan pemetaan</q-tooltip>
+                        </q-btn>
+                      </div>
+                    </div>
+                  </q-card>
+                </div>
+              </div>
+            </div>
+
+            <!-- Manual / Override Mapping Form -->
+            <div class="row q-col-gutter-sm q-mb-md">
+              <div class="col-12 col-md-3">
+                <q-input v-model="mappingDraft.destySku" outlined dense label="SKU Desty">
+                  <template v-slot:after>
+                    <q-btn
+                      round
+                      dense
+                      flat
+                      color="teal"
+                      icon="auto_fix_high"
+                      :disable="!mappingDraft.destySku"
+                      @click="autoFillMappingDraft()"
+                    >
+                      <q-tooltip>Cari rekomendasi otomatis untuk SKU ini</q-tooltip>
+                    </q-btn>
+                  </template>
+                </q-input>
+              </div>
               <div class="col-12 col-md-2"><q-input v-model="mappingDraft.assistCode" outlined dense label="Kode Assist" /></div>
-              <div class="col-12 text-caption text-grey-7 q-mb-sm">Mapping utama diambil otomatis dari Google Sheet (SKU kolom F → kode Assist kolom A). Form berikut hanya untuk pengecualian/manual override.</div>
               <div class="col-12 col-md-2"><q-input v-model="mappingDraft.assistId" outlined dense label="ID Assist" /></div>
               <div class="col-12 col-md-3"><q-input v-model="mappingDraft.assistName" outlined dense label="Nama Assist" /></div>
               <div class="col-12 col-md-2"><q-select v-model="mappingDraft.assistType" :options="['prescription', 'akhp']" outlined dense label="Tipe" /></div>
               <div class="col-12 col-md-2"><q-input v-model="mappingDraft.assistUnit" outlined dense label="Unit Assist" /></div>
               <div class="col-12 col-md-2"><q-input v-model.number="mappingDraft.conversionFactor" type="number" min="0.0001" step="any" outlined dense label="Faktor konversi" /></div>
               <div class="col-12 col-md-3 flex items-center text-caption text-grey-7">Depot default: {{ DEFAULT_ASSIST_DEPOT_ID }}</div>
-              <div class="col-12 col-md-3 flex items-center"><q-checkbox v-model="mappingDraft.active" label="Aktif" /></div>
-              <div class="col-12 row q-gutter-sm">
+              <div class="col-12 col-md-2 flex items-center"><q-checkbox v-model="mappingDraft.active" label="Aktif" /></div>
+              <div class="col-12 row q-gutter-sm items-center">
                 <q-btn color="teal" icon="save" label="Simpan Mapping" :loading="syncBusy" @click="saveMapping" />
+                <q-btn outline color="teal" icon="sync" label="Sync Firebase" :loading="syncBusy" @click="syncWithFirebase" />
                 <q-btn outline color="teal" icon="file_download" label="Ekspor JSON" :disable="syncBusy" @click="exportMappings" />
                 <q-btn outline color="teal" icon="file_upload" label="Impor JSON" :disable="syncBusy" @click="mappingFileInput?.click()" />
                 <input ref="mappingFileInput" type="file" accept="application/json,.json" style="display:none" @change="importMappings" />
               </div>
             </div>
+
+            <!-- Master Mappings Table -->
             <q-table class="q-mt-md" flat bordered dense :rows="mappings" :columns="mappingColumns" row-key="destySku" no-data-label="Belum ada mapping SKU.">
+              <template #body-cell-destySku="props">
+                <q-td :props="props" style="max-width: 170px;">
+                  <span class="font-mono text-weight-bold text-primary ellipsis inline-block" style="max-width: 160px;" :title="props.value">{{ props.value }}</span>
+                </q-td>
+              </template>
+              <template #body-cell-assistName="props">
+                <q-td :props="props" style="max-width: 250px;">
+                  <span class="ellipsis inline-block" style="max-width: 240px;" :title="props.value">{{ props.value }}</span>
+                </q-td>
+              </template>
               <template #body-cell-actions="props">
                 <q-td :props="props" class="q-gutter-xs">
                   <q-btn flat round dense icon="edit" color="teal" aria-label="Edit mapping" @click="editMapping(props.row)" />
@@ -495,133 +1068,11 @@
             </q-table>
           </q-tab-panel>
 
-          <q-tab-panel name="log" class="q-px-none">
+          <!-- TAB 5: LOG IMPOR -->
+          <q-tab-panel name="log" class="q-pa-md">
             <q-table flat bordered dense :rows="importLedger" :columns="ledgerColumns" row-key="marketplaceOrderSn" no-data-label="Belum ada log impor." />
           </q-tab-panel>
         </q-tab-panels>
-      </q-card-section>
-    </q-card>
-
-    <!-- Results Table Card -->
-    <q-card flat bordered>
-      <q-card-section class="q-pa-none">
-        <div v-if="flattenedItems.length" class="row items-center justify-between q-px-md q-py-sm bg-grey-1 text-caption">
-          <div class="row items-center q-gutter-sm">
-            <span class="text-weight-medium text-grey-8">
-              Terpilih: <strong class="text-teal-9">{{ selectedOrdersCount }} order</strong> ({{ selectedRows.length }} baris)
-            </span>
-            <q-btn size="sm" flat dense color="teal" label="Pilih Semua Valid" @click="selectAllValid" />
-            <q-btn size="sm" flat dense color="grey-7" label="Batal Pilih" @click="clearSelection" :disable="!selectedRows.length" />
-          </div>
-          <div v-if="!assistCatalog.length" class="text-orange-9 row items-center">
-            <q-icon name="warning" size="xs" class="q-mr-xs" />
-            Katalog Assist belum dimuat. Klik "Muat Katalog Assist" untuk validasi stok & mapping akurat.
-          </div>
-        </div>
-
-        <q-separator v-if="flattenedItems.length" />
-
-        <q-table
-          :rows="flattenedItems"
-          :columns="tableColumns"
-          row-key="rowId"
-          selection="multiple"
-          v-model:selected="selectedRows"
-          flat
-          :loading="loading"
-          :pagination="{ rowsPerPage: 15 }"
-          no-data-label="Belum ada data pesanan. Klik 'Tarik Data' untuk memuat."
-        >
-          <!-- Custom Header Selection Checkbox -->
-          <template v-slot:header-selection="scope">
-            <q-checkbox
-              :model-value="allValidSelected"
-              :indeterminate="someValidSelected && !allValidSelected"
-              :disable="!validItems.length"
-              color="teal"
-              @update:model-value="toggleSelectAllValid"
-            >
-              <q-tooltip v-if="!validItems.length">Tidak ada pesanan valid yang dapat dipilih</q-tooltip>
-              <q-tooltip v-else>Pilih semua pesanan valid</q-tooltip>
-            </q-checkbox>
-          </template>
-
-          <!-- Custom Body Selection Checkbox -->
-          <template v-slot:body-selection="scope">
-            <q-checkbox
-              v-model="scope.selected"
-              :disable="!scope.row.isValid"
-              color="teal"
-            >
-              <q-tooltip v-if="!scope.row.isValid">Pesanan tidak valid tidak dapat dipilih untuk impor</q-tooltip>
-            </q-checkbox>
-          </template>
-
-          <!-- Index column -->
-          <template v-slot:body-cell-no="props">
-            <q-td :props="props" class="text-center font-mono">
-              {{ props.rowIndex + 1 }}
-            </q-td>
-          </template>
-
-          <template v-slot:body-cell-validationStatus="props">
-            <q-td :props="props" class="text-center">
-              <q-badge
-                v-if="props.row.isValid"
-                color="positive"
-                class="q-px-sm cursor-pointer"
-              >
-                <q-icon name="check_circle" size="xs" class="q-mr-xs" />
-                Valid
-                <q-tooltip anchor="top middle" self="bottom middle">
-                  Order valid dan siap diimpor ke Assist
-                </q-tooltip>
-              </q-badge>
-              <q-badge
-                v-else
-                color="negative"
-                class="q-px-sm cursor-pointer"
-              >
-                <q-icon name="error" size="xs" class="q-mr-xs" />
-                Tidak Valid
-                <q-tooltip anchor="top middle" self="bottom middle" max-width="360px">
-                  <div class="text-weight-bold q-mb-xs">Masalah Validasi:</div>
-                  <div v-for="(msg, i) in props.row.validationMessages" :key="i">• {{ msg }}</div>
-                </q-tooltip>
-              </q-badge>
-            </q-td>
-          </template>
-
-          <template v-slot:body-cell-platformName="props">
-            <q-td :props="props">
-              <q-badge
-                :color="props.value === 'SHOPEE' ? 'orange' : props.value.includes('TIKTOK') ? 'black' : 'teal'"
-                class="q-px-sm text-weight-bold"
-              >
-                {{ props.value }}
-              </q-badge>
-            </q-td>
-          </template>
-
-          <template v-slot:body-cell-inputKeAssist="props">
-            <q-td :props="props">
-              <q-badge
-                :color="props.value.startsWith('Sudah diimpor') ? 'positive' : props.value.includes('Void') ? 'orange' : props.value.startsWith('Belum') ? 'grey-6' : 'negative'"
-                class="q-px-sm"
-              >
-                {{ props.value }}
-              </q-badge>
-            </q-td>
-          </template>
-
-          <template v-slot:body-cell-quantity="props">
-            <q-td :props="props">
-              <q-badge color="teal-1" text-color="teal-9" class="q-px-sm text-weight-bold text-subtitle2">
-                {{ props.value }}
-              </q-badge>
-            </q-td>
-          </template>
-        </q-table>
       </q-card-section>
     </q-card>
 
@@ -735,6 +1186,158 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Dialog Rekomendasi & Pemetaan SKU Otomatis -->
+    <q-dialog v-model="showSkuRecommendationModal" persistent>
+      <q-card style="min-width: 550px; max-width: 750px;">
+        <q-card-section class="row items-center bg-teal text-white">
+          <q-icon name="auto_fix_high" size="24px" class="q-mr-sm" />
+          <div class="text-h6">Rekomendasi Pemetaan SKU</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-card-section class="q-pt-md">
+          <!-- Target Desty SKU details -->
+          <div class="q-pa-sm bg-grey-2 rounded-borders q-mb-md">
+            <div class="row justify-between items-center">
+              <div>
+                <span class="text-caption text-grey-7">SKU Desty:</span>
+                <span class="text-weight-bold font-mono text-primary q-ml-xs text-subtitle2">{{ modalTargetSku }}</span>
+              </div>
+              <div v-if="modalTargetProductName" class="text-caption text-grey-8 ellipsis" style="max-width: 320px;">
+                {{ modalTargetProductName }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Candidates List from SkuMatcher -->
+          <div class="text-subtitle2 text-weight-bold text-teal q-mb-xs">
+            Rekomendasi Terbaik dari Katalog Assist:
+          </div>
+          
+          <div v-if="getSkuRecommendation(modalTargetSku, modalTargetProductName).candidates.length > 0" class="q-gutter-y-xs q-mb-md">
+            <q-card
+              v-for="cand in getSkuRecommendation(modalTargetSku, modalTargetProductName).candidates"
+              :key="cand.catalogItem.id"
+              flat
+              bordered
+              class="cursor-pointer transition-all"
+              :class="modalSelectedCandidate?.catalogItem.id === cand.catalogItem.id ? 'bg-teal-1 border-teal' : 'bg-white'"
+              @click="modalSelectedCandidate = cand; modalConversionFactor = cand.suggestedConversionFactor || 1"
+            >
+              <q-card-section class="q-pa-sm">
+                <div class="row items-center justify-between">
+                  <div class="row items-center q-gutter-x-sm">
+                    <q-radio
+                      :model-value="modalSelectedCandidate?.catalogItem.id"
+                      :val="cand.catalogItem.id"
+                      color="teal"
+                      dense
+                    />
+                    <div>
+                      <div class="text-weight-bold text-slate-900">
+                        {{ cand.catalogItem.name }}
+                        <q-badge color="blue-grey-2" text-color="blue-grey-9" class="q-ml-xs text-2xs">
+                          {{ cand.catalogItem.type }}
+                        </q-badge>
+                      </div>
+                      <div class="text-caption font-mono text-grey-7">
+                        Kode: {{ cand.catalogItem.code }} • Satuan: {{ cand.catalogItem.unit || 'Pcs' }}
+                        <span v-if="cand.catalogItem.stock !== undefined" class="q-ml-xs text-teal">
+                          • Stok Assist: {{ cand.catalogItem.stock }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <q-badge
+                      :color="cand.confidence === 'high' ? 'green-1' : cand.confidence === 'medium' ? 'amber-1' : 'grey-2'"
+                      :text-color="cand.confidence === 'high' ? 'green-9' : cand.confidence === 'medium' ? 'amber-10' : 'grey-8'"
+                      class="text-weight-bold"
+                    >
+                      {{ Math.round(cand.score * 100) }}% Cocok
+                    </q-badge>
+                  </div>
+                </div>
+                <div class="text-caption text-grey-7 q-mt-xs q-pl-lg" style="font-size: 11px;">
+                  Alasan: {{ cand.matchReasons.join(" • ") }}
+                </div>
+              </q-card-section>
+            </q-card>
+          </div>
+
+          <div v-else class="text-center q-pa-sm text-grey-6 border-dashed rounded-borders q-mb-md">
+            Tidak ada rekomendasi otomatis yang cukup cocok. Anda dapat mencari item katalog manual di bawah ini.
+          </div>
+
+          <!-- Manual Catalog Search if needed -->
+          <div class="q-mb-md">
+            <q-input
+              v-model="modalCatalogSearchQuery"
+              outlined
+              dense
+              placeholder="Cari item lain di katalog Assist (kode / nama obat)..."
+              color="teal"
+              clearable
+            >
+              <template v-slot:prepend><q-icon name="search" /></template>
+            </q-input>
+
+            <q-list v-if="modalFilteredCatalogItems.length > 0" bordered separator class="rounded-borders q-mt-xs bg-grey-1" style="max-height: 150px; overflow-y: auto;">
+              <q-item
+                v-for="item in modalFilteredCatalogItems"
+                :key="item.id"
+                clickable
+                dense
+                @click="selectCatalogItemForModal(item)"
+              >
+                <q-item-section>
+                  <q-item-label class="text-weight-bold">{{ item.name }}</q-item-label>
+                  <q-item-label caption class="font-mono">Kode: {{ item.code }} ({{ item.type }}) - {{ item.unit }}</q-item-label>
+                </q-item-section>
+                <q-item-section side>
+                  <q-btn size="xs" color="teal" label="Pilih" dense />
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </div>
+
+          <!-- Conversion factor input -->
+          <div v-if="modalSelectedCandidate" class="row q-col-gutter-sm items-center bg-teal-1 q-pa-sm rounded-borders">
+            <div class="col-12 col-md-6 text-caption text-grey-8">
+              Terpilih: <strong>{{ modalSelectedCandidate.catalogItem.code }}</strong> ({{ modalSelectedCandidate.catalogItem.name }})
+            </div>
+            <div class="col-12 col-md-6">
+              <q-input
+                v-model.number="modalConversionFactor"
+                type="number"
+                min="0.0001"
+                step="any"
+                outlined
+                dense
+                color="teal"
+                label="Faktor Konversi (1 Desty = X Assist)"
+                bg-color="white"
+                hide-bottom-space
+              />
+            </div>
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-px-md q-pb-md">
+          <q-btn flat label="Batal" color="grey-7" v-close-popup />
+          <q-btn
+            color="positive"
+            label="Simpan Pemetaan"
+            icon="save"
+            :disable="!modalSelectedCandidate"
+            :loading="syncBusy"
+            @click="saveMappingFromDialog"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
@@ -767,7 +1370,11 @@ import {
   getDestySkuMappings,
   importDestySkuMappings,
   removeDestySkuMapping,
+  syncDestySkuMappings,
+  updateSkuConversionFactor,
   upsertDestySkuMapping,
+  findDestySkuMapping,
+  resolveEffectiveDestySkuMapping,
 } from "@/services/destySync/mappingStorage";
 import type {
   AssistCatalogItem,
@@ -788,6 +1395,13 @@ import type {
   OfflineSaleReductionItem,
   OfflineStockSyncLog,
 } from "@/types/offlineStockSync";
+import {
+  recommendMatchesForSku,
+  createMappingFromRecommendation,
+  matchCatalogItem,
+  type SkuMatchCandidate,
+  type SkuRecommendation,
+} from "@/services/destySync/skuMatcher";
 import {
   fetchAllDestyOrders,
   fetchDestyOrderStatusCount,
@@ -818,6 +1432,12 @@ interface FlattenedOrderItem {
   rawOrderCreateTime: number;
   rawDeliveryDeadline: number;
   sku: string;
+  mappedItem?: DestySkuMapping;
+  is1to1Fallback?: boolean;
+  conversionFactor: number;
+  assistQty: number;
+  assistUnit: string;
+  assistStock?: number | null;
 }
 
 const statusOptions = [
@@ -848,7 +1468,7 @@ const statusVariant = ref<"muted" | "success" | "error">("muted");
 
 const orders = ref<DestyOrderRecord[]>([]);
 const selectedRows = ref<FlattenedOrderItem[]>([]);
-const syncTab = ref<"import" | "offline_sync" | "mapping" | "log">("import");
+const syncTab = ref<"pldmp" | "import" | "offline_sync" | "mapping" | "log">("pldmp");
 const selectedOrderKey = ref("");
 const mappings = ref<DestySkuMapping[]>([]);
 
@@ -898,6 +1518,77 @@ const mappingDraft = ref<DestySkuMappingInput & { depotId?: string }>({
   conversionFactor: 1,
   active: true,
 });
+
+// --- SKU Auto-Recommendation States & Computed ---
+const showSkuRecommendationModal = ref(false);
+const modalTargetSku = ref("");
+const modalTargetProductName = ref("");
+const modalSelectedCandidate = ref<SkuMatchCandidate | null>(null);
+const modalConversionFactor = ref(1);
+const modalCatalogSearchQuery = ref("");
+
+const unmappedSkusInOrders = computed(() => {
+  const unmapped = new Map<string, { sku: string; productName: string; count: number }>();
+  const existingMappingKeys = new Set(
+    mappings.value.filter((m) => m.active).map((m) => m.destySku.trim().toUpperCase())
+  );
+  const catalogCodeKeys = new Set(
+    assistCatalog.value.map((item) => (item.code || "").trim().toUpperCase()).filter(Boolean)
+  );
+
+  for (const order of orders.value) {
+    const items = Array.isArray(order.items) ? order.items : [];
+    for (const item of items) {
+      const sku = (item.skuCode ?? item.masterSku ?? item.sku ?? "").trim();
+      if (!sku) continue;
+      const skuUpper = sku.toUpperCase();
+      // Only treat as unmapped if NOT in explicit mappings AND NOT matching catalog code 1:1
+      if (!existingMappingKeys.has(skuUpper) && !catalogCodeKeys.has(skuUpper)) {
+        const existing = unmapped.get(skuUpper);
+        if (existing) {
+          existing.count += Number(item.quantity ?? 1);
+        } else {
+          unmapped.set(skuUpper, {
+            sku,
+            productName: item.productName || item.name || "-",
+            count: Number(item.quantity ?? 1),
+          });
+        }
+      }
+    }
+  }
+  return Array.from(unmapped.values());
+});
+
+const unmappedSkuRecommendations = computed(() => {
+  if (!assistCatalog.value.length) return [];
+  return unmappedSkusInOrders.value.map((item) => {
+    const rec = recommendMatchesForSku(item.sku, item.productName, assistCatalog.value);
+    return {
+      ...item,
+      recommendation: rec,
+    };
+  });
+});
+
+const highConfidenceUnmappedCount = computed(() => {
+  return unmappedSkuRecommendations.value.filter(
+    (r) => r.recommendation.bestMatch && r.recommendation.bestMatch.confidence === "high"
+  ).length;
+});
+
+const modalFilteredCatalogItems = computed<AssistCatalogItem[]>(() => {
+  const q = modalCatalogSearchQuery.value.trim().toLowerCase();
+  if (!q) return [];
+  return assistCatalog.value
+    .filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) ||
+        item.code.toLowerCase().includes(q)
+    )
+    .slice(0, 10);
+});
+
 const fetchedCount = ref(0);
 const totalCount = ref(0);
 const progressPhase = ref<"list" | "detail">("list");
@@ -914,32 +1605,31 @@ const orderOptions = computed(() => orders.value.map((order) => ({
 })));
 
 const mappingColumns = [
-  { name: "destySku", label: "SKU Desty", field: "destySku", align: "left" },
-  { name: "assistCode", label: "Kode Assist", field: "assistCode", align: "left" },
-  { name: "assistName", label: "Item Assist", field: "assistName", align: "left" },
-  { name: "assistType", label: "Tipe", field: "assistType", align: "left" },
-  { name: "conversionFactor", label: "Faktor", field: "conversionFactor", align: "right" },
-  { name: "depotId", label: "Depot", field: "depotId", align: "left" },
-  { name: "active", label: "Aktif", field: (row: DestySkuMapping) => row.active ? "Ya" : "Tidak", align: "center" },
-  { name: "actions", label: "Aksi", field: "destySku", align: "center" },
+  { name: "destySku", label: "SKU Desty", field: "destySku", align: "left", sortable: true, style: "max-width: 170px;", headerStyle: "max-width: 170px;", classes: "font-mono ellipsis" },
+  { name: "assistCode", label: "Kode Assist", field: "assistCode", align: "left", sortable: true, style: "width: 110px;", headerStyle: "width: 110px;", classes: "font-mono" },
+  { name: "assistName", label: "Item Assist", field: "assistName", align: "left", sortable: true, style: "max-width: 250px;", headerStyle: "max-width: 250px;", classes: "ellipsis" },
+  { name: "assistType", label: "Tipe", field: "assistType", align: "left", sortable: true, style: "width: 90px;", headerStyle: "width: 90px;" },
+  { name: "conversionFactor", label: "Faktor", field: "conversionFactor", align: "right", sortable: true, style: "width: 80px;", headerStyle: "width: 80px;" },
+  { name: "depotId", label: "Depot", field: "depotId", align: "left", style: "width: 80px;", headerStyle: "width: 80px;" },
+  { name: "active", label: "Aktif", field: (row: DestySkuMapping) => row.active ? "Ya" : "Tidak", align: "center", style: "width: 60px;", headerStyle: "width: 60px;" },
+  { name: "actions", label: "Aksi", field: "destySku", align: "center", style: "width: 90px;", headerStyle: "width: 90px;" },
 ];
 
 const ledgerColumns = [
-  { name: "marketplaceOrderSn", label: "Order", field: "marketplaceOrderSn", align: "left" },
-  { name: "status", label: "Status", field: "status", align: "left" },
-  { name: "txId", label: "txId", field: "txId", align: "left" },
-  { name: "invoice", label: "Invoice", field: "invoice", align: "left" },
-  { name: "error", label: "Error", field: "error", align: "left" },
-  { name: "updatedAt", label: "Diperbarui", field: "updatedAt", align: "left" },
+  { name: "marketplaceOrderSn", label: "Order", field: "marketplaceOrderSn", align: "left", style: "width: 160px;", classes: "font-mono ellipsis" },
+  { name: "status", label: "Status", field: "status", align: "left", style: "width: 100px;" },
+  { name: "txId", label: "txId", field: "txId", align: "left", style: "width: 110px;", classes: "font-mono" },
+  { name: "invoice", label: "Invoice", field: "invoice", align: "left", style: "width: 140px;", classes: "font-mono" },
+  { name: "error", label: "Error", field: "error", align: "left", style: "max-width: 200px;", classes: "ellipsis text-negative" },
+  { name: "updatedAt", label: "Diperbarui", field: "updatedAt", align: "left", style: "width: 140px;" },
 ];
 
-const tableColumns = [
-  { name: "no", label: "No", align: "center", field: (row: any, idx: number) => idx + 1, sortable: false },
-  { name: "validationStatus", label: "Validasi", align: "center", field: "isValid", sortable: true },
-  { name: "inputKeAssist", label: "Input Ke Assist", align: "left", field: "inputKeAssist", sortable: true },
+const pldmpTableColumns = [
+  { name: "no", label: "No", align: "center", field: (row: any, idx: number) => idx + 1, sortable: false, style: "width: 45px;", headerStyle: "width: 45px;" },
+  { name: "mappingStatus", label: "SKU Termapping", align: "center", field: (row: any) => Boolean(row.mappedItem), sortable: true, style: "width: 150px; min-width: 150px;", headerStyle: "width: 150px; min-width: 150px;" },
   { name: "productName", label: "Nama Produk", align: "left", field: "productName", sortable: true },
   { name: "platformName", label: "Market Place", align: "center", field: "platformName", sortable: true },
-  { name: "assistInvoice", label: "Invoice Assist", align: "left", field: "assistInvoice" },
+  { name: "inputKeAssist", label: "Input Ke Assist", align: "left", field: "inputKeAssist", sortable: true },
   { name: "quantity", label: "Jml", align: "right", field: "quantity", sortable: true },
   { name: "satuan", label: "Satuan", align: "center", field: "satuan" },
   { name: "totalPrice", label: "Total Harga MP", align: "right", field: "totalPrice", sortable: true, format: (val: any) => formatNumber(val) },
@@ -953,20 +1643,18 @@ const tableColumns = [
   { name: "externalShopName", label: "Nama Toko Asal", align: "left", field: "externalShopName" }
 ];
 
-function parseSatuan(sku?: string): string {
-  if (!sku) return "";
-  const parts = sku.split("-");
-  if (parts.length > 1) {
-    const lastPart = parts[parts.length - 1].trim();
-    const last = lastPart.toUpperCase();
-    if (/^\d+$/.test(last) && parts.length > 2) {
-      const secondLast = parts[parts.length - 2].trim().toUpperCase();
-      return `${secondLast}-${last}`;
-    }
-    return last;
-  }
-  return sku.trim().toUpperCase();
-}
+const importTableColumns = [
+  { name: "no", label: "No", align: "center", field: (row: any, idx: number) => idx + 1, sortable: false, style: "width: 45px;", headerStyle: "width: 45px;" },
+  { name: "validationStatus", label: "Validasi", align: "center", field: "isValid", sortable: true, style: "width: 80px;", headerStyle: "width: 80px;" },
+  { name: "inputKeAssist", label: "Status Assist", align: "left", field: "inputKeAssist", sortable: true, style: "width: 120px;", headerStyle: "width: 120px;" },
+  { name: "orderSn", label: "MP & No. Pesanan", align: "left", field: "displayedOrderSn", sortable: true, style: "width: 140px; max-width: 140px;", headerStyle: "width: 140px; max-width: 140px;" },
+  { name: "destyItem", label: "Item Desty", align: "left", field: "productName", sortable: true, style: "max-width: 180px;", headerStyle: "max-width: 180px;" },
+  { name: "quantity", label: "Qty Desty", align: "center", field: "quantity", sortable: true, style: "width: 75px;", headerStyle: "width: 75px;" },
+  { name: "assistItem", label: "Pemetaan Item Assist", align: "left", field: "assistItem", sortable: true, style: "max-width: 180px;", headerStyle: "max-width: 180px;" },
+  { name: "conversionFactor", label: "Faktor", align: "center", field: "conversionFactor", sortable: true, style: "width: 110px;", headerStyle: "width: 110px;" },
+  { name: "assistQty", label: "Qty Assist", align: "center", field: "assistQty", sortable: true, style: "width: 75px;", headerStyle: "width: 75px;" },
+  { name: "assistStock", label: "Stok Assist", align: "center", field: "assistStock", sortable: true, style: "width: 85px;", headerStyle: "width: 85px;" },
+];
 
 function formatTimestamp(ts?: number): string {
   if (!ts) return "";
@@ -1034,7 +1722,6 @@ function parsePlatformName(platform?: string): string {
 }
 
 function buildSyncContext() {
-  // Assist history is the source of truth. The local ledger is for audit/logging only.
   const duplicateIndex = new Set(
     Object.entries(assistDetailsByIdentifier.value)
       .filter(([, detail]) => !detail.voided)
@@ -1066,6 +1753,8 @@ const orderValidationMap = computed<Map<string, ReturnType<typeof validateDestyO
   return map;
 });
 
+const stockIndexByAssistId = computed(() => buildAssistStockIndex(assistCatalog.value));
+
 const flattenedItems = computed<FlattenedOrderItem[]>(() => {
   const result: FlattenedOrderItem[] = [];
   let rowIndex = 0;
@@ -1086,10 +1775,19 @@ const flattenedItems = computed<FlattenedOrderItem[]>(() => {
       const buyFee = buyFeeMap.value[itemSkuUpper];
       const hargaModalSatuan: number | "" = buyFee !== undefined ? buyFee : "";
 
-      const assistUnit = unitMap.value[itemSkuUpper];
-      const satuan = assistUnit !== undefined && assistUnit !== "" ? assistUnit : "";
+      const assistUnitFromMap = unitMap.value[itemSkuUpper];
+      const satuan = assistUnitFromMap !== undefined && assistUnitFromMap !== "" ? assistUnitFromMap : "";
 
       const totalHargaModalCalculated: number | "" = typeof hargaModalSatuan === "number" ? (item?.quantity ?? 0) * hargaModalSatuan : "";
+
+      const mappedItem = resolveEffectiveDestySkuMapping(sku, mappings.value, assistCatalog.value);
+      const isExplicit = Boolean(findDestySkuMapping(mappings.value, sku));
+      const is1to1Fallback = Boolean(mappedItem && !isExplicit);
+      const conversionFactor = mappedItem?.conversionFactor ?? 1;
+      const quantity = item?.quantity ?? 0;
+      const assistQty = Math.round(quantity * conversionFactor * 1000) / 1000;
+      const assistUnit = mappedItem?.assistUnit || satuan || "Pcs";
+      const assistStock = mappedItem?.assistId ? stockIndexByAssistId.value[mappedItem.assistId] : null;
 
       result.push({
         rowId: `${orderKey}_${itemIdx}_${sku}`,
@@ -1100,7 +1798,7 @@ const flattenedItems = computed<FlattenedOrderItem[]>(() => {
         isValid,
         validationMessages,
         assistInvoice: assistInvoiceForOrder(orderKey),
-        quantity: item?.quantity ?? 0,
+        quantity,
         satuan,
         totalPrice: record.totalSales ?? 0,
         hargaModalSatuan,
@@ -1114,7 +1812,13 @@ const flattenedItems = computed<FlattenedOrderItem[]>(() => {
         externalShopName: record.externalShopName ?? "",
         rawOrderCreateTime: record.orderCreateTime,
         rawDeliveryDeadline: record.deliveryDeadline,
-        sku
+        sku,
+        mappedItem,
+        is1to1Fallback,
+        conversionFactor,
+        assistQty,
+        assistUnit,
+        assistStock,
       });
       rowIndex += 1;
     }
@@ -1192,14 +1896,31 @@ function validateSelectedOrder() {
   );
   syncIssues.value = validation.issues;
   syncValidationMessage.value = validation.valid
-    ? "Order valid dan siap untuk dry-run."
+    ? "Order valid dan siap untuk dry-run / impor."
     : `Order tidak valid (${validation.issues.length} masalah).`;
   return validation.valid;
 }
 
 async function loadSyncData() {
-  mappings.value = await getDestySkuMappings();
+  try {
+    mappings.value = await syncDestySkuMappings();
+  } catch {
+    mappings.value = await getDestySkuMappings();
+  }
   importLedger.value = await getDestyImportLedger();
+}
+
+async function syncWithFirebase() {
+  if (syncBusy.value) return;
+  syncBusy.value = true;
+  try {
+    mappings.value = await syncDestySkuMappings();
+    syncValidationMessage.value = `Berhasil menyinkronkan ${mappings.value.length} mapping SKU dari Firebase.`;
+  } catch (err) {
+    syncValidationMessage.value = err instanceof Error ? err.message : "Gagal menyinkronkan Firebase.";
+  } finally {
+    syncBusy.value = false;
+  }
 }
 
 async function loadRemoteAssistDetails(orderList: DestyOrderRecord[]) {
@@ -1243,9 +1964,8 @@ async function loadSyncCatalog() {
       DEFAULT_ASSIST_DEPOT_ID,
     );
     mappings.value = autoMapping.mappings;
-    // Keep automatic Sheet → Assist mappings runtime-only; only manual overrides are persisted.
-    syncValidationMessage.value = `Katalog ${assistCatalog.value.length} item dan ${mappings.value.length} mapping otomatis dimuat (tidak disimpan).` +
-      (autoMapping.unmatchedSkus.length ? ` ${autoMapping.unmatchedSkus.length} SKU tidak ditemukan di katalog Assist.` : "");
+    syncValidationMessage.value = `Katalog ${assistCatalog.value.length} item dan ${mappings.value.length} mapping dimuat.` +
+      (autoMapping.unmatchedSkus.length ? ` ${autoMapping.unmatchedSkus.length} SKU belum cocok di katalog Assist.` : "");
     if (selectedOrder.value) validateSelectedOrder();
   } catch (error) {
     syncValidationMessage.value = error instanceof Error ? error.message : "Gagal memuat katalog Assist.";
@@ -1302,7 +2022,7 @@ async function saveMapping() {
   syncBusy.value = true;
   try {
     mappings.value = await upsertDestySkuMapping(mappingDraft.value);
-    syncValidationMessage.value = `Mapping ${mappingDraft.value.destySku} berhasil disimpan.`;
+    syncValidationMessage.value = `Mapping ${mappingDraft.value.destySku} berhasil disimpan ke Firebase & lokal.`;
     mappingDraft.value = {
       destySku: "", assistCode: "", assistType: "prescription", assistId: "", assistName: "",
       destyUnit: "", assistUnit: "", depotId: "", conversionFactor: 1, active: true,
@@ -1311,6 +2031,145 @@ async function saveMapping() {
     syncValidationMessage.value = error instanceof Error ? error.message : "Gagal menyimpan mapping.";
   } finally {
     syncBusy.value = false;
+  }
+}
+
+function getSkuRecommendation(sku: string, productName?: string): SkuRecommendation {
+  if (!assistCatalog.value.length) {
+    return { destySku: sku, productName, candidates: [] };
+  }
+  return recommendMatchesForSku(sku, productName, assistCatalog.value);
+}
+
+async function applyQuickMapping(destySku: string, candidate: SkuMatchCandidate) {
+  if (syncBusy.value) return;
+  syncBusy.value = true;
+  try {
+    const input = createMappingFromRecommendation(
+      destySku,
+      candidate,
+      DEFAULT_ASSIST_DEPOT_ID,
+    );
+    mappings.value = await upsertDestySkuMapping(input);
+    syncValidationMessage.value = `Berhasil menghubungkan SKU "${destySku}" → ${candidate.catalogItem.code} (${candidate.catalogItem.name}).`;
+    if (selectedOrder.value) validateSelectedOrder();
+  } catch (error) {
+    syncValidationMessage.value = error instanceof Error ? error.message : "Gagal menyimpan mapping.";
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
+async function applyAllHighConfidenceRecommendations() {
+  const eligible = unmappedSkuRecommendations.value.filter(
+    (r) => r.recommendation.bestMatch && r.recommendation.bestMatch.confidence === "high"
+  );
+  if (!eligible.length || syncBusy.value) return;
+  syncBusy.value = true;
+  try {
+    let currentMappings = [...mappings.value];
+    let mappedCount = 0;
+    for (const item of eligible) {
+      if (item.recommendation.bestMatch) {
+        const input = createMappingFromRecommendation(
+          item.sku,
+          item.recommendation.bestMatch,
+          DEFAULT_ASSIST_DEPOT_ID,
+        );
+        currentMappings = await upsertDestySkuMapping(input);
+        mappedCount++;
+      }
+    }
+    mappings.value = currentMappings;
+    syncValidationMessage.value = `Berhasil memetakan otomatis ${mappedCount} SKU dengan tingkat kecocokan tinggi!`;
+    if (selectedOrder.value) validateSelectedOrder();
+  } catch (error) {
+    syncValidationMessage.value = error instanceof Error ? error.message : "Gagal memetakan SKU secara otomatis.";
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
+function openSkuRecommendationDialog(sku: string, productName?: string) {
+  modalTargetSku.value = sku;
+  modalTargetProductName.value = productName || "";
+  modalCatalogSearchQuery.value = "";
+  
+  const rec = getSkuRecommendation(sku, productName);
+  modalSelectedCandidate.value = rec.bestMatch || null;
+  modalConversionFactor.value = rec.bestMatch?.suggestedConversionFactor || 1;
+  showSkuRecommendationModal.value = true;
+}
+
+function selectCatalogItemForModal(item: AssistCatalogItem) {
+  const candidate = matchCatalogItem(
+    modalTargetSku.value,
+    modalTargetProductName.value,
+    item
+  ) || {
+    catalogItem: item,
+    score: 1.0,
+    confidence: "high" as const,
+    matchReasons: ["Dipilih secara manual oleh pengguna"],
+    suggestedConversionFactor: 1,
+  };
+  modalSelectedCandidate.value = candidate;
+  modalConversionFactor.value = candidate.suggestedConversionFactor || 1;
+  modalCatalogSearchQuery.value = "";
+}
+
+async function saveMappingFromDialog() {
+  if (!modalTargetSku.value || !modalSelectedCandidate.value || syncBusy.value) return;
+  syncBusy.value = true;
+  try {
+    const candidate = {
+      ...modalSelectedCandidate.value,
+      suggestedConversionFactor: modalConversionFactor.value > 0 ? modalConversionFactor.value : 1,
+    };
+    const input = createMappingFromRecommendation(
+      modalTargetSku.value,
+      candidate,
+      DEFAULT_ASSIST_DEPOT_ID,
+    );
+    mappings.value = await upsertDestySkuMapping(input);
+    syncValidationMessage.value = `Berhasil memetakan SKU ${modalTargetSku.value} → ${candidate.catalogItem.code}.`;
+    showSkuRecommendationModal.value = false;
+    if (selectedOrder.value) validateSelectedOrder();
+  } catch (error) {
+    syncValidationMessage.value = error instanceof Error ? error.message : "Gagal menyimpan pemetaan.";
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
+async function updateRowConversionFactor(row: FlattenedOrderItem, newFactorVal: string | number | null | undefined) {
+  const factor = Number(newFactorVal);
+  if (!Number.isFinite(factor) || factor <= 0) return;
+  try {
+    const mapping = row.mappedItem;
+    const fallback = mapping ? undefined : (row.sku ? {
+      assistCode: row.sku,
+      assistName: row.productName,
+      assistUnit: row.satuan || "Pcs",
+      destyUnit: row.satuan || "Pcs",
+    } : undefined);
+
+    mappings.value = await updateSkuConversionFactor(row.sku, factor, fallback);
+    syncValidationMessage.value = `Faktor konversi untuk SKU "${row.sku}" diupdate ke ${factor} (disimpan ke Firebase).`;
+    if (selectedOrder.value) validateSelectedOrder();
+  } catch (err) {
+    console.error("Gagal update conversion factor:", err);
+  }
+}
+
+function autoFillMappingDraft(sku?: string) {
+  const targetSku = sku || mappingDraft.value.destySku;
+  if (!targetSku) return;
+  const rec = getSkuRecommendation(targetSku);
+  if (rec.bestMatch) {
+    const input = createMappingFromRecommendation(targetSku, rec.bestMatch, DEFAULT_ASSIST_DEPOT_ID);
+    mappingDraft.value = { ...input };
+    syncValidationMessage.value = `Form mapping diisi otomatis dengan rekomendasi terbaik (${Math.round(rec.bestMatch.score * 100)}% Cocok).`;
   }
 }
 
@@ -1352,7 +2211,6 @@ async function importSelectedOrder() {
     if (!assistToken) throw new Error("Token Assist tidak ditemukan.");
     if (!assistCatalog.value.length) throw new Error("Muat katalog dan stok Assist terlebih dahulu sebelum impor.");
 
-    // Query Assist immediately before sending. A failed remote check aborts the send.
     const date = normalizedOrder.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
     const remoteDetails = await fetchAssistDestyTransactionDetails({
       token: assistToken,
@@ -1365,7 +2223,7 @@ async function importSelectedOrder() {
     const remoteDuplicates = new Set(remoteDetails.filter((detail) => !detail.voided).flatMap((detail) => [...detail.identifiers]));
     const checkedIdentifiers = getDestyOrderIdentifiers(normalizedOrder);
     importLedger.value = await reconcileDestyImportLedger(remoteDuplicates, checkedIdentifiers);
-    // A successful Assist history query is authoritative; local ledger is fallback only.
+
     const duplicateIndex = new Set(remoteDuplicates);
     const context = buildSyncContext();
     const result = await createAssistSaleOrder(selectedOrder.value, mappings.value, {
@@ -1514,7 +2372,6 @@ async function bulkImportOrders() {
     const context = buildSyncContext();
     const checkedIdentifiers = normalizedOrders.flatMap((order) => getDestyOrderIdentifiers(order));
     importLedger.value = await reconcileDestyImportLedger(remoteDuplicates, checkedIdentifiers);
-    // Server history is authoritative after a successful query; do not retain stale local duplicates.
     const duplicateIndex = new Set(remoteDuplicates);
     const results = await bulkImportDestyOrders({
       orders: orders.value,
@@ -1565,7 +2422,6 @@ async function probeTokens() {
   statusMessage.value = "";
   statusVariant.value = "muted";
 
-  // Always load Assist maps on start
   await loadAssistLocalMaps();
 
   try {
@@ -1640,7 +2496,7 @@ async function fetchOrders() {
     orders.value = fetched;
     selectedOrderKey.value = orderOptions.value[0]?.value ?? "";
     void loadRemoteAssistDetails(fetched);
-    statusMessage.value = `Berhasil menarik ${orders.value.length} pesanan dengan total ${flattenedItems.value.length} baris barang.`;
+    statusMessage.value = `Berhasil menarik ${orders.value.length} pesanan (${flattenedItems.value.length} baris barang).`;
     statusVariant.value = "success";
 
     await loadStatusCounts();
@@ -1758,11 +2614,11 @@ function exportToExcel() {
     XLSX.utils.book_append_sheet(workbook, worksheet, "PLDMP Orders");
 
     XLSX.writeFile(workbook, `pldmp-orders-${selectedStatus.value}-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    statusMessage.value = "File Excel berhasil dibuat.";
+    statusMessage.value = "File Excel PLDMP berhasil dibuat.";
     statusVariant.value = "success";
   } catch (err) {
     console.error(err);
-    statusMessage.value = "Gagal membuat berkas Excel.";
+    statusMessage.value = "Gagal membuat berkas Excel PLDMP.";
     statusVariant.value = "error";
   } finally {
     exporting.value = false;
@@ -1901,7 +2757,6 @@ async function fetchOfflineSales() {
       throw new Error("Token Assist tidak ditemukan. Buka tab clinica.assist.id terlebih dahulu.");
     }
 
-    // Ensure catalog & mappings are loaded
     if (!mappings.value.length || !assistCatalog.value.length) {
       await loadSyncCatalog();
     }
@@ -1965,7 +2820,7 @@ async function handleExecuteOfflineStockSync() {
         offlineProgressCurrent.value = p.current;
         offlineProgressSuccess.value = p.success;
         offlineProgressFailed.value = p.failed;
-        offlineProgressLogs.value.push(p.log);
+        offlineProgressLogs.push(p.log);
       },
     });
 
@@ -1987,19 +2842,27 @@ watch(selectedStatus, () => {
   void loadStatusCounts();
 });
 
-watch(() => store.developerMode, (enabled) => {
-  if (!enabled && syncTab.value === "mapping") syncTab.value = "import";
-  if (!enabled) syncPayloadPreview.value = "";
+watch(syncTab, (newTab) => {
+  if ((newTab === "import" || newTab === "mapping" || newTab === "offline_sync") && !assistCatalog.value.length && !syncBusy.value) {
+    void loadSyncCatalog();
+  }
 });
 
-onMounted(() => {
-  void probeTokens();
-  void loadSyncData();
+onMounted(async () => {
+  await probeTokens();
+  await loadSyncData();
+  void loadSyncCatalog();
 });
 </script>
 
 <style scoped>
 .font-mono {
   font-family: monospace;
+}
+.text-2xs {
+  font-size: 10px;
+}
+.border-amber {
+  border: 1px solid #ffe082;
 }
 </style>

@@ -5,6 +5,7 @@ import {
   DEFAULT_ASSIST_DEPOT_ID,
   getDestySkuMappings,
   importDestySkuMappings,
+  resolveEffectiveDestySkuMapping,
   upsertDestySkuMapping,
 } from "@/services/destySync/mappingStorage";
 
@@ -46,5 +47,39 @@ describe("Desty SKU mapping storage", () => {
     await importDestySkuMappings(JSON.stringify([{ destySku: "SKU", assistCode: "CODE", assistType: "akhp", assistId: "akhp-1", assistName: "BHP", conversionFactor: 1, active: true }]));
     expect(await getDestySkuMappings()).toHaveLength(1);
     expect(buildGoogleSheetSkuFallback([["CODE", "BHP", "", "", "", "SKU"]])).toEqual([{ destySku: "SKU", assistCode: "CODE", assistName: "BHP" }]);
+  });
+
+  it("resolves explicit mapping over fallback, and falls back to 1:1 catalog match", () => {
+    const catalog = [
+      { id: "med-1", code: "PARACETAMOL", name: "Paracetamol 500mg", type: "prescription" as const, unit: "Tab" },
+      { id: "med-2", code: "AMOX", name: "Amoxicillin 500mg", type: "prescription" as const, unit: "Kaplet" },
+    ];
+    const explicitMappings = [
+      {
+        destySku: "PARACETAMOL",
+        assistCode: "PARACETAMOL",
+        assistType: "prescription" as const,
+        assistId: "med-1",
+        assistName: "Paracetamol 500mg Box",
+        conversionFactor: 10,
+        active: true,
+      },
+    ];
+
+    // Explicit mapping takes precedence
+    const explicitResult = resolveEffectiveDestySkuMapping("PARACETAMOL", explicitMappings, catalog);
+    expect(explicitResult).toBeDefined();
+    expect(explicitResult?.conversionFactor).toBe(10);
+
+    // Fallback 1:1 when not in explicit mappings
+    const fallbackResult = resolveEffectiveDestySkuMapping("AMOX", explicitMappings, catalog);
+    expect(fallbackResult).toBeDefined();
+    expect(fallbackResult?.assistCode).toBe("AMOX");
+    expect(fallbackResult?.assistName).toBe("Amoxicillin 500mg");
+    expect(fallbackResult?.conversionFactor).toBe(1);
+
+    // Returns undefined if not matching
+    const unmappedResult = resolveEffectiveDestySkuMapping("NON-EXISTENT", explicitMappings, catalog);
+    expect(unmappedResult).toBeUndefined();
   });
 });

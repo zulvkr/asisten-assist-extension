@@ -64,4 +64,36 @@ describe("validateDestyOrder", () => {
     );
     expect(unknown.issues.map((issue) => issue.code)).toContain("unmapped-sku");
   });
+
+  it("automatically falls back to 1:1 match when SKU matches Assist catalog code", () => {
+    const directOrder = normalizeDestyOrder({
+      displayedOrderSn: "ORDER-DIRECT",
+      bookingSn: "BOOK-DIRECT",
+      totalSales: 5000,
+      items: [{ masterSku: "PCT-500", productName: "Paracetamol 500", quantity: 3 }],
+    });
+
+    const result = validateDestyOrder(directOrder, {
+      mappings: [], // No explicit mappings
+      assistCatalog: [
+        {
+          id: "med-pct",
+          code: "PCT-500",
+          name: "Paracetamol 500mg Tab",
+          type: "prescription",
+          unit: "Tab",
+          depotId: "depot-default",
+          stock: 50,
+        },
+      ],
+      stockByAssistId: { "med-pct": 50 },
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.mappedItems).toHaveLength(1);
+    expect(result.mappedItems[0].mapping.assistCode).toBe("PCT-500");
+    expect(result.mappedItems[0].mapping.assistName).toBe("Paracetamol 500mg Tab");
+    expect(result.mappedItems[0].mapping.conversionFactor).toBe(1);
+    expect(result.mappedItems[0].assistQuantity).toBe(3);
+  });
 });
