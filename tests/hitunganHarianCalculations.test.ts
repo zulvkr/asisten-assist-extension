@@ -226,4 +226,185 @@ describe("hitunganHarianCalculations", () => {
     expect(summary.apotek.qris).toBe(50000);
     expect(summary.apotek.total).toBe(145000);
   });
+
+  it("calculates HPP using latest buy price (buyFee) instead of avgHPP", () => {
+    const mockData: PemasukanData[] = [
+      {
+        _id: "tx1",
+        status: "paid off",
+        totalFee: 30000,
+        creditFee: 0,
+        isOnlyPOS: true,
+        createdAt: "2025-09-17T09:00:00+07:00",
+        code: "INV001",
+        debtFee: 0,
+        isOutcome: false,
+        paidFee: 30000,
+        sumFee: 0,
+        roundedValue: 0,
+        Appointment: {},
+        Diagnoses: [],
+        OtherNotes: [],
+        Practices: {},
+        Items: [
+          {
+            _id: "item1",
+            name: "Paracetamol",
+            type: "prescription",
+            medicineId: "med1",
+            hospitalId: "h1",
+            transactionId: "tx1",
+            quantity: 2,
+            baseFee: 15000,
+            discount: 0,
+            totalFee: 30000,
+            isPriceLock: true,
+            paidFee: 30000,
+            payableFee: 0,
+            transactionType: "selling",
+            categoryId: "c1",
+            isPaidOff: true,
+            createdAt: "2025-09-17T08:00:00.000Z",
+            updatedAt: "2025-09-17T08:00:00.000Z",
+            createdId: "u1",
+            medicalHelperIds: [],
+            createdName: "Cashier",
+            incomeType: "apotek",
+            isPendingStock: false,
+            isSlotTransacted: true,
+            buyFee: 8000,
+            avgHPP: 10000,
+          },
+        ],
+        Payments: [
+          {
+            _id: "p1",
+            totalFee: 30000,
+            percentageTotal: 100,
+            status: "paid",
+            type: "Langsung",
+            name: "Tunai",
+            transactionId: "tx1",
+            transactionDate: "2025-09-17T08:00:00.000Z",
+            accountTxId: "acc1",
+            hospitalId: "h1",
+            reason: "-",
+            isCovered: false,
+            isNeedClaim: false,
+            isOutcome: false,
+            intent: "-",
+            createdAt: "2025-09-17T08:00:00.000Z",
+            createdId: "u1",
+            paidName: "-",
+            change: 0,
+            createdName: "Cashier",
+            trueCreatedAt: "2025-09-17T08:00:00.000Z",
+          },
+        ],
+      },
+    ];
+
+    const summaries = calculateShiftSummaries(mockData);
+    expect(summaries).toHaveLength(1);
+    const summary = summaries[0];
+    // unitHpp should be buyFee (8000), totalHpp = 2 * 8000 = 16000 (not 2 * 10000 = 20000)
+    expect(summary.hpp).toBe(16000);
+    expect(summary.details[0].hpp).toBe(16000);
+    expect(summary.details[0].items[0].unitHpp).toBe(8000);
+    expect(summary.details[0].items[0].totalHpp).toBe(16000);
+  });
+
+  it("resolves latest buy price from catalog when item buyFee is missing", () => {
+    const mockData: PemasukanData[] = [
+      {
+        _id: "tx1",
+        status: "paid off",
+        totalFee: 25000,
+        creditFee: 0,
+        isOnlyPOS: true,
+        createdAt: "2025-09-17T09:00:00+07:00",
+        code: "INV001",
+        debtFee: 0,
+        isOutcome: false,
+        paidFee: 25000,
+        sumFee: 0,
+        roundedValue: 0,
+        Appointment: {},
+        Diagnoses: [],
+        OtherNotes: [],
+        Practices: {},
+        Items: [
+          {
+            _id: "item1",
+            name: "Amoxicillin",
+            type: "prescription",
+            medicineId: "med2",
+            hospitalId: "h1",
+            transactionId: "tx1",
+            quantity: 3,
+            baseFee: 25000,
+            discount: 0,
+            totalFee: 25000,
+            isPriceLock: true,
+            paidFee: 25000,
+            payableFee: 0,
+            transactionType: "selling",
+            categoryId: "c1",
+            isPaidOff: true,
+            createdAt: "2025-09-17T08:00:00.000Z",
+            updatedAt: "2025-09-17T08:00:00.000Z",
+            createdId: "u1",
+            medicalHelperIds: [],
+            createdName: "Cashier",
+            incomeType: "apotek",
+            isPendingStock: false,
+            isSlotTransacted: true,
+          },
+        ],
+        Payments: [
+          {
+            _id: "p1",
+            totalFee: 25000,
+            percentageTotal: 100,
+            status: "paid",
+            type: "Langsung",
+            name: "Tunai",
+            transactionId: "tx1",
+            transactionDate: "2025-09-17T08:00:00.000Z",
+            accountTxId: "acc1",
+            hospitalId: "h1",
+            reason: "-",
+            isCovered: false,
+            isNeedClaim: false,
+            isOutcome: false,
+            intent: "-",
+            createdAt: "2025-09-17T08:00:00.000Z",
+            createdId: "u1",
+            paidName: "-",
+            change: 0,
+            createdName: "Cashier",
+            trueCreatedAt: "2025-09-17T08:00:00.000Z",
+          },
+        ],
+      },
+    ];
+
+    const hppCatalog = [
+      {
+        id: "med2",
+        code: "MED002",
+        name: "Amoxicillin",
+        type: "prescription" as const,
+        avgHPP: 6000,
+        buyFee: 4500,
+      },
+    ];
+
+    const summaries = calculateShiftSummaries(mockData, hppCatalog);
+    expect(summaries).toHaveLength(1);
+    // Should choose catalog buyFee (4500) over catalog avgHPP (6000)
+    expect(summaries[0].hpp).toBe(13500); // 3 * 4500
+    expect(summaries[0].details[0].items[0].unitHpp).toBe(4500);
+    expect(summaries[0].details[0].items[0].totalHpp).toBe(13500);
+  });
 });

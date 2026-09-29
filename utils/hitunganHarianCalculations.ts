@@ -226,13 +226,12 @@ function resolveUnitHpp(
     (item.code ? catalogLookup.get(getCatalogLookupKey(catalogType, item.code)) : undefined) ||
     (item.name ? catalogLookup.get(getCatalogLookupKey(catalogType, item.name)) : undefined);
 
-  // avgHPP is HPP after PPN in Assist. The transaction value is preferred
-  // because it represents the value saved at the time of sale.
+  // Latest buy price (buyFee) is preferred over avg HPP.
   return (
-    getFinitePositiveNumber(item.avgHPP) ??
-    getFinitePositiveNumber(catalogItem?.avgHPP) ??
     getFinitePositiveNumber(item.buyFee) ??
     getFinitePositiveNumber(catalogItem?.buyFee) ??
+    getFinitePositiveNumber(item.avgHPP) ??
+    getFinitePositiveNumber(catalogItem?.avgHPP) ??
     0
   );
 }
