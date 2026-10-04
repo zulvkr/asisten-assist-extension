@@ -18,6 +18,15 @@
         <div class="row q-gutter-x-sm">
           <q-btn
             outline
+            color="teal"
+            icon="document_scanner"
+            label="Scan Faktur (AI)"
+            no-caps
+            class="q-px-md text-weight-bold"
+            @click="openScanFakturDialog"
+          />
+          <q-btn
+            outline
             color="blue-grey-7"
             label="Batal"
             no-caps
@@ -567,12 +576,23 @@
             no-caps
           />
           <q-btn
+            color="teal"
+            outline
+            icon="document_scanner"
+            label="Scan Faktur (AI)"
+            no-caps
+            class="text-weight-bold"
+            :disabled="!store.assistToken"
+            @click="openScanFakturDialog"
+          />
+          <q-btn
             color="positive"
             icon="add"
             label="Buat Restock Baru"
             @click="openRestockForm"
             :disabled="!store.assistToken"
             no-caps
+            class="text-weight-bold"
           />
         </div>
       </div>
@@ -798,6 +818,14 @@
         </q-card>
       </div>
     </div>
+
+    <!-- AI Invoice Scanner Dialog -->
+    <FakturScanDialog
+      v-model="showScanDialog"
+      :distributors="allDistributors"
+      :products="allProductsCache"
+      @apply="handleScanApply"
+    />
   </div>
 </template>
 
@@ -807,6 +835,9 @@ import { useQuasar } from "quasar";
 import { useAssistStore } from "../stores/assistStore";
 import { formatRupiah } from "@/utils/rupiahUtils";
 import { encryptPayload, wrapEncryptedPayload } from "@/utils/cryptoUtils";
+import FakturScanDialog from "../components/FakturScanDialog.vue";
+import type { ExtractInvoiceResult } from "@/types/fakturScan";
+import type { CatalogCandidate } from "@/services/gemini/invoiceMatchingService";
 
 const $q = useQuasar();
 const store = useAssistStore();
@@ -815,6 +846,11 @@ const loading = ref(false);
 const items = ref<any[]>([]);
 const searchText = ref("");
 const statusFilter = ref("all");
+
+// AI Invoice Scan States
+const showScanDialog = ref(false);
+const allProductsCache = ref<CatalogCandidate[]>([]);
+const loadingCatalog = ref(false);
 
 // Form Toggling & States
 const showCreateForm = ref(false);
@@ -1007,6 +1043,173 @@ async function openRestockForm() {
     fetchClinicConfig(),
     fetchUserProfile()
   ]);
+}
+
+// Load full catalog items for fuzzy AI matching
+async function loadProductsForScanning(): Promise<CatalogCandidate[]> {
+  if (allProductsCache.value.length > 0) {
+    return allProductsCache.value;
+  }
+  if (!store.assistToken) return [];
+
+  loadingCatalog.value = true;
+  try {
+    const filter = {
+      where: {
+        hospitalId: store.hospitalId,
+        name: "Apotek"
+      },
+      include: ["KMedicineStocks", "KAKHPStocks"],
+      limit: 1000
+    };
+    const url = `${store.apiBaseUrl}/KStockDepots?filter=${encodeURIComponent(JSON.stringify(filter))}`;
+    const res = await fetch(url, { headers: store.getHeaders() });
+    if (res.ok) {
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : [];
+      const mapped: CatalogCandidate[] = list.map((item: any) => {
+        const isBHP = !!item.KAKHPStocks;
+        const catalog = isBHP ? item.KAKHPStocks : item.KMedicineStocks;
+        const name = isBHP ? item.itemName : item.medName;
+        return {
+          id: item.id,
+          code: catalog?.code || "",
+          name: name || "",
+          type: isBHP ? "akhp" : "prescription",
+          isBHP,
+          unit: item.unit || catalog?.unit || "PCS",
+          buyFee: catalog?.buyFee || catalog?.avgHPP || 0,
+          sellNormalFee: catalog?.sellNormalFee || 0,
+          avgHPP: catalog?.avgHPP || catalog?.buyFee || 0,
+          depotId: item.id,
+          medicineId: isBHP ? undefined : item.medicineId,
+          akhpId: isBHP ? item.akhpId : undefined,
+          rawItem: item
+        };
+      });
+      allProductsCache.value = mapped;
+      return mapped;
+    }
+  } catch (err) {
+    console.error("Gagal memuat katalog obat/BHP untuk scan:", err);
+  } finally {
+    loadingCatalog.value = false;
+  }
+  return [];
+}
+
+// Open AI Scan Faktur Dialog
+async function openScanFakturDialog() {
+  await Promise.all([
+    fetchDistributors(),
+    loadProductsForScanning(),
+    fetchClinicConfig(),
+    fetchUserProfile()
+  ]);
+  showScanDialog.value = true;
+}
+
+// Apply extracted invoice to restock form
+function handleScanApply(result: ExtractInvoiceResult) {
+  showCreateForm.value = true;
+
+  // 1. Distributor / Supplier
+  if (result.matchedSupplierId) {
+    selectedDistributor.value = result.matchedSupplierId;
+    isNewSupplier.value = false;
+    onDistributorChange(result.matchedSupplierId);
+  } else if (result.extractedSupplierName) {
+    isNewSupplier.value = true;
+    supplierName.value = result.extractedSupplierName;
+  }
+
+  // 2. Header info
+  if (result.invoiceNumber) {
+    nomorFaktur.value = result.invoiceNumber;
+  }
+  if (result.invoiceDate) {
+    transactionDate.value = result.invoiceDate;
+  }
+  if (result.receivedDate) {
+    receiveDate.value = result.receivedDate;
+  }
+  if (result.dueDate) {
+    dueDatePayment.value = result.dueDate;
+  }
+  if (result.ppnType) {
+    ppnType.value = result.ppnType === "Exclude" ? "exclude" : "include";
+  }
+
+  // 3. Line Items
+  if (result.items && result.items.length > 0) {
+    formItems.value = result.items.map((item) => {
+      const isBHP = Boolean(item.isBHP || item.matchedType === "akhp");
+      const unit = item.matchedUnitName || item.extractedUnitName || "PCS";
+      const buyFee = item.unitPrice || (item.rawUnitPrice > 0 && item.conversionFactor > 1 ? Number((item.rawUnitPrice / item.conversionFactor).toFixed(2)) : item.rawUnitPrice) || 0;
+      const sellPrice = item.newSellPrice || item.suggestedSellPrice || item.currentSellPrice || 0;
+
+      const rowItem: any = {
+        selectedProduct: item.matchedProductId ? {
+          label: `${item.matchedProductName || item.rawProductName} (${isBHP ? "BHP" : "Obat"}) - [${item.matchedCode || "N/A"}]`,
+          value: item.originalCatalog || { id: item.depotId, name: item.matchedProductName, medName: item.matchedProductName, itemName: item.matchedProductName },
+          isBHP,
+          catalog: {
+            code: item.matchedCode || "",
+            unit,
+            buyFee,
+            sellNormalFee: sellPrice,
+            avgHPP: item.previousBuyPrice || buyFee,
+          },
+          name: item.matchedProductName || item.rawProductName,
+        } : null,
+        name: item.matchedProductName || item.rawProductName,
+        type: isBHP ? "akhp" : "prescription",
+        code: item.matchedCode || "",
+        unit,
+        dosage: "-",
+        buyFee,
+        sellNormalFeeNew: sellPrice,
+        avgHPPOld: item.previousBuyPrice || buyFee,
+        depotId: item.depotId || "",
+        prevPrice: item.currentSellPrice || 0,
+        recPrice: item.suggestedSellPrice || Math.round(buyFee * 1.15),
+        batchNo: item.batchNumber || "",
+        expiredDate: item.expiryDate || formatDateForInput(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)),
+        quantity: item.quantity || 1,
+        diskonObat: item.discountPercent1 || 0,
+        options: [],
+        searchTerm: "",
+        hasMore: true,
+        loading: false,
+        loadingMore: false,
+        _searchSeq: 0,
+        itemNotes: item.packInfo ? `Konversi: ${item.packInfo}` : "",
+        isPendingStock: false,
+        isSlotTransacted: true,
+        createdAt: new Date().toISOString(),
+        createdId: createdId.value,
+        hospitalId: store.hospitalId,
+      };
+
+      if (isBHP) {
+        rowItem.akhpId = item.akhpId || item.matchedProductId;
+        rowItem.normalPriceAKHPNew = sellPrice;
+      } else {
+        rowItem.medicineId = item.medicineId || item.matchedProductId;
+        rowItem.masterCode = "";
+      }
+
+      recalcRow(rowItem);
+      return rowItem;
+    });
+  }
+
+  $q.notify({
+    type: "positive",
+    message: `Data faktur AI berhasil diterapkan (${result.items.length} item)!`,
+    position: "top",
+    timeout: 3000,
+  });
 }
 
 // Fetch Distributors list

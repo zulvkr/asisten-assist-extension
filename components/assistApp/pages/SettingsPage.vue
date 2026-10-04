@@ -68,6 +68,88 @@
       </q-card-section>
     </q-card>
 
+    <!-- Google Gemini AI Configuration Card -->
+    <q-card flat bordered class="q-mb-md">
+      <q-card-section>
+        <div class="text-subtitle1 text-weight-bold text-teal q-mb-xs row items-center">
+          <q-icon name="smart_toy" class="q-mr-xs" size="20px" />
+          Pengaturan Google Gemini AI (OCR Faktur Farmasi)
+        </div>
+        <div class="text-caption text-grey-7 q-mb-md">
+          API Key dan model Gemini tersimpan dan disinkronkan secara terpusat di Firestore (<code>settings/gemini</code>) sehingga seluruh staf dapat langsung menggunakannya.
+        </div>
+
+        <div class="q-gutter-y-md">
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-md-8">
+              <q-input
+                v-model="geminiApiKey"
+                label="Gemini API Key *"
+                outlined
+                dense
+                :type="showApiKey ? 'text' : 'password'"
+                color="teal"
+                placeholder="AIzaSy..."
+                hint="Dapatkan API Key di Google AI Studio (aistudio.google.com)"
+              >
+                <template #append>
+                  <q-icon
+                    :name="showApiKey ? 'visibility_off' : 'visibility'"
+                    class="cursor-pointer"
+                    @click="showApiKey = !showApiKey"
+                  />
+                </template>
+              </q-input>
+            </div>
+            <div class="col-12 col-md-4">
+              <q-select
+                v-model="geminiModel"
+                :options="AVAILABLE_GEMINI_MODELS"
+                emit-value
+                map-options
+                label="Model AI Gemini"
+                outlined
+                dense
+                color="teal"
+              />
+            </div>
+          </div>
+
+          <div class="row q-gutter-sm items-center">
+            <q-btn
+              color="teal"
+              icon="save"
+              label="Simpan Pengaturan Gemini"
+              :loading="savingGemini"
+              @click="handleSaveGemini"
+            />
+            <q-btn
+              outline
+              color="teal"
+              icon="bolt"
+              label="Uji Koneksi AI"
+              :loading="testingGemini"
+              :disable="!geminiApiKey.trim()"
+              @click="handleTestGemini"
+            />
+          </div>
+
+          <div v-if="geminiTestResult" class="q-mt-sm">
+            <q-banner
+              dense
+              rounded
+              :class="geminiTestResult.ok ? 'bg-positive-1 text-positive' : 'bg-negative-1 text-negative'"
+            >
+              <template #avatar>
+                <q-icon :name="geminiTestResult.ok ? 'check_circle' : 'error'" />
+              </template>
+              {{ geminiTestResult.message }}
+            </q-banner>
+          </div>
+        </div>
+      </q-card-section>
+    </q-card>
+
     <!-- Stock Comparison Settings Card -->
     <q-card flat bordered class="q-mb-md">
       <q-card-section>
@@ -320,7 +402,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useQuasar } from "quasar";
 import { useAssistStore } from "../stores/assistStore";
 import {
@@ -334,6 +416,13 @@ import {
   encryptPayload,
   wrapEncryptedPayload,
 } from "@/utils/cryptoUtils";
+import {
+  fetchGeminiConfig,
+  saveGeminiConfig,
+  testGeminiConnection,
+  AVAILABLE_GEMINI_MODELS,
+  DEFAULT_GEMINI_MODEL,
+} from "@/services/gemini/geminiConfigStorage";
 
 const $q = useQuasar();
 const store = useAssistStore();
@@ -350,6 +439,92 @@ const cryptoPlaintext = ref("");
 const cryptoEncryptedInput = ref("");
 const cryptoEncryptedOutput = ref("");
 const cryptoDecryptedOutput = ref("");
+
+// Gemini AI Config State
+const geminiApiKey = ref("");
+const geminiModel = ref(DEFAULT_GEMINI_MODEL);
+const showApiKey = ref(false);
+const savingGemini = ref(false);
+const testingGemini = ref(false);
+const geminiTestResult = ref<{ ok: boolean; message: string } | null>(null);
+
+onMounted(async () => {
+  try {
+    const config = await fetchGeminiConfig();
+    geminiApiKey.value = config.apiKey || "";
+    geminiModel.value = config.model || DEFAULT_GEMINI_MODEL;
+  } catch (err) {
+    console.warn("Could not load Gemini config on mount:", err);
+  }
+});
+
+async function handleSaveGemini() {
+  if (!geminiApiKey.value.trim()) {
+    $q.notify({
+      type: "warning",
+      message: "API Key Gemini tidak boleh kosong.",
+      position: "top",
+    });
+    return;
+  }
+
+  savingGemini.value = true;
+  geminiTestResult.value = null;
+  try {
+    await saveGeminiConfig({
+      apiKey: geminiApiKey.value.trim(),
+      model: geminiModel.value,
+    });
+    $q.notify({
+      type: "positive",
+      message: "Pengaturan Google Gemini berhasil disimpan ke Firestore & cache!",
+      position: "top",
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    $q.notify({
+      type: "negative",
+      message: `Gagal menyimpan pengaturan Gemini: ${msg}`,
+      position: "top",
+    });
+  } finally {
+    savingGemini.value = false;
+  }
+}
+
+async function handleTestGemini() {
+  if (!geminiApiKey.value.trim()) return;
+
+  testingGemini.value = true;
+  geminiTestResult.value = null;
+  try {
+    const result = await testGeminiConnection(geminiApiKey.value, geminiModel.value);
+    geminiTestResult.value = result;
+    if (result.ok) {
+      $q.notify({
+        type: "positive",
+        message: result.message,
+        position: "top",
+      });
+    } else {
+      $q.notify({
+        type: "negative",
+        message: result.message,
+        position: "top",
+      });
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    geminiTestResult.value = { ok: false, message: msg };
+    $q.notify({
+      type: "negative",
+      message: msg,
+      position: "top",
+    });
+  } finally {
+    testingGemini.value = false;
+  }
+}
 
 // CSV Upload State
 const csvFile = ref<File | null>(null);
