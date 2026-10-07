@@ -110,7 +110,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'obat'"
+          to="/obat"
+          :active="activePage === 'obat'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('obat')"
         >
@@ -130,7 +131,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'bhp'"
+          to="/bhp"
+          :active="activePage === 'bhp'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('bhp')"
         >
@@ -150,7 +152,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'restock'"
+          to="/restock"
+          :active="activePage === 'restock'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('restock')"
         >
@@ -176,7 +179,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'comparison'"
+          to="/comparison"
+          :active="activePage === 'comparison'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('comparison')"
         >
@@ -196,7 +200,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'recommendation'"
+          to="/recommendation"
+          :active="activePage === 'recommendation'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('recommendation')"
         >
@@ -216,7 +221,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'destyHelper'"
+          to="/destyHelper"
+          :active="activePage === 'destyHelper'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('destyHelper')"
         >
@@ -236,7 +242,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'kesehatanInventori'"
+          to="/kesehatanInventori"
+          :active="activePage === 'kesehatanInventori'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('kesehatanInventori')"
         >
@@ -256,7 +263,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'hitunganHarian'"
+          to="/hitunganHarian"
+          :active="activePage === 'hitunganHarian'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('hitunganHarian')"
         >
@@ -276,7 +284,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'hnaValuation'"
+          to="/hnaValuation"
+          :active="activePage === 'hnaValuation'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('hnaValuation')"
         >
@@ -296,7 +305,8 @@
         <q-item
           clickable
           v-ripple
-          :active="page === 'settings'"
+          to="/settings"
+          :active="activePage === 'settings'"
           active-class="bg-teal-1 text-teal text-weight-bold"
           @click="emitPage('settings')"
         >
@@ -327,15 +337,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useQuasar } from "quasar";
 import { useAssistStore } from "../stores/assistStore";
 import { useFirebaseAuth } from "../../../composables/useFirebaseAuth";
 import LoginDialog from "../components/LoginDialog.vue";
 
-const props = defineProps<{
-  page: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    page?: string;
+  }>(),
+  {
+    page: "",
+  }
+);
 
 const emit = defineEmits<{
   (e: "update:page", page: string): void;
@@ -343,7 +359,14 @@ const emit = defineEmits<{
 
 const $q = useQuasar();
 const store = useAssistStore();
+const route = useRoute();
+const router = useRouter();
 const { isAuthenticated, authLoading, userEmail, initAuthListener, logout } = useFirebaseAuth();
+
+const activePage = computed(() => {
+  if (props.page) return props.page;
+  return (route?.name as string) || "obat";
+});
 
 const leftDrawerOpen = ref(false);
 const miniState = ref(true);
@@ -358,6 +381,9 @@ function toggleLeftDrawer() {
 
 function emitPage(pageName: string) {
   emit("update:page", pageName);
+  if (router && route?.name !== pageName) {
+    router.push({ name: pageName }).catch(() => {});
+  }
 }
 
 async function handleReloadAssist() {

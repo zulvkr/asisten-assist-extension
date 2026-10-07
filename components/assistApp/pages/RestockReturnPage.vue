@@ -1077,7 +1077,7 @@ async function loadProductsForScanning(): Promise<CatalogCandidate[]> {
           name: name || "",
           type: isBHP ? "akhp" : "prescription",
           isBHP,
-          unit: item.unit || catalog?.unit || "PCS",
+          unit: catalog?.unit || item.unit || "PCS",
           buyFee: catalog?.buyFee || catalog?.avgHPP || 0,
           sellNormalFee: catalog?.sellNormalFee || 0,
           avgHPP: catalog?.avgHPP || catalog?.buyFee || 0,
@@ -1480,7 +1480,7 @@ function onItemSelectRow(selected: any, row: any) {
   row.name = selected.name;
   row.type = isBHP ? "akhp" : "prescription";
   row.code = catalog?.code || "";
-  row.unit = rawItem.unit || catalog?.unit || "PCS";
+  row.unit = catalog?.unit || rawItem.unit || "PCS";
   row.dosage = rawItem.dosage || "-";
   row.buyFee = catalog?.buyFee || 0;
   row.sellNormalFeeNew = catalog?.sellNormalFee || 0;

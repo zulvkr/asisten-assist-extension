@@ -7,10 +7,12 @@ import { Quasar, Notify, Dialog, Loading } from "quasar";
 import "./style.css";
 
 import AssistApp from "@/components/assistApp/AssistApp.vue";
+import router from "@/components/assistApp/router";
 
 const app = createApp(AssistApp);
 
 app.use(createPinia());
+app.use(router);
 app.use(Quasar, {
   components,
   directives,
