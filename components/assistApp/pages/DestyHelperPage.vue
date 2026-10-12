@@ -56,7 +56,7 @@
         >
           <q-tab name="pldmp" icon="table_chart" label="PLDMP (Ekspor Pesanan)" />
           <q-tab name="import" icon="cloud_download" label="Impor Pesanan (Desty → Assist)" />
-          <q-tab name="offline_sync" icon="sync" label="SO Stok Offline (Assist → Desty)" />
+          <q-tab name="offline_sync" icon="sync_saved_locally" label="SO Stok & Koreksi Desty" />
           <q-tab name="mapping" icon="tune" label="Pemetaan & Konversi SKU" />
           <q-tab name="log" icon="history" label="Log Impor" />
         </q-tabs>
@@ -655,294 +655,21 @@
             </q-table>
           </q-tab-panel>
 
-          <!-- TAB 3: SO STOK OFFLINE (Assist → Desty Stock Reduction) -->
-          <q-tab-panel name="offline_sync" class="q-pa-md">
-            <!-- Filter Bar -->
-            <div class="row q-col-gutter-md items-center q-mb-md">
-              <div class="col-12 col-md-3">
-                <q-input
-                  v-model="offlineStartDate"
-                  type="date"
-                  outlined
-                  dense
-                  label="Mulai Tanggal"
-                  color="teal"
-                  stack-label
-                />
-              </div>
-              <div class="col-12 col-md-3">
-                <q-input
-                  v-model="offlineEndDate"
-                  type="date"
-                  outlined
-                  dense
-                  label="Akhir Tanggal"
-                  color="teal"
-                  stack-label
-                />
-              </div>
-              <div class="col-12 col-md-3 flex items-center">
-                <q-checkbox
-                  v-model="offlineExcludeOnline"
-                  label="Hanya Offline POS (Exclude Marketplace)"
-                  color="teal"
-                >
-                  <q-tooltip>Mengecualikan transaksi dengan tanda pembayaran Marketplace / Desty</q-tooltip>
-                </q-checkbox>
-              </div>
-              <div class="col-12 col-md-3 row q-gutter-sm justify-end">
-                <q-btn
-                  color="teal"
-                  icon="download"
-                  label="Tarik Penjualan Offline"
-                  :loading="isFetchingOfflineSales"
-                  @click="fetchOfflineSales"
-                />
-                <q-btn
-                  outline
-                  color="teal"
-                  icon="sync"
-                  label="Tarik Stok Desty"
-                  :loading="isLoadingLiveDestyStockForOffline"
-                  :disabled="!destyToken || !offlineSoldItems.length"
-                  @click="fetchLiveDestyStockForOffline()"
-                >
-                  <q-tooltip>Muat ulang tingkat stok live dari Desty Omni</q-tooltip>
-                </q-btn>
-              </div>
-            </div>
-
-            <!-- Summary Metrics -->
-            <div v-if="offlineReductionItems.length > 0" class="row q-col-gutter-sm q-mb-md">
-              <div class="col">
-                <q-card flat bordered class="bg-grey-1 text-center q-pa-sm">
-                  <div class="text-caption text-grey-7">Total Item Terjual</div>
-                  <div class="text-h6 text-weight-bold text-teal">{{ offlineSummaryStats.total }}</div>
-                </q-card>
-              </div>
-              <div class="col">
-                <q-card flat bordered class="bg-green-1 text-center q-pa-sm">
-                  <div class="text-caption text-green-9">Siap Dikurangi</div>
-                  <div class="text-h6 text-weight-bold text-positive">{{ offlineSummaryStats.ready }}</div>
-                </q-card>
-              </div>
-              <div class="col">
-                <q-card flat bordered class="bg-amber-1 text-center q-pa-sm">
-                  <div class="text-caption text-amber-10">Peringatan Stok</div>
-                  <div class="text-h6 text-weight-bold text-amber-9">{{ offlineSummaryStats.warning }}</div>
-                </q-card>
-              </div>
-              <div class="col">
-                <q-card flat bordered class="bg-red-1 text-center q-pa-sm">
-                  <div class="text-caption text-red-9">Belum Dipetakan</div>
-                  <div class="text-h6 text-weight-bold text-negative">{{ offlineSummaryStats.unmapped }}</div>
-                </q-card>
-              </div>
-              <div class="col">
-                <q-card flat bordered class="bg-purple-1 text-center q-pa-sm">
-                  <div class="text-caption text-purple-9">Sudah Terkoreksi</div>
-                  <div class="text-h6 text-weight-bold text-purple-8">{{ offlineSummaryStats.synced }}</div>
-                </q-card>
-              </div>
-            </div>
-
-            <!-- Filter Controls & Action Button -->
-            <div v-if="offlineReductionItems.length > 0" class="row q-col-gutter-sm items-center justify-between q-mb-md">
-              <div class="col-12 col-md-4">
-                <q-input
-                  v-model="offlineSearchQuery"
-                  outlined
-                  dense
-                  placeholder="Cari SKU lokal, SKU Desty, nama obat..."
-                  color="teal"
-                  clearable
-                >
-                  <template v-slot:prepend><q-icon name="search" /></template>
-                </q-input>
-              </div>
-              <div class="col-12 col-md-4">
-                <q-select
-                  v-model="offlineStatusFilter"
-                  :options="[
-                    { label: 'Semua Status', value: 'all' },
-                    { label: 'Siap Dikurangi', value: 'ready' },
-                    { label: 'Peringatan Stok / Minus', value: 'warning' },
-                    { label: 'Belum Dipetakan / SKU Hilang', value: 'unmapped' },
-                    { label: 'Sudah Terkoreksi', value: 'synced' },
-                  ]"
-                  emit-value
-                  map-options
-                  outlined
-                  dense
-                  color="teal"
-                  label="Filter Status"
-                />
-              </div>
-              <div class="col-12 col-md-4 text-right">
-                <q-btn
-                  color="positive"
-                  icon="sync"
-                  :label="`Koreksi ke Desty (${offlineCheckedItems.length} dipilih)`"
-                  :disabled="offlineCheckedItems.length === 0 || !destyToken || isSyncingOfflineStock"
-                  :loading="isSyncingOfflineStock"
-                  @click="openOfflineConfirmDialog"
-                >
-                  <q-tooltip v-if="!destyToken">Token Desty tidak aktif. Pastikan omni.desty.app terbuka.</q-tooltip>
-                </q-btn>
-              </div>
-            </div>
-
-            <!-- Offline Reduction Table -->
-            <div v-if="offlineReductionItems.length > 0" class="q-table__container q-table--bordered bg-white rounded-borders">
-              <div class="q-table__middle scroll" style="max-height: 520px;">
-                <table class="q-table q-table--dense">
-                  <thead>
-                    <tr>
-                      <th style="width: 48px;" class="text-center">
-                        <q-checkbox
-                          :model-value="isAllOfflineChecked"
-                          @update:model-value="toggleSelectAllOffline"
-                          color="teal"
-                          dense
-                        />
-                      </th>
-                      <th class="text-left" style="max-width: 220px;">Produk Assist (POS)</th>
-                      <th class="text-center" style="width: 95px;">Terjual Offline</th>
-                      <th class="text-center" style="width: 105px;">Stok Assist</th>
-                      <th class="text-left" style="max-width: 170px;">Pemetaan SKU Desty</th>
-                      <th class="text-center" style="width: 120px;">Stok Desty Live</th>
-                      <th class="text-left" style="width: 170px;">Pengurangan Stok (-)</th>
-                      <th class="text-center" style="width: 120px;">Status Validasi</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="item in filteredOfflineReductionItems" :key="item.rowKey">
-                      <td class="text-center" style="width: 48px;">
-                        <q-checkbox
-                          :model-value="item.checked"
-                          @update:model-value="(val) => updateOfflineRowChecked(item.rowKey, val)"
-                          :disable="!item.destySkuId || item.status === 'synced'"
-                          color="teal"
-                          dense
-                        />
-                      </td>
-                      <td style="max-width: 220px;">
-                        <div class="text-weight-bold text-slate-900 ellipsis-2-lines" :title="item.assistItemName">{{ item.assistItemName }}</div>
-                        <div class="text-caption font-mono text-grey-7 ellipsis" :title="item.assistCode || item.assistItemId">
-                          Kode: {{ item.assistCode || item.assistItemId || "-" }}
-                          <q-badge color="blue-grey-2" text-color="blue-grey-9" class="q-ml-xs text-2xs">
-                            {{ item.assistItemType }}
-                          </q-badge>
-                        </div>
-                      </td>
-                      <td class="text-center" style="width: 95px;">
-                        <div class="text-weight-bold text-subtitle2 text-teal">
-                          {{ item.offlineQty }} <span class="text-caption text-grey-6">{{ item.assistUnit }}</span>
-                        </div>
-                      </td>
-                      <td class="text-center" style="width: 105px;">
-                        <div v-if="item.assistStock !== null && item.assistStock !== undefined">
-                          <div class="text-weight-bold text-subtitle2 text-slate-900">
-                            {{ item.assistStock }} <span class="text-caption text-grey-6">{{ item.assistUnit }}</span>
-                          </div>
-                        </div>
-                        <div v-else class="text-caption text-grey-5 flex items-center justify-center">
-                          -
-                        </div>
-                      </td>
-                      <td style="max-width: 170px;">
-                        <div class="row items-center q-gutter-x-xs no-wrap">
-                          <span class="font-mono text-weight-bold text-primary ellipsis" :title="item.destySku">{{ item.destySku }}</span>
-                          <q-badge color="teal-1" text-color="teal-9" v-if="item.isMapped" class="text-2xs">
-                            Mapped
-                          </q-badge>
-                          <q-badge color="grey-2" text-color="grey-8" v-else class="text-2xs">
-                            1:1
-                          </q-badge>
-                        </div>
-                        <div class="text-caption text-grey-6 q-mt-2xs ellipsis" v-if="item.conversionFactor !== 1">
-                          1 {{ item.destyUnit }} = {{ item.conversionFactor }} {{ item.assistUnit }}
-                        </div>
-                        <div class="text-caption text-primary text-weight-bold q-mt-2xs">
-                          Eq: {{ item.qtyDesty }} {{ item.destyUnit }}
-                        </div>
-                      </td>
-                      <td class="text-center" style="width: 120px;">
-                        <div v-if="item.destyStockFound" class="q-gutter-y-2xs">
-                          <div class="row items-center justify-center q-gutter-x-xs text-caption">
-                            <span>Fisik: <strong class="text-slate-900">{{ item.destyFisik }}</strong></span>
-                            <span class="text-grey-4">|</span>
-                            <span :class="item.destyReserved > 0 ? 'text-amber-9 text-weight-bold' : 'text-grey-6'">
-                              Rsv: {{ item.destyReserved }}
-                            </span>
-                          </div>
-                          <div>
-                            <q-badge
-                              :color="(item.destyTersedia ?? 0) > 0 ? 'green-1' : 'red-1'"
-                              :text-color="(item.destyTersedia ?? 0) > 0 ? 'green-9' : 'red-9'"
-                              class="text-weight-bold"
-                            >
-                              Tersedia: {{ item.destyTersedia }} {{ item.destyUnit }}
-                            </q-badge>
-                          </div>
-                        </div>
-                        <div v-else class="text-caption text-grey-5 flex items-center justify-center">
-                          <q-icon name="cloud_off" size="14px" class="q-mr-xs text-grey-5" />
-                          Tidak Ada
-                        </div>
-                      </td>
-                      <td style="width: 170px;">
-                        <div v-if="item.destySkuId">
-                          <q-input
-                            :model-value="item.reductionQty"
-                            @update:model-value="(val) => updateOfflineRowReductionQty(item.rowKey, val)"
-                            type="number"
-                            prefix="-"
-                            outlined
-                            dense
-                            color="teal"
-                            :disable="item.status === 'synced'"
-                            hide-bottom-space
-                            style="width: 120px;"
-                          >
-                            <template v-slot:append>
-                              <span class="text-caption text-grey-7 font-weight-bold">{{ item.destyUnit }}</span>
-                            </template>
-                          </q-input>
-                          <div class="text-caption text-grey-7 q-mt-xs flex items-center justify-between">
-                            <span>Fisik: <strong>{{ item.calculatedFisikBaru !== null ? item.calculatedFisikBaru : '-' }}</strong></span>
-                            <span>Tersedia: <strong :class="(item.calculatedTersediaBaru ?? 0) < 0 ? 'text-red font-weight-bold' : 'text-teal'">{{ item.calculatedTersediaBaru !== null ? item.calculatedTersediaBaru : '-' }}</strong></span>
-                          </div>
-                        </div>
-                        <span v-else class="text-caption text-grey-4">-</span>
-                      </td>
-                      <td class="text-center" style="width: 120px;">
-                        <q-badge
-                          :color="item.badgeColor"
-                          class="q-px-sm q-py-xs"
-                        >
-                          <q-icon
-                            :name="item.status === 'synced' ? 'check_circle' : item.status === 'ready' ? 'check' : item.status === 'warning' ? 'warning' : 'error'"
-                            size="12px"
-                            class="q-mr-xs"
-                          />
-                          {{ item.status === 'synced' ? 'Terkoreksi' : item.status === 'ready' ? 'Siap' : item.status === 'warning' ? 'Peringatan' : 'Belum Cocok' }}
-                        </q-badge>
-                        <div class="text-caption text-grey-7 q-mt-xs ellipsis" :title="item.statusMessage" style="font-size: 10px;">
-                          {{ item.statusMessage }}
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Empty state -->
-            <div v-else class="text-center q-pa-lg text-grey-6 border-dashed rounded-borders q-mt-md">
-              <q-icon name="sync_saved_locally" size="48px" class="text-grey-4 q-mb-sm" />
-              <div>Pilih rentang tanggal lalu klik <strong>Tarik Penjualan Offline</strong> untuk memuat data transaksi.</div>
-            </div>
+          <!-- TAB 3: SO STOK & KOREKSI DESTY -->
+          <q-tab-panel name="offline_sync" class="q-pa-none">
+            <DestyStockOpnameTab
+              :desty-token="destyToken"
+              :desty-tenant-id="destyTenantId"
+              :desty-warehouse-id="store.destyMasterWarehouseId"
+              :assist-token="store.assistToken"
+              :assist-hospital-id="store.hospitalId"
+              :assist-api-base-url="store.apiBaseUrl"
+              :assist-catalog="assistCatalog"
+              :mappings="mappings"
+              @save-mapping="handleQuickMappingSave"
+              @refresh-probe="probeTokens"
+              @refresh-catalog="loadSyncCatalog"
+            />
           </q-tab-panel>
 
           <!-- TAB 4: PEMETAAN & KONVERSI SKU -->
@@ -1402,6 +1129,8 @@ import {
   type SkuMatchCandidate,
   type SkuRecommendation,
 } from "@/services/destySync/skuMatcher";
+import DestyStockOpnameTab from "../components/DestyStockOpnameTab.vue";
+import type { QuickMappingFormData } from "@/types/destyStockOpname";
 import {
   fetchAllDestyOrders,
   fetchDestyOrderStatusCount,
@@ -2039,6 +1768,26 @@ function getSkuRecommendation(sku: string, productName?: string): SkuRecommendat
     return { destySku: sku, productName, candidates: [] };
   }
   return recommendMatchesForSku(sku, productName, assistCatalog.value);
+}
+
+async function handleQuickMappingSave(data: QuickMappingFormData) {
+  try {
+    const input: DestySkuMappingInput = {
+      destySku: data.destySku,
+      destyUnit: data.destyUnit,
+      assistCode: data.assistCode,
+      assistId: data.assistId,
+      assistName: data.assistName,
+      assistType: data.assistType,
+      assistUnit: data.assistUnit,
+      conversionFactor: data.conversionFactor,
+      active: true,
+    };
+    mappings.value = await upsertDestySkuMapping(input);
+    if (selectedOrder.value) validateSelectedOrder();
+  } catch (err) {
+    console.error("Gagal menyimpan mapping:", err);
+  }
 }
 
 async function applyQuickMapping(destySku: string, candidate: SkuMatchCandidate) {
