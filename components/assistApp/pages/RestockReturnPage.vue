@@ -1164,6 +1164,7 @@ function handleScanApply(result: ExtractInvoiceResult) {
         } : null,
         name: item.matchedProductName || item.rawProductName,
         type: isBHP ? "akhp" : "prescription",
+        transactionType: "restock",
         code: item.matchedCode || "",
         unit,
         dosage: "-",
@@ -1367,6 +1368,7 @@ function addNewRow() {
     dosage: "-",
     quantity: 1,
     type: "prescription",
+    transactionType: "restock",
     code: "",
     avgHPPOld: 0,
     batchNo: "",
@@ -1606,6 +1608,7 @@ async function saveRestockTransaction(validItems: any[]) {
       delete copy.loading;
       delete copy.loadingMore;
       delete copy._searchSeq;
+      copy.transactionType = "restock";
       copy.expiredDate = new Date(copy.expiredDate).toISOString();
       return copy;
     });
