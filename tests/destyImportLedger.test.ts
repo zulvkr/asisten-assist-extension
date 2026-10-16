@@ -29,4 +29,15 @@ describe("Desty import ledger reconciliation", () => {
     await reconcileDestyImportLedger(["ORDER-ACTIVE"], ["ORDER-ACTIVE"]);
     expect((await getDestyImportLedger())[0].status).toBe("success");
   });
+
+  it("stores and retains entries when marketplaceOrderSn is empty but trackingNumber is present", async () => {
+    await recordDestyImport({
+      marketplaceOrderSn: "",
+      trackingNumber: "SPXID-INSTANT-123",
+      status: "success",
+    });
+    const ledger = await getDestyImportLedger();
+    expect(ledger.length).toBe(1);
+    expect(ledger[0].trackingNumber).toBe("SPXID-INSTANT-123");
+  });
 });

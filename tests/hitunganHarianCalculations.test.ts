@@ -407,4 +407,98 @@ describe("hitunganHarianCalculations", () => {
     expect(summaries[0].details[0].items[0].unitHpp).toBe(4500);
     expect(summaries[0].details[0].items[0].totalHpp).toBe(13500);
   });
+
+  it("enriches shift summary and detail row with online order info and profit metrics", () => {
+    const mockData: PemasukanData[] = [
+      {
+        _id: "tx-desty-test",
+        status: "paid off",
+        totalFee: 100000,
+        creditFee: 0,
+        isOnlyPOS: true,
+        createdAt: "2025-09-17T09:30:00+07:00",
+        code: "INV-ONLINE-01",
+        debtFee: 0,
+        isOutcome: false,
+        paidFee: 100000,
+        sumFee: 0,
+        roundedValue: 0,
+        Appointment: {},
+        Diagnoses: [],
+        OtherNotes: [],
+        Practices: {},
+        Items: [
+          {
+            _id: "item-shopee",
+            name: "Minyak Telon 100ml",
+            type: "prescription",
+            hospitalId: "h1",
+            transactionId: "tx-desty-test",
+            quantity: 2,
+            baseFee: 50000,
+            discount: 0,
+            totalFee: 100000,
+            isPriceLock: true,
+            paidFee: 100000,
+            payableFee: 0,
+            transactionType: "selling",
+            categoryId: "c1",
+            isPaidOff: true,
+            createdAt: "2025-09-17T09:30:00+07:00",
+            updatedAt: "2025-09-17T09:30:00+07:00",
+            createdId: "u1",
+            medicalHelperIds: [],
+            createdName: "Kasir Online",
+            incomeType: "apotek",
+            isPendingStock: false,
+            isSlotTransacted: true,
+            buyFee: 35000,
+          },
+        ],
+        Payments: [
+          {
+            _id: "pay-shopee",
+            totalFee: 100000,
+            percentageTotal: 100,
+            status: "paid",
+            type: "Kartu Debit",
+            name: "Shopee",
+            transactionId: "tx-desty-test",
+            transactionDate: "2025-09-17T09:30:00+07:00",
+            accountTxId: "acc1",
+            hospitalId: "h1",
+            reason: "-",
+            isCovered: false,
+            isNeedClaim: false,
+            isOutcome: false,
+            intent: "-",
+            createdAt: "2025-09-17T09:30:00+07:00",
+            createdId: "u1",
+            paidName: "DESTY|platform=Shopee|order=ORDER-SHP-888|booking=BOOK-77|resi=SPXID999",
+            change: 0,
+            createdName: "Kasir Online",
+            trueCreatedAt: "2025-09-17T09:30:00+07:00",
+          },
+        ],
+      },
+    ];
+
+    const summaries = calculateShiftSummaries(mockData);
+    expect(summaries).toHaveLength(1);
+    const shift = summaries[0];
+    expect(shift.transactionCount).toBe(1);
+    expect(shift.totalOmset).toBe(100000);
+    expect(shift.hpp).toBe(70000); // 2 * 35000
+    expect(shift.grossProfit).toBe(30000);
+    expect(shift.marginPercent).toBe(30);
+
+    const tx = shift.details[0];
+    expect(tx.onlineInfo.isOnline).toBe(true);
+    expect(tx.onlineInfo.platform).toBe("Shopee");
+    expect(tx.onlineInfo.orderNo).toBe("ORDER-SHP-888");
+    expect(tx.onlineInfo.resi).toBe("SPXID999");
+    expect(tx.createdName).toBe("Kasir Online");
+    expect(tx.grossProfit).toBe(30000);
+    expect(tx.marginPercent).toBe(30);
+  });
 });

@@ -1415,10 +1415,21 @@ function applyAssistTransactionDetails(details: Awaited<ReturnType<typeof fetchA
 }
 
 function assistDetailsForOrder(orderNumber: string) {
-  const record = orders.value.find((order) => (order.displayedOrderSn ?? order.orderId ?? order.id ?? "") === orderNumber);
+  const trimmed = orderNumber.trim().toUpperCase();
+  const record = orders.value.find((order) => {
+    const keys = [
+      order.displayedOrderSn,
+      order.orderId,
+      order.id,
+      order.shipmentNo,
+      order.bookingSn,
+      order.orderSn,
+    ].map((k) => String(k ?? "").trim().toUpperCase()).filter(Boolean);
+    return keys.includes(trimmed);
+  });
   const identifiers = record
     ? getDestyOrderIdentifiers(normalizeDestyOrder(record))
-    : [orderNumber.trim().toUpperCase()];
+    : [trimmed];
   return identifiers.map((identifier) => assistDetailsByIdentifier.value[identifier]).find(Boolean);
 }
 
@@ -1659,13 +1670,17 @@ async function loadRemoteAssistDetails(orderList: DestyOrderRecord[]) {
     const assistToken = tokenResult.token || store.assistToken;
     if (!assistToken) return;
     const normalizedOrders = orderList.map(normalizeDestyOrder);
-    const dates = normalizedOrders.map((order) => order.createdAt?.slice(0, 10)).filter(Boolean).sort() as string[];
+    const dates = normalizedOrders.map((order) => order.createdAt?.slice(0, 10)).filter(Boolean) as string[];
+    const today = new Date().toISOString().slice(0, 10);
+    const allDates = [...dates, today].sort();
+    const startDate = allDates[0] || today;
+    const endDate = allDates[allDates.length - 1] || today;
     const details = await fetchAssistDestyTransactionDetails({
       token: assistToken,
       apiBaseUrl: store.apiBaseUrl,
       hospitalId: store.hospitalId,
-      startDate: dates[0] || new Date().toISOString().slice(0, 10),
-      endDate: dates[dates.length - 1] || dates[0] || new Date().toISOString().slice(0, 10),
+      startDate,
+      endDate,
     });
     applyAssistTransactionDetails(details);
     assistLookupCompleted.value = true;
@@ -2034,9 +2049,11 @@ async function importSelectedCheckedOrders() {
     if (!assistCatalog.value.length) throw new Error("Muat katalog dan stok Assist terlebih dahulu sebelum impor.");
 
     const normalizedOrders = targetOrders.map(normalizeDestyOrder);
-    const dates = normalizedOrders.map((order) => order.createdAt?.slice(0, 10)).filter(Boolean).sort() as string[];
-    const startDate = dates[0] || new Date().toISOString().slice(0, 10);
-    const endDate = dates[dates.length - 1] || startDate;
+    const dates = normalizedOrders.map((order) => order.createdAt?.slice(0, 10)).filter(Boolean) as string[];
+    const today = new Date().toISOString().slice(0, 10);
+    const allDates = [...dates, today].sort();
+    const startDate = allDates[0] || today;
+    const endDate = allDates[allDates.length - 1] || today;
 
     const remoteDetails = await fetchAssistDestyTransactionDetails({
       token: assistToken,
@@ -2070,7 +2087,7 @@ async function importSelectedCheckedOrders() {
       },
       concurrency: 2,
       onProgress: (completed, total, item) => {
-        syncValidationMessage.value = `Proses impor terpilih ${completed}/${total}: ${item.order.marketplaceOrderSn} (${item.status}).`;
+        syncValidationMessage.value = `Proses impor terpilih ${completed}/${total}: ${item.order.marketplaceOrderSn || item.order.trackingNumber || item.order.orderId} (${item.status}).`;
       },
     });
 
@@ -2083,11 +2100,19 @@ async function importSelectedCheckedOrders() {
     const successfulOrderSns = new Set(
       results
         .filter((item) => item.status === "success")
-        .map((item) => item.order.marketplaceOrderSn || item.order.bookingSn || item.order.trackingNumber)
+        .flatMap((item) => [
+          item.order.marketplaceOrderSn,
+          item.order.bookingSn,
+          item.order.trackingNumber,
+          item.order.orderId,
+        ])
+        .map((s) => String(s ?? "").trim().toUpperCase())
         .filter(Boolean),
     );
     selectedRows.value = selectedRows.value.filter(
-      (row) => !successfulOrderSns.has(row.orderKey) && !successfulOrderSns.has(row.displayedOrderSn),
+      (row) => !successfulOrderSns.has(String(row.orderKey ?? "").trim().toUpperCase()) &&
+               !successfulOrderSns.has(String(row.displayedOrderSn ?? "").trim().toUpperCase()) &&
+               !successfulOrderSns.has(String(row.shipmentNo ?? "").trim().toUpperCase()),
     );
   } catch (error) {
     syncValidationMessage.value = error instanceof Error ? error.message : "Impor terpilih gagal dan tidak dilanjutkan.";
@@ -2105,9 +2130,11 @@ async function bulkImportOrders() {
     if (!assistToken) throw new Error("Token Assist tidak ditemukan.");
     if (!assistCatalog.value.length) throw new Error("Muat katalog dan stok Assist terlebih dahulu sebelum bulk import.");
     const normalizedOrders = orders.value.map(normalizeDestyOrder);
-    const dates = normalizedOrders.map((order) => order.createdAt?.slice(0, 10)).filter(Boolean).sort() as string[];
-    const startDate = dates[0] || new Date().toISOString().slice(0, 10);
-    const endDate = dates[dates.length - 1] || startDate;
+    const dates = normalizedOrders.map((order) => order.createdAt?.slice(0, 10)).filter(Boolean) as string[];
+    const today = new Date().toISOString().slice(0, 10);
+    const allDates = [...dates, today].sort();
+    const startDate = allDates[0] || today;
+    const endDate = allDates[allDates.length - 1] || today;
     const remoteDetails = await fetchAssistDestyTransactionDetails({
       token: assistToken,
       apiBaseUrl: store.apiBaseUrl,

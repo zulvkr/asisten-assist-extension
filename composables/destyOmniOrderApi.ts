@@ -17,6 +17,8 @@ export interface DestyOrderRecord {
   orderCreateTime: number;
   deliveryDeadline: number;
   shipmentNo?: string;
+  bookingSn?: string;
+  orderSn?: string;
   courier?: string;
   externalShopName?: string;
   items: DestyOrderItem[];
@@ -178,8 +180,28 @@ export async function fetchAllDestyOrders(params: {
               tenantId: params.tenantId,
               orderId,
             });
-            if (detail && typeof detail.totalSales === "number") {
-              record.totalSales = detail.totalSales;
+            if (detail) {
+              if (typeof detail.totalSales === "number") {
+                record.totalSales = detail.totalSales;
+              }
+              const detailOrderSn = String(
+                detail.displayedOrderSn ?? detail.orderSn ?? detail.platformOrderSn ?? detail.orderNumber ?? ""
+              ).trim();
+              if (!record.displayedOrderSn && detailOrderSn) {
+                record.displayedOrderSn = detailOrderSn;
+              }
+              const detailShipmentNo = String(
+                detail.shipmentNo ?? detail.trackingNumber ?? detail.trackingNo ?? detail.logisticsNo ?? ""
+              ).trim();
+              if (!record.shipmentNo && detailShipmentNo) {
+                record.shipmentNo = detailShipmentNo;
+              }
+              const detailBookingSn = String(
+                detail.bookingSn ?? detail.bookingNumber ?? detail.bookingNo ?? ""
+              ).trim();
+              if (!record.bookingSn && detailBookingSn) {
+                record.bookingSn = detailBookingSn;
+              }
             }
           } catch (err) {
             console.warn(`Gagal mengambil detail untuk orderId ${orderId}:`, err);

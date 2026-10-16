@@ -12,7 +12,7 @@ export interface DestySkuMapping {
   depotId?: string;
   conversionFactor: number;
   active: boolean;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 export type DestySkuMappingInput = Omit<DestySkuMapping, "updatedAt"> & {

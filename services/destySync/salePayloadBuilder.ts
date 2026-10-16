@@ -129,7 +129,7 @@ export function buildDestyPaidName(order: NormalizedDestyOrder): string {
   return [
     "DESTY",
     `platform=${safeMetadata(order.platformName || "Desty")}`,
-    `order=${safeMetadata(order.marketplaceOrderSn)}`,
+    `order=${safeMetadata(order.marketplaceOrderSn || order.orderId)}`,
     `booking=${safeMetadata(order.bookingSn)}`,
     `resi=${safeMetadata(order.trackingNumber)}`,
   ].join("|");

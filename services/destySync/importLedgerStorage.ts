@@ -9,7 +9,12 @@ function normalize(value: string | undefined): string {
 function validEntry(value: unknown): value is DestyImportLedgerEntry {
   if (!value || typeof value !== "object") return false;
   const entry = value as Partial<DestyImportLedgerEntry>;
-  return Boolean(normalize(entry.marketplaceOrderSn)) &&
+  const hasIdentifier = Boolean(
+    normalize(entry.marketplaceOrderSn) ||
+    normalize(entry.bookingSn) ||
+    normalize(entry.trackingNumber)
+  );
+  return hasIdentifier &&
     ["success", "failed", "duplicate", "dry-run", "voided"].includes(String(entry.status));
 }
 

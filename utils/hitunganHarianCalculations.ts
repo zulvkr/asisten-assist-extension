@@ -1,5 +1,9 @@
 import { Payment, PemasukanData } from "@/types/PemasukanData";
 import type { HppCatalogItem } from "@/types/HppCatalogItem";
+import {
+  extractOnlineOrderMetadata,
+  type OnlineOrderMetadata,
+} from "./onlineOrderExtractor";
 
 const SHIFT_CONFIG = [
   { label: "Pagi" as const, startHour: 6, endHour: 14 },
@@ -30,10 +34,15 @@ interface ShiftDetailItem {
   name: string;
   type: string;
   incomeType?: string;
+  category?: string;
+  unit?: string;
+  baseFee?: number;
   quantity: number;
   totalFee: number;
   unitHpp: number;
   totalHpp: number;
+  grossProfit?: number;
+  marginPercent?: number;
 }
 
 interface ShiftDetailPayment {
@@ -42,15 +51,40 @@ interface ShiftDetailPayment {
   amount: number;
 }
 
+interface TransactionPaymentInfo {
+  id: string;
+  name: string;
+  type: string;
+  totalFee: number;
+  paidName: string;
+  reason?: string;
+  createdName?: string;
+}
+
 interface ShiftDetailRow {
   transactionId: string;
   code: string;
   createdAt: string;
+  dateStr: string;
+  time: string;
+  shift: ShiftLabel;
   patientName: string;
+  createdName: string;
+  doctorName?: string;
+  channel: string;
+  paymentMethod: string;
+  onlineInfo: OnlineOrderMetadata;
+  incomeType: "apotek" | "klinik" | "campuran";
+  totalFee: number;
+  paidFee: number;
   apotek: SectionTotals;
   klinik: SectionTotals;
   hpp: number;
+  grossProfit: number;
+  marginPercent: number;
+  payments: TransactionPaymentInfo[];
   items: ShiftDetailItem[];
+  otherNotes: string[];
 }
 
 interface ShiftSummaryRow {
@@ -58,6 +92,10 @@ interface ShiftSummaryRow {
   dateKey: string;
   displayDate: string;
   shift: ShiftLabel;
+  transactionCount: number;
+  totalOmset: number;
+  grossProfit: number;
+  marginPercent: number;
   apotek: SectionTotals;
   klinik: SectionTotals;
   hpp: number;
@@ -71,6 +109,7 @@ export type {
   SectionTotals,
   ShiftDetailItem,
   ShiftDetailPayment,
+  TransactionPaymentInfo,
   ShiftDetailRow,
   ShiftSummaryRow,
 };
@@ -185,6 +224,10 @@ function createShiftSummaryRow(
     dateKey,
     displayDate,
     shift,
+    transactionCount: 0,
+    totalOmset: 0,
+    grossProfit: 0,
+    marginPercent: 0,
     apotek: createEmptyTotals(),
     klinik: createEmptyTotals(),
     hpp: 0,
@@ -256,15 +299,24 @@ function calculateTransactionTotals(
   const detailItems: ShiftDetailItem[] = (tx.Items ?? []).map((item) => {
     const quantity = Number(item.quantity ?? 0);
     const unitHpp = resolveUnitHpp(item, catalogLookup);
+    const totalFee = item.type === "scourPrescription" ? 0 : (item.totalFee ?? 0);
+    const totalHpp = Math.round(quantity * unitHpp);
+    const grossProfit = totalFee - totalHpp;
+    const marginPercent = totalFee > 0 ? (grossProfit / totalFee) * 100 : 0;
     return {
       id: item._id,
       name: item.name ?? "-",
       type: item.type ?? "",
       incomeType: item.incomeType,
+      category: item.category,
+      unit: item.unit,
+      baseFee: item.baseFee,
       quantity,
-      totalFee: item.type === "scourPrescription" ? 0 : (item.totalFee ?? 0),
+      totalFee,
       unitHpp,
-      totalHpp: Math.round(quantity * unitHpp),
+      totalHpp,
+      grossProfit,
+      marginPercent,
     };
   });
 
@@ -358,16 +410,92 @@ function processTransaction(
   addSectionTotals(summary.klinik, klinik);
   summary.hpp += hpp;
 
+  const onlineInfo = extractOnlineOrderMetadata(tx);
+  const time = !Number.isNaN(createdAt.getTime())
+    ? new Intl.DateTimeFormat("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(createdAt)
+    : "-";
+  const dateStr = !Number.isNaN(createdAt.getTime())
+    ? new Intl.DateTimeFormat("id-ID", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(createdAt)
+    : "-";
+
+  const totalFee = apotek.total + klinik.total;
+  const grossProfit = totalFee - hpp;
+  const marginPercent = totalFee > 0 ? (grossProfit / totalFee) * 100 : 0;
+
+  const hasApotek = apotek.total > 0 || items.some((it) => it.incomeType === "apotek");
+  const hasKlinik = klinik.total > 0 || items.some((it) => it.incomeType === "klinik");
+  const incomeType = hasApotek && hasKlinik ? "campuran" : hasKlinik ? "klinik" : "apotek";
+
+  const payments: TransactionPaymentInfo[] = (tx.Payments ?? []).map((p) => ({
+    id: p._id || "",
+    name: p.name || "-",
+    type: p.type || "-",
+    totalFee: p.totalFee || 0,
+    paidName: p.paidName || "",
+    reason: p.reason || "",
+    createdName: p.createdName || "",
+  }));
+
+  const primaryPayment = tx.Payments?.[0];
+  const paymentMethod = primaryPayment
+    ? [primaryPayment.name, primaryPayment.type].filter(Boolean).join(" • ")
+    : "Tunai";
+
+  const channel = onlineInfo.platform || primaryPayment?.name || "Kasir";
+  const createdName =
+    primaryPayment?.createdName ||
+    tx.Items?.[0]?.createdName ||
+    "-";
+
+  const doctorName = (tx.Practices as any)?.Dokters?.nama
+    ? `${(tx.Practices as any).Dokters.nama}${(tx.Practices as any).Dokters.gelar ? `, ${(tx.Practices as any).Dokters.gelar}` : ""}`
+    : undefined;
+
+  const otherNotes = Array.isArray(tx.OtherNotes)
+    ? tx.OtherNotes.map((n) =>
+        typeof n === "string" ? n : (n?.notes || n?.note || JSON.stringify(n))
+      ).filter(Boolean)
+    : [];
+
   summary.details.push({
     transactionId: tx._id,
-    code: tx.code,
+    code: tx.code || "-",
     createdAt: tx.createdAt,
-    patientName: tx.Patients?.nama ?? "-",
+    dateStr,
+    time,
+    shift,
+    patientName: tx.Patients?.nama || (tx as any).patientName || "-",
+    createdName,
+    doctorName,
+    channel,
+    paymentMethod,
+    onlineInfo,
+    incomeType,
+    totalFee,
+    paidFee: tx.paidFee ?? totalFee,
     apotek,
     klinik,
     hpp,
+    grossProfit,
+    marginPercent,
+    payments,
     items,
+    otherNotes,
   });
+
+  summary.transactionCount = summary.details.length;
+  summary.totalOmset = summary.apotek.total + summary.klinik.total;
+  summary.grossProfit = summary.totalOmset - summary.hpp;
+  summary.marginPercent =
+    summary.totalOmset > 0 ? (summary.grossProfit / summary.totalOmset) * 100 : 0;
 }
 
 function sortShiftSummaries(summaries: ShiftSummaryRow[]): ShiftSummaryRow[] {

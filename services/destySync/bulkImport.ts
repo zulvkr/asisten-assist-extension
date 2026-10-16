@@ -37,9 +37,16 @@ function orderLedgerFields(order: ReturnType<typeof normalizeDestyOrder>) {
 }
 
 async function saveResult(item: DestyBulkImportItemResult): Promise<void> {
-  if (!item.order.marketplaceOrderSn) return;
+  const hasIdentifier = Boolean(
+    item.order.marketplaceOrderSn ||
+    item.order.bookingSn ||
+    item.order.trackingNumber ||
+    item.order.orderId
+  );
+  if (!hasIdentifier) return;
   const entry: Omit<DestyImportLedgerEntry, "importedAt" | "updatedAt"> = {
     ...orderLedgerFields(item.order),
+    marketplaceOrderSn: item.order.marketplaceOrderSn || item.order.bookingSn || item.order.trackingNumber || item.order.orderId || "",
     status: item.status === "invalid" ? "failed" : item.status,
     txId: item.result?.txId,
     invoice: item.result?.invoice,

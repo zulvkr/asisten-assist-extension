@@ -35,4 +35,23 @@ describe("bulkImportDestyOrders", () => {
     expect(results.map((item) => item.status)).toEqual(expect.arrayContaining(["success", "invalid"]));
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
+
+  it("successfully imports and saves orders that only have shipmentNo and id", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ data: { id: "tx-instant", code: "INV-INSTANT" } }), {
+      status: 200, headers: { "content-type": "application/json" },
+    }));
+    const results = await bulkImportDestyOrders({
+      orders: [
+        { id: "pkg-instant-1", shipmentNo: "SPXID-INSTANT-01", totalSales: 100, items: [{ masterSku: "SKU", quantity: 1 }] },
+      ],
+      mappings: [mapping],
+      config: { token: "token", apiBaseUrl: "https://assist.test/api", accountTxId: "account", hospitalId: "hospital-1", fetchImpl },
+    });
+    expect(results[0].status).toBe("success");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const ledger = storage["destySync:importLedger"] as any[];
+    expect(ledger).toBeDefined();
+    expect(ledger.length).toBe(1);
+    expect(ledger[0].trackingNumber).toBe("SPXID-INSTANT-01");
+  });
 });

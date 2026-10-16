@@ -44,4 +44,16 @@ describe("buildAssistSalePayload", () => {
       baseFee: 2500, totalFee: 5000, transactionType: "selling",
     });
   });
+
+  it("falls back to orderId in paidName when marketplaceOrderSn is empty", () => {
+    const order = normalizeDestyOrder({ id: "PKG-999", shipmentNo: "RESI-INSTANT", platformName: "Shopee", totalSales: 3000 });
+    const payload = buildAssistSalePayload(order, [{
+      orderItem: { destySku: "BHP", productName: "Masker", quantity: 1 },
+      mapping: {
+        destySku: "BHP", assistCode: "BHP-1", assistType: "akhp", assistId: "akhp-1", assistName: "Masker", conversionFactor: 1, active: true, updatedAt: "now",
+      },
+      assistQuantity: 1,
+    }], { accountTxId: "account-1", hospitalId: "hospital-1", depotIdByAssistId: { "akhp-1": "depot-1" } });
+    expect(payload.payment[0].paidName).toBe("DESTY|platform=Shopee|order=PKG-999|booking=|resi=RESI-INSTANT");
+  });
 });
