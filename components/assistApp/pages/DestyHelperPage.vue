@@ -56,6 +56,7 @@
         >
           <q-tab name="pldmp" icon="table_chart" label="PLDMP (Ekspor Pesanan)" />
           <q-tab name="import" icon="cloud_download" label="Impor Pesanan (Desty → Assist)" />
+          <q-tab name="price_update" icon="price_change" label="Update Harga Marketplace" />
           <q-tab name="offline_sync" icon="sync_saved_locally" label="SO Stok & Koreksi Desty" />
           <q-tab name="mapping" icon="tune" label="Pemetaan & Konversi SKU" />
           <q-tab name="log" icon="history" label="Log Impor" />
@@ -655,6 +656,23 @@
             </q-table>
           </q-tab-panel>
 
+          <!-- TAB: UPDATE HARGA MARKETPLACE -->
+          <q-tab-panel name="price_update" class="q-pa-none">
+            <DestyPriceUpdateTab
+              :desty-token="destyToken"
+              :desty-tenant-id="destyTenantId"
+              :desty-warehouse-id="store.destyMasterWarehouseId"
+              :assist-token="store.assistToken"
+              :assist-hospital-id="store.hospitalId"
+              :assist-api-base-url="store.apiBaseUrl"
+              :assist-catalog="assistCatalog"
+              :mappings="mappings"
+              @save-mapping="handleQuickMappingSave"
+              @refresh-probe="probeTokens"
+              @refresh-catalog="loadSyncCatalog"
+            />
+          </q-tab-panel>
+
           <!-- TAB 3: SO STOK & KOREKSI DESTY -->
           <q-tab-panel name="offline_sync" class="q-pa-none">
             <DestyStockOpnameTab
@@ -1130,6 +1148,7 @@ import {
   type SkuRecommendation,
 } from "@/services/destySync/skuMatcher";
 import DestyStockOpnameTab from "../components/DestyStockOpnameTab.vue";
+import DestyPriceUpdateTab from "../components/DestyPriceUpdateTab.vue";
 import type { QuickMappingFormData } from "@/types/destyStockOpname";
 import {
   fetchAllDestyOrders,
@@ -2619,7 +2638,11 @@ watch(selectedStatus, () => {
 });
 
 watch(syncTab, (newTab) => {
-  if ((newTab === "import" || newTab === "mapping" || newTab === "offline_sync") && !assistCatalog.value.length && !syncBusy.value) {
+  if (
+    (newTab === "import" || newTab === "mapping" || newTab === "offline_sync" || newTab === "price_update") &&
+    !assistCatalog.value.length &&
+    !syncBusy.value
+  ) {
     void loadSyncCatalog();
   }
 });

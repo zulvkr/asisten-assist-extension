@@ -9,6 +9,10 @@ import {
 import { resolveDestyToken } from "@/composables/destyOmniTokenManager";
 import { fetchAllDestyOrders } from "@/composables/destyOmniOrderApi";
 import {
+  fetchDestyPriceList,
+  updateDestyMasterPrice,
+} from "@/composables/destyOmniPriceApi";
+import {
   compareStockLevels,
   type StockComparisonRow,
 } from "@/utils/compareStockLevels";
@@ -1051,6 +1055,46 @@ export default defineBackground(() => {
             editType: editType === "Set" ? "Set" : "Add",
           });
 
+          sendResponse({ ok: true, data: result });
+        } catch (err) {
+          sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      })();
+      return true;
+    }
+
+    if (message.type === "FETCH_DESTY_PRICE_LIST") {
+      (async () => {
+        try {
+          const { token, tenantId, searchParam, current, size, fetchAll } = message.payload || {};
+          if (!token) throw new Error("Token Desty tidak tersedia.");
+          const res = await fetchDestyPriceList({
+            token,
+            tenantId,
+            searchParam,
+            current,
+            size,
+            fetchAll,
+          });
+          sendResponse({ ok: true, ...res });
+        } catch (err) {
+          sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      })();
+      return true;
+    }
+
+    if (message.type === "UPDATE_DESTY_MASTER_PRICE") {
+      (async () => {
+        try {
+          const { token, tenantId, skuId, price } = message.payload || {};
+          if (!token) throw new Error("Token Desty tidak tersedia.");
+          const result = await updateDestyMasterPrice({
+            token,
+            tenantId,
+            skuId,
+            price,
+          });
           sendResponse({ ok: true, data: result });
         } catch (err) {
           sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) });

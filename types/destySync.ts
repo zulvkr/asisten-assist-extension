@@ -57,6 +57,8 @@ export interface AssistCatalogItem {
   depotId?: string;
   stock?: number;
   sellNormalFee?: number;
+  buyFee?: number;
+  avgHPP?: number;
 }
 
 export interface AssistDepot {

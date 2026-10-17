@@ -55,10 +55,10 @@ export async function fetchAssistRestockInvoices(params: {
       name: String(it.name || it.itemName || "Item Tanpa Nama").trim(),
       quantity: Number(it.quantity || 0),
       unit: it.unit || undefined,
-      code: it.code || undefined,
+      code: it.code || it.itemCode || undefined,
       medicineId: it.medicineId || undefined,
       akhpId: it.akhpId || undefined,
-      buyFee: Number(it.buyFee || 0),
+      buyFee: Number(it.buyFee ?? it.baseFee ?? it.unitPrice ?? it.price ?? 0),
     }));
 
     return {

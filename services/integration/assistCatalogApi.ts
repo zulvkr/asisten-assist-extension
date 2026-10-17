@@ -62,6 +62,18 @@ function findDepotId(row: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+function parseCatalogBuyFee(row: Record<string, unknown>): number | undefined {
+  // Direct buyFee (harga beli terakhir from KMedicineStocks / KAKHPStocks)
+  const buyFee = numberValue(row.buyFee, row.lastBuyFee, row.buyPrice, row.purchasePrice);
+  if (buyFee !== undefined && buyFee > 0) return buyFee;
+
+  // Fallback to avgHPP if buyFee is 0 or undefined
+  const avgHpp = numberValue(row.avgHPP, row.avgHpp, row.baseFee);
+  if (avgHpp !== undefined && avgHpp > 0) return avgHpp;
+
+  return buyFee !== undefined ? buyFee : avgHpp;
+}
+
 function mapCatalogItem(
   value: unknown,
   type: AssistCatalogType,
@@ -78,6 +90,8 @@ function mapCatalogItem(
     depotId: findDepotId(row),
     stock: numberValue(row.stockTotal ?? row.stock ?? row.available),
     sellNormalFee: numberValue(row.sellNormalFee, row.sellingPrice, row.baseFee),
+    buyFee: parseCatalogBuyFee(row),
+    avgHPP: numberValue(row.avgHPP, row.avgHpp),
   };
 }
 
