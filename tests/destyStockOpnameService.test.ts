@@ -227,6 +227,91 @@ describe("destyStockOpnameService", () => {
       expect(row.adjustMode).toBe("Add");
       expect(row.adjustQty).toBe(5);
       expect(row.calculatedFisikBaru).toBe(25);
+      expect(row.status).toBe("ready");
+    });
+
+    it("includes matched stock items without skipping them", () => {
+      const catalog: AssistCatalogItem[] = [
+        { id: "m1", code: "PARA", name: "Paracetamol", type: "prescription", stock: 20 },
+      ];
+
+      const destyStockMap: Record<string, DestyOmniStockItem> = {
+        PARA: {
+          sku: "PARA",
+          skuId: "sku_para",
+          stock: 20,
+          breakdown: { fisik: 20, tersedia: 20, pesanan: 0 },
+          fisik: 20,
+          tersedia: 20,
+          pesanan: 0,
+        },
+      };
+
+      const rows = buildAllProductsSoRows({
+        destyStockMap,
+        assistCatalog: catalog,
+        mappings: [],
+      });
+
+      expect(rows.length).toBe(1);
+      const row = rows[0];
+      expect(row.destySku).toBe("PARA");
+      expect(row.destyFisik).toBe(20);
+      expect(row.assistStock).toBe(20);
+      expect(row.status).toBe("matched");
+      expect(row.statusMessage).toBe("Stok Sesuai (Cocok)");
+      expect(row.adjustQty).toBe(0);
+      expect(row.checked).toBe(false);
+    });
+
+    it("retains Desty SKU and productName when not matched in Assist POS", () => {
+      const destyStockMap: Record<string, DestyOmniStockItem> = {
+        "DESTY-ONLY-SKU": {
+          sku: "DESTY-ONLY-SKU",
+          skuId: "sku_desty_only",
+          productName: "Produk Khusus Marketplace",
+          stock: 12,
+          breakdown: { fisik: 12, tersedia: 10, pesanan: 2 },
+          fisik: 12,
+          tersedia: 10,
+          pesanan: 2,
+        },
+      };
+
+      const rows = buildAllProductsSoRows({
+        destyStockMap,
+        assistCatalog: [],
+        mappings: [],
+      });
+
+      expect(rows.length).toBe(1);
+      const row = rows[0];
+      expect(row.destySku).toBe("DESTY-ONLY-SKU");
+      expect(row.destyProductName).toBe("Produk Khusus Marketplace");
+      expect(row.assistItemId).toBe("");
+      expect(row.assistCode).toBe("");
+      expect(row.status).toBe("unmapped");
+    });
+
+    it("retains Assist code and name when not present in Desty", () => {
+      const catalog: AssistCatalogItem[] = [
+        { id: "m_assist_only", code: "POS-ONLY-CODE", name: "Obat Khusus Klinik", type: "prescription", stock: 15 },
+      ];
+
+      const rows = buildAllProductsSoRows({
+        destyStockMap: {},
+        assistCatalog: catalog,
+        mappings: [],
+      });
+
+      expect(rows.length).toBe(1);
+      const row = rows[0];
+      expect(row.destySku).toBe("");
+      expect(row.assistItemId).toBe("m_assist_only");
+      expect(row.assistCode).toBe("POS-ONLY-CODE");
+      expect(row.assistItemName).toBe("Obat Khusus Klinik");
+      expect(row.assistStock).toBe(15);
+      expect(row.status).toBe("unmapped");
     });
   });
 });

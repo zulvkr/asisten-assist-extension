@@ -584,12 +584,10 @@ export function buildAllProductsSoRows(params: {
     const destyReserved = destyInfo.pesanan ?? destyInfo.breakdown?.pesanan ?? 0;
     const destyTersedia = destyInfo.tersedia ?? destyInfo.breakdown?.tersedia ?? (destyFisik !== null ? destyFisik - destyReserved : null);
 
-    // Skip if stocks match perfectly and no user override
     const rowKey = `all_${destySkuUpper}`;
     const manual = manualStates[rowKey];
-    if (assistStock !== null && destyFisik !== null && assistStock === destyFisik && !manual) {
-      continue;
-    }
+
+    const isStockMatched = assistStock !== null && destyFisik !== null && assistStock === destyFisik;
 
     let defaultMode: AdjustMode = "Set";
     let defaultQty = assistStock !== null ? assistStock : destyFisik !== null ? destyFisik : 0;
@@ -598,9 +596,12 @@ export function buildAllProductsSoRows(params: {
       if (destyFisik < assistStock) {
         defaultMode = "Add";
         defaultQty = assistStock - destyFisik;
-      } else {
+      } else if (destyFisik > assistStock) {
         defaultMode = "Min";
         defaultQty = destyFisik - assistStock;
+      } else {
+        defaultMode = "Set";
+        defaultQty = 0;
       }
     }
 
@@ -616,9 +617,9 @@ export function buildAllProductsSoRows(params: {
     const calculatedTersediaBaru = calculatedFisikBaru !== null ? calculatedFisikBaru - destyReserved : null;
 
     const syncRes = syncResults[rowKey];
-    let status: SoTableRowItem["status"] = "ready";
-    let statusMessage = "Selisih terdeteksi";
-    let badgeColor = "amber-9";
+    let status: SoTableRowItem["status"] = isStockMatched ? "matched" : "ready";
+    let statusMessage = isStockMatched ? "Stok Sesuai (Cocok)" : "Selisih terdeteksi";
+    let badgeColor = isStockMatched ? "positive" : "amber-9";
 
     if (syncRes?.status === "success") {
       status = "synced";
@@ -632,7 +633,7 @@ export function buildAllProductsSoRows(params: {
       status = "unmapped";
       statusMessage = mapping
         ? "Produk Assist terpetakan tidak ditemukan di katalog"
-        : "Belum dipetakan ke produk Assist";
+        : "Hanya ada di Desty (Belum dicocokkan ke POS)";
       badgeColor = "red";
     } else if (!destyInfo.skuId) {
       status = "unmapped";
@@ -640,7 +641,7 @@ export function buildAllProductsSoRows(params: {
       badgeColor = "red";
     }
 
-    const checked = manual?.checked !== undefined ? manual.checked : status === "ready";
+    const checked = manual?.checked !== undefined ? manual.checked : (status === "ready");
 
     rows.push({
       rowKey,
@@ -710,7 +711,7 @@ export function buildAllProductsSoRows(params: {
       calculatedTersediaBaru: null,
       checked: manual?.checked ?? false,
       status: "unmapped",
-      statusMessage: "Belum dipetakan & tidak ada di Desty",
+      statusMessage: "Hanya ada di Assist (Belum ada di Desty)",
       badgeColor: "red",
     });
   }

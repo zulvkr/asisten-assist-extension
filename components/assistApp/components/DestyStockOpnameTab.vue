@@ -110,8 +110,9 @@ const soStatusFilterOptions = computed(() => {
     ];
   }
   return [
-    { label: "Semua Selisih & Masalah", value: "all" },
+    { label: "Semua Produk (Katalog Lengkap)", value: "all" },
     { label: "Selisih Stok Assist vs Desty (Siap Sinkron)", value: "ready" },
+    { label: "Stok Sesuai / Cocok", value: "matched" },
     { label: "Peringatan Validasi", value: "warning" },
     { label: "Belum Dipetakan (Semua)", value: "unmapped" },
     { label: "  ↳ Hanya di Desty (Belum ke Assist)", value: "unmapped_pos" },
@@ -338,6 +339,8 @@ const filteredSoTableRows = computed(() => {
     } else if (soSessionMode.value === "all") {
       if (soFilterStatus.value === "ready") {
         list = list.filter((item) => item.status === "ready");
+      } else if (soFilterStatus.value === "matched") {
+        list = list.filter((item) => item.status === "matched");
       } else if (soFilterStatus.value === "unmapped_pos") {
         list = list.filter((item) => item.status === "unmapped" && !item.assistItemId);
       } else if (soFilterStatus.value === "unmapped_desty") {
@@ -588,6 +591,8 @@ function getStatusShortLabel(status: SoTableRowItem["status"]): string {
   switch (status) {
     case "ready":
       return "Siap";
+    case "matched":
+      return "Sesuai";
     case "synced":
       return "Tersinkron";
     case "warning":
@@ -865,14 +870,32 @@ defineExpose({
 
               <!-- Produk Assist -->
               <td class="col-product">
-                <div class="text-weight-bold text-slate-900 text-xs leading-tight" :title="item.assistItemName">
-                  {{ item.assistItemName || '-' }}
+                <div v-if="item.assistItemName || item.assistCode">
+                  <div class="text-weight-bold text-slate-900 text-xs leading-tight" :title="item.assistItemName">
+                    {{ item.assistItemName || '-' }}
+                  </div>
+                  <div class="text-caption font-mono text-teal text-xs q-mt-xs break-all">
+                    {{ item.assistCode || item.assistItemId || 'Kode Kosong' }}
+                    <q-badge color="blue-grey-2" text-color="blue-grey-9" class="q-ml-2xs text-2xs">
+                      {{ item.assistItemType === 'akhp' ? 'AKHP' : 'Obat' }}
+                    </q-badge>
+                  </div>
+                  <div v-if="!item.destyStockFound && !item.destySku" class="q-mt-2xs">
+                    <q-badge color="red-1" text-color="red-9" class="text-2xs font-bold q-px-xs">
+                      Belum ada di Desty
+                    </q-badge>
+                  </div>
                 </div>
-                <div class="text-caption font-mono text-teal text-xs q-mt-xs break-all">
-                  {{ item.assistCode || item.assistItemId || 'Kode Kosong' }}
-                  <q-badge color="blue-grey-2" text-color="blue-grey-9" class="q-ml-2xs text-2xs">
-                    {{ item.assistItemType === 'akhp' ? 'AKHP' : 'Obat' }}
-                  </q-badge>
+                <div v-else class="row items-center q-gutter-x-xs">
+                  <span class="text-grey-6 text-xs italic">Tidak ada di POS</span>
+                  <q-btn
+                    size="xs"
+                    outline
+                    color="teal"
+                    icon="link"
+                    label="Petakan ke POS"
+                    @click="openQuickMapDialog(item)"
+                  />
                 </div>
               </td>
 
@@ -884,15 +907,29 @@ defineExpose({
 
               <!-- Produk Desty -->
               <td class="col-desty-product">
-                <div v-if="item.status !== 'unmapped' && item.destySku">
+                <div v-if="item.destySku || item.destyProductName">
                   <div v-if="item.destyProductName" class="text-weight-bold text-slate-900 text-xs leading-tight" :title="item.destyProductName">
                     {{ item.destyProductName }}
                   </div>
                   <div class="text-caption font-mono text-primary text-xs q-mt-xs break-all">
-                    {{ item.destySku }}
+                    {{ item.destySku || 'Tanpa SKU' }}
                     <span v-if="item.conversionFactor !== 1" class="text-grey-7 font-normal">
                       (x{{ item.conversionFactor }})
                     </span>
+                  </div>
+                  <div v-if="!item.assistItemId && !item.assistCode" class="row items-center q-gutter-x-xs q-mt-2xs">
+                    <q-badge color="red-1" text-color="red-9" class="text-2xs font-bold q-px-xs">
+                      Belum dicocokkan ke POS
+                    </q-badge>
+                    <q-btn
+                      size="xs"
+                      flat
+                      dense
+                      color="teal"
+                      icon="link"
+                      label="Petakan"
+                      @click="openQuickMapDialog(item)"
+                    />
                   </div>
                 </div>
                 <div v-else class="row items-center q-gutter-x-xs">
@@ -902,7 +939,7 @@ defineExpose({
                     outline
                     color="teal"
                     icon="link"
-                    label="Petakan"
+                    label="Petakan ke Desty"
                     @click="openQuickMapDialog(item)"
                   />
                 </div>

@@ -70,7 +70,7 @@ export interface SoTableRowItem {
   checked: boolean;
 
   // Status
-  status: "ready" | "warning" | "unmapped" | "synced" | "error";
+  status: "ready" | "warning" | "unmapped" | "synced" | "error" | "matched";
   statusMessage: string;
   badgeColor: string;
 }

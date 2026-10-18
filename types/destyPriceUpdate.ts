@@ -14,6 +14,8 @@ export interface MarketplacePricingConfig {
   basePriceSource: "buyPrice" | "sellPrice";
   rounding: number;
   tiers: PriceRangeTier[];
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export interface DestyPriceWarehousePrice {

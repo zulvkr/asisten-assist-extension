@@ -111,7 +111,7 @@ async function fetchCatalogPath(
     url.searchParams.set("skip", String(skip));
     url.searchParams.set("limit", String(pageSize));
     if (fieldName) url.searchParams.set("fieldName", fieldName);
-    if (type === "akhp") url.searchParams.set("sort", "1");
+    url.searchParams.set("sort", "1");
 
     const response = await (params.fetchImpl ?? fetch)(url.toString(), {
       method: "GET",
@@ -243,7 +243,7 @@ export async function fetchAssistCatalog(
   if (!params.hospitalId.trim()) throw new Error("hospitalId Assist kosong.");
 
   const [medicines, akhps, depots] = await Promise.all([
-    fetchCatalogPath(params, "KMedicineStocks/getItemsWithExpiredDate", "prescription", "medName"),
+    fetchCatalogPath(params, "KMedicineStocks/getList", "prescription", "medName"),
     fetchCatalogPath(params, "KAKHPStocks/getList", "akhp", "itemName"),
     fetchAssistDepotRecords(params),
   ]);

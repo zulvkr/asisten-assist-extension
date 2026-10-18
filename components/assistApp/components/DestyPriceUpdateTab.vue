@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useQuasar } from "quasar";
 import type { DestySkuMapping, AssistCatalogItem } from "@/types/destySync";
 import type {
@@ -29,6 +29,7 @@ import {
 import {
   loadMarketplacePricingConfig,
   saveMarketplacePricingConfig,
+  subscribeMarketplacePricingConfig,
   DEFAULT_MARKETPLACE_PRICING_CONFIG,
 } from "@/services/destySync/pricingConfigStorage";
 import {
@@ -114,6 +115,7 @@ const mappingDialogData = ref<{
 const pricingConfig = ref<MarketplacePricingConfig>(
   JSON.parse(JSON.stringify(DEFAULT_MARKETPLACE_PRICING_CONFIG)),
 );
+let unsubscribePricingConfig: (() => void) | null = null;
 
 // Table Rows State
 const tableRows = ref<PriceTableRowItem[]>([]);
@@ -163,7 +165,7 @@ async function handleSaveFormulaConfig(newConfig: MarketplacePricingConfig) {
   await saveMarketplacePricingConfig(newConfig);
   $q.notify({
     type: "positive",
-    message: "Formula harga marketplace berhasil disimpan.",
+    message: "Formula harga marketplace berhasil disimpan ke Firestore & penyimpanan lokal.",
     position: "top-right",
   });
   recalculateAllRows();
@@ -1042,6 +1044,20 @@ function formatDateShort(val?: string | null): string {
 // Lifecycle & Watches
 onMounted(() => {
   loadSessionData();
+  const unsub = subscribeMarketplacePricingConfig((latestConfig) => {
+    pricingConfig.value = latestConfig;
+    recalculateAllRows();
+  });
+  if (unsub) {
+    unsubscribePricingConfig = unsub;
+  }
+});
+
+onUnmounted(() => {
+  if (unsubscribePricingConfig) {
+    unsubscribePricingConfig();
+    unsubscribePricingConfig = null;
+  }
 });
 
 watch(priceSessionMode, () => {
