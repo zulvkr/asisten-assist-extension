@@ -641,12 +641,42 @@ watch(selectedInvoiceId, () => {
   if (soSessionMode.value === "faktur") void loadSoSessionData();
 });
 
+watch(
+  () => props.mappings,
+  async (newMappings) => {
+    if (!newMappings?.length) return;
+    if (soSessionMode.value === "shift" || soSessionMode.value === "faktur") {
+      const missingSkus: string[] = [];
+      for (const m of newMappings) {
+        if (
+          m.active &&
+          m.destySku &&
+          !isSkuPrefixExcluded(m.destySku, activeExcludedPrefixes.value) &&
+          !destyStockMap.value[m.destySku.toUpperCase()]
+        ) {
+          missingSkus.push(m.destySku.toUpperCase());
+        }
+      }
+      if (missingSkus.length > 0) {
+        await fetchLiveDestyStock(missingSkus);
+      }
+    }
+  },
+  { deep: true }
+);
+
+async function handleRefreshAll() {
+  emit("refreshCatalog");
+  await loadSoSessionData();
+}
+
 onMounted(async () => {
   await loadSoSessionData();
 });
 
 defineExpose({
   loadSoSessionData,
+  handleRefreshAll,
 });
 </script>
 
@@ -761,10 +791,10 @@ defineExpose({
             unelevated
             icon="refresh"
             :loading="isLoadingSoData || isLoadingLiveDestyStock"
-            @click="loadSoSessionData"
+            @click="handleRefreshAll"
             class="border-slate rounded-borders"
           >
-            <q-tooltip>Muat Ulang Sesi</q-tooltip>
+            <q-tooltip>Muat Ulang Sesi & Mapping</q-tooltip>
           </q-btn>
         </div>
       </q-card-section>

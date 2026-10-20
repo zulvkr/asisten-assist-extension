@@ -51,115 +51,14 @@ export async function fetchAllAssistPemasukan(
   return allRows;
 }
 
-const ALLOWED_ITEM_TYPES = new Set(["prescription", "akhp", "scourPrescription"]);
+import {
+  isOnlineTransaction,
+  aggregateOfflineSoldItems,
+  executeStockReductionsUseCase,
+} from "@/services/useCases/offlineStockSyncUseCase";
 
-const MARKETPLACE_KEYWORDS = ["shopee", "tiktok", "tokopedia", "tokped", "blibli", "goapotik", "marketplace"];
-
-/**
- * Determines if a transaction in Assist is an online / marketplace transaction.
- */
-export function isOnlineAssistTransaction(tx: PemasukanData): boolean {
-  if (!tx) return false;
-
-  // 1. Check paidName metadata (standard format for Desty imported orders: DESTY|platform=...|order=...)
-  const paidName = (tx.paidName || "").trim().toLowerCase();
-  if (
-    paidName.startsWith("desty|") ||
-    paidName.startsWith("desty ") ||
-    paidName.includes("platform=") ||
-    paidName.includes("order=") ||
-    paidName.includes("booking=")
-  ) {
-    return true;
-  }
-
-  // 2. Check Payments list for marketplace keywords
-  const payments = Array.isArray(tx.Payments) ? tx.Payments : [];
-  for (const p of payments) {
-    const raw = `${p.type ?? ""} ${p.name ?? ""} ${p.intent ?? ""} ${p.reason ?? ""}`.toLowerCase();
-    if (MARKETPLACE_KEYWORDS.some((kw) => raw.includes(kw))) {
-      return true;
-    }
-  }
-
-  // 3. Check customer name or patient name for marketplace tags
-  const patientName = (tx.Patient?.name || tx.Patient?.nama || "").toLowerCase();
-  if (MARKETPLACE_KEYWORDS.some((kw) => patientName.includes(kw))) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Aggregates offline sold items from Assist Pemasukan transactions.
- */
-export function getAssistOfflineSoldItems(
-  transactions: PemasukanData[],
-  options: {
-    includeOnlyPaidOff?: boolean;
-    excludeOnline?: boolean;
-  } = {},
-): {
-  soldItems: OfflineSoldItem[];
-  skippedOnlineCount: number;
-} {
-  const includeOnlyPaidOff = options.includeOnlyPaidOff ?? true;
-  const excludeOnline = options.excludeOnline ?? true;
-
-  const grouped = new Map<string, OfflineSoldItem>();
-  let skippedOnlineCount = 0;
-
-  for (const tx of transactions) {
-    if (includeOnlyPaidOff && tx.status !== "paid off") {
-      continue;
-    }
-
-    if (excludeOnline && isOnlineAssistTransaction(tx)) {
-      skippedOnlineCount++;
-      continue;
-    }
-
-    const items = Array.isArray(tx.Items) ? tx.Items : [];
-    for (const item of items) {
-      if (!ALLOWED_ITEM_TYPES.has(item.type)) {
-        continue;
-      }
-
-      const itemType: "prescription" | "akhp" = item.type === "akhp" ? "akhp" : "prescription";
-      const assistItemId = (itemType === "akhp" ? item.akhpId : item.medicineId)?.trim() || "";
-      const assistItemName = (item.name || "").trim() || "Item Tanpa Nama";
-      const assistCode = (item.code || "").trim();
-      const assistUnit = (item.unit || "Pcs").trim();
-      const quantity = Number(item.quantity) || 0;
-
-      if (quantity <= 0) continue;
-
-      const groupKey = assistItemId || `__name__::${assistItemName}`;
-      const existing = grouped.get(groupKey);
-
-      if (existing) {
-        existing.offlineQty += quantity;
-      } else {
-        grouped.set(groupKey, {
-          assistItemId,
-          assistItemType: itemType,
-          assistCode,
-          assistItemName,
-          assistUnit,
-          offlineQty: quantity,
-        });
-      }
-    }
-  }
-
-  return {
-    soldItems: Array.from(grouped.values()).sort(
-      (a, b) => b.offlineQty - a.offlineQty || a.assistItemName.localeCompare(b.assistItemName),
-    ),
-    skippedOnlineCount,
-  };
-}
+export const isOnlineAssistTransaction = isOnlineTransaction;
+export const getAssistOfflineSoldItems = aggregateOfflineSoldItems;
 
 export interface BuildReductionItemsParams {
   soldItems: OfflineSoldItem[];

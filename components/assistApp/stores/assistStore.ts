@@ -188,6 +188,7 @@ export const useAssistStore = defineStore("assist", () => {
       isNew = true;
       marginData.value.push([kodeObat, namaObat, "", "", "", sku]);
     }
+    marginData.value = [...marginData.value];
     window.marginData = [...marginData.value];
 
     // 2. Perform Firestore call
@@ -208,6 +209,7 @@ export const useAssistStore = defineStore("assist", () => {
           marginData.value[rollbackIndex][5] = prevVal;
         }
       }
+      marginData.value = [...marginData.value];
       window.marginData = [...marginData.value];
       throw err;
     }

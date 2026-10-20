@@ -82,4 +82,72 @@ describe("Desty SKU mapping storage", () => {
     const unmappedResult = resolveEffectiveDestySkuMapping("NON-EXISTENT", explicitMappings, catalog);
     expect(unmappedResult).toBeUndefined();
   });
+
+  it("replaces stale mapping when an item SKU is updated in the sheet/table", () => {
+    const catalog = [
+      { id: "med-1", code: "CODE-1", name: "Obat Satu", type: "prescription" as const, unit: "Strip" },
+      { id: "med-2", code: "CODE-2", name: "Obat Dua", type: "prescription" as const, unit: "Strip" },
+    ];
+    const existingMappings = [
+      {
+        destySku: "OLD-SKU-1",
+        assistCode: "CODE-1",
+        assistType: "prescription" as const,
+        assistId: "med-1",
+        assistName: "Obat Satu",
+        conversionFactor: 1,
+        active: true,
+      },
+      {
+        destySku: "MANUAL-SKU",
+        assistCode: "MANUAL-CODE",
+        assistType: "prescription" as const,
+        assistId: "manual-id",
+        assistName: "Produk Manual Luar Sheet",
+        conversionFactor: 1,
+        active: true,
+      },
+    ];
+
+    // Sheet row updates CODE-1's SKU to NEW-SKU-1
+    const rows = [
+      ["CODE-1", "Obat Satu", "", "", "", "NEW-SKU-1"],
+    ];
+
+    const result = buildMappingsFromGoogleSheet(rows, catalog, existingMappings);
+
+    // Should contain NEW-SKU-1 for CODE-1, and MANUAL-SKU (since it's not managed in sheet)
+    // OLD-SKU-1 must NOT be retained!
+    expect(result.mappings).toHaveLength(2);
+    expect(result.mappings.some((m) => m.destySku === "NEW-SKU-1" && m.assistCode === "CODE-1")).toBe(true);
+    expect(result.mappings.some((m) => m.destySku === "OLD-SKU-1")).toBe(false);
+    expect(result.mappings.some((m) => m.destySku === "MANUAL-SKU")).toBe(true);
+  });
+
+  it("discards stale mapping when an item SKU is cleared in the sheet/table", () => {
+    const catalog = [
+      { id: "med-1", code: "CODE-1", name: "Obat Satu", type: "prescription" as const, unit: "Strip" },
+    ];
+    const existingMappings = [
+      {
+        destySku: "OLD-SKU-1",
+        assistCode: "CODE-1",
+        assistType: "prescription" as const,
+        assistId: "med-1",
+        assistName: "Obat Satu",
+        conversionFactor: 1,
+        active: true,
+      },
+    ];
+
+    // Sheet row has CODE-1 but empty SKU
+    const rows = [
+      ["CODE-1", "Obat Satu", "", "", "", ""],
+    ];
+
+    const result = buildMappingsFromGoogleSheet(rows, catalog, existingMappings);
+
+    // OLD-SKU-1 must NOT be kept because CODE-1 is explicitly managed in sheet with no SKU
+    expect(result.mappings).toHaveLength(0);
+  });
 });

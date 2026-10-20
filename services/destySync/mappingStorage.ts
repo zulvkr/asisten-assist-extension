@@ -337,15 +337,27 @@ export function buildMappingsFromGoogleSheet(
   const mappings: DestySkuMapping[] = [];
   const unmatchedSkus: string[] = [];
   const seen = new Set<string>();
+  const seenAssistCodes = new Set<string>();
+  const seenAssistIds = new Set<string>();
 
   for (const row of rows) {
     if (!Array.isArray(row)) continue;
     const destySku = asTrimmedString(row[5]);
     const assistCode = asTrimmedString(row[0]);
     const sheetName = asTrimmedString(row[1]);
-    if (!destySku || !assistCode || seen.has(destySku.toUpperCase())) continue;
+    if (!assistCode) continue;
+
+    const codeUpper = assistCode.toUpperCase();
+    seenAssistCodes.add(codeUpper);
+
+    const catalogItem = catalogByCode.get(codeUpper);
+    if (catalogItem?.id) {
+      seenAssistIds.add(catalogItem.id);
+    }
+
+    if (!destySku || seen.has(destySku.toUpperCase())) continue;
     seen.add(destySku.toUpperCase());
-    const catalogItem = catalogByCode.get(assistCode.toUpperCase());
+
     if (!catalogItem) {
       unmatchedSkus.push(destySku);
       continue;
@@ -369,8 +381,18 @@ export function buildMappingsFromGoogleSheet(
   }
 
   // Keep manually confirmed mappings that are not yet present in the sheet.
+  // Stale mappings for items already managed in the sheet are discarded.
   for (const mapping of existingMappings) {
-    if (!seen.has(mapping.destySku.toUpperCase())) mappings.push(mapping);
+    const skuKey = mapping.destySku.toUpperCase();
+    const codeKey = (mapping.assistCode || "").trim().toUpperCase();
+    const idKey = (mapping.assistId || "").trim();
+
+    const isCodeManaged = codeKey && seenAssistCodes.has(codeKey);
+    const isIdManaged = idKey && seenAssistIds.has(idKey);
+
+    if (!seen.has(skuKey) && !isCodeManaged && !isIdManaged) {
+      mappings.push(mapping);
+    }
   }
   return { mappings, unmatchedSkus };
 }

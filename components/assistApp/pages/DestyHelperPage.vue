@@ -1088,7 +1088,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onActivated, watch } from "vue";
 import * as XLSX from "xlsx";
 import { resolveDestyToken } from "@/composables/destyOmniTokenManager";
 import { resolveAssistToken } from "@/composables/assistTokenManager";
@@ -2644,6 +2644,26 @@ async function handleExecuteOfflineStockSync() {
   }
 }
 
+function refreshMappingsFromStore() {
+  if (assistCatalog.value.length > 0 && store.marginData.length > 0) {
+    const autoMapping = buildMappingsFromGoogleSheet(
+      store.marginData,
+      assistCatalog.value,
+      mappings.value,
+      DEFAULT_ASSIST_DEPOT_ID,
+    );
+    mappings.value = autoMapping.mappings;
+  }
+}
+
+watch(
+  () => store.marginData,
+  () => {
+    refreshMappingsFromStore();
+  },
+  { deep: true }
+);
+
 watch(selectedStatus, () => {
   void loadStatusCounts();
 });
@@ -2655,7 +2675,14 @@ watch(syncTab, (newTab) => {
     !syncBusy.value
   ) {
     void loadSyncCatalog();
+  } else if (newTab === "offline_sync" || newTab === "price_update") {
+    refreshMappingsFromStore();
   }
+});
+
+onActivated(async () => {
+  await store.fetchMarginData();
+  refreshMappingsFromStore();
 });
 
 onMounted(async () => {
