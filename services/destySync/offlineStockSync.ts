@@ -2,6 +2,7 @@ import type { PemasukanData } from "@/types/PemasukanData";
 import type { DestySkuMapping, AssistCatalogItem } from "@/types/destySync";
 import type { DestyOmniStockItem } from "@/composables/destyOmniStockApi";
 import { buildPemasukanRequest } from "@/utils/pemasukanApi";
+import { isSkuPrefixExcluded } from "@/utils/skuPrefixUtils";
 import type {
   OfflineSoldItem,
   OfflineSaleReductionItem,
@@ -166,6 +167,7 @@ export interface BuildReductionItemsParams {
   destyStockMap: Record<string, DestyOmniStockItem>;
   assistStockMap?: Record<string, number | null | undefined>;
   assistCatalog?: AssistCatalogItem[];
+  excludedPrefixes?: string[];
   manualOverrides?: Record<string, { reductionQty?: number; checked?: boolean }>;
   syncResults?: Record<string, { status: "success" | "error"; message?: string }>;
 }
@@ -257,6 +259,14 @@ export function buildOfflineStockReductionItems(
         }];
 
     for (const cand of candidates) {
+      if (
+        params.excludedPrefixes &&
+        (isSkuPrefixExcluded(cand.destySku, params.excludedPrefixes) ||
+          isSkuPrefixExcluded(sold.assistCode, params.excludedPrefixes))
+      ) {
+        continue;
+      }
+
       const rowKey = `${sold.assistItemId || sold.assistCode || sold.assistItemName}__${cand.destySku}`;
       const destyInfo = destyStockMap[cand.destySku];
 

@@ -684,6 +684,7 @@
               :assist-api-base-url="store.apiBaseUrl"
               :assist-catalog="assistCatalog"
               :mappings="mappings"
+              :excluded-sku-prefixes="store.excludedDestySkuPrefixes"
               @save-mapping="handleQuickMappingSave"
               @refresh-probe="probeTokens"
               @refresh-catalog="loadSyncCatalog"
@@ -1147,6 +1148,7 @@ import {
   type SkuMatchCandidate,
   type SkuRecommendation,
 } from "@/services/destySync/skuMatcher";
+import { parseExcludedPrefixes, isSkuPrefixExcluded } from "@/utils/skuPrefixUtils";
 import DestyStockOpnameTab from "../components/DestyStockOpnameTab.vue";
 import DestyPriceUpdateTab from "../components/DestyPriceUpdateTab.vue";
 import type { QuickMappingFormData } from "@/types/destyStockOpname";
@@ -2427,6 +2429,7 @@ const offlineReductionItems = computed<OfflineSaleReductionItem[]>(() => {
     mappings: mappings.value,
     destyStockMap: destyStockMapForOffline.value,
     assistCatalog: assistCatalog.value,
+    excludedPrefixes: parseExcludedPrefixes(store.excludedDestySkuPrefixes),
     manualOverrides: offlineManualOverrides.value,
     syncResults: offlineSyncResults.value,
   });
@@ -2434,6 +2437,14 @@ const offlineReductionItems = computed<OfflineSaleReductionItem[]>(() => {
 
 const filteredOfflineReductionItems = computed(() => {
   let list = offlineReductionItems.value;
+  const prefixes = parseExcludedPrefixes(store.excludedDestySkuPrefixes);
+  if (prefixes.length > 0) {
+    list = list.filter(
+      (item) =>
+        !isSkuPrefixExcluded(item.destySku, prefixes) &&
+        !isSkuPrefixExcluded(item.assistCode, prefixes),
+    );
+  }
   const q = offlineSearchQuery.value.trim().toLowerCase();
   if (q) {
     list = list.filter(

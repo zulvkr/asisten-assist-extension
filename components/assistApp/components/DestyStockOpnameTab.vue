@@ -21,6 +21,8 @@ import {
   fetchAssistRestockInvoices,
 } from "@/services/destySync/destyStockOpnameService";
 import { fetchAllAssistPemasukan } from "@/services/destySync/offlineStockSync";
+import { parseExcludedPrefixes, isSkuPrefixExcluded } from "@/utils/skuPrefixUtils";
+import { useAssistStore } from "../stores/assistStore";
 import DestySkuMappingDialog from "./DestySkuMappingDialog.vue";
 
 const props = defineProps<{
@@ -32,6 +34,7 @@ const props = defineProps<{
   assistApiBaseUrl?: string;
   assistCatalog: AssistCatalogItem[];
   mappings: DestySkuMapping[];
+  excludedSkuPrefixes?: string;
 }>();
 
 const emit = defineEmits<{
@@ -41,6 +44,12 @@ const emit = defineEmits<{
 }>();
 
 const $q = useQuasar();
+const store = useAssistStore();
+
+const activeExcludedPrefixes = computed(() => {
+  const raw = props.excludedSkuPrefixes ?? store.excludedDestySkuPrefixes ?? "ISA-";
+  return parseExcludedPrefixes(raw);
+});
 
 // 1. Session Mode States
 const soSessionMode = ref<SoSessionMode>("shift");
@@ -140,7 +149,7 @@ async function fetchLiveDestyStock(skus?: string[]) {
     }
 
     for (const item of response.items) {
-      if (item.sku) {
+      if (item.sku && !isSkuPrefixExcluded(item.sku, activeExcludedPrefixes.value)) {
         destyStockMap.value[item.sku.toUpperCase()] = item;
       }
     }
@@ -197,10 +206,13 @@ async function loadSoSessionData() {
 
       const targetSkus = new Set<string>();
       for (const item of soldItems) {
-        if (item.assistCode) targetSkus.add(item.assistCode.toUpperCase());
+        if (item.assistCode && !isSkuPrefixExcluded(item.assistCode, activeExcludedPrefixes.value)) {
+          targetSkus.add(item.assistCode.toUpperCase());
+        }
         for (const m of props.mappings) {
           if (
             m.active &&
+            !isSkuPrefixExcluded(m.destySku, activeExcludedPrefixes.value) &&
             ((m.assistId && m.assistId === item.assistItemId) ||
               (m.assistCode && m.assistCode.toUpperCase() === item.assistCode.toUpperCase()))
           ) {
@@ -219,10 +231,13 @@ async function loadSoSessionData() {
       if (selectedInvoice.value) {
         const targetSkus = new Set<string>();
         for (const item of selectedInvoice.value.items) {
-          if (item.code) targetSkus.add(item.code.toUpperCase());
+          if (item.code && !isSkuPrefixExcluded(item.code, activeExcludedPrefixes.value)) {
+            targetSkus.add(item.code.toUpperCase());
+          }
           for (const m of props.mappings) {
             if (
               m.active &&
+              !isSkuPrefixExcluded(m.destySku, activeExcludedPrefixes.value) &&
               ((m.assistId && item.medicineId && m.assistId === item.medicineId) ||
                 (m.assistCode && item.code && m.assistCode.toUpperCase() === item.code.toUpperCase()))
             ) {
@@ -265,6 +280,7 @@ const soTableRows = computed<SoTableRowItem[]>(() => {
       mappings: props.mappings,
       destyStockMap: destyStockMap.value,
       catalogLookup,
+      excludedPrefixes: activeExcludedPrefixes.value,
       manualStates: soManualStates.value,
       syncResults: soSyncResult.value,
     });
@@ -277,6 +293,7 @@ const soTableRows = computed<SoTableRowItem[]>(() => {
       mappings: props.mappings,
       destyStockMap: destyStockMap.value,
       catalogLookup,
+      excludedPrefixes: activeExcludedPrefixes.value,
       manualStates: soManualStates.value,
       syncResults: soSyncResult.value,
     });
@@ -287,6 +304,7 @@ const soTableRows = computed<SoTableRowItem[]>(() => {
       destyStockMap: destyStockMap.value,
       assistCatalog: props.assistCatalog,
       mappings: props.mappings,
+      excludedPrefixes: activeExcludedPrefixes.value,
       manualStates: soManualStates.value,
       syncResults: soSyncResult.value,
     });
@@ -298,6 +316,15 @@ const soTableRows = computed<SoTableRowItem[]>(() => {
 // Search & Filter
 const filteredSoTableRows = computed(() => {
   let list = soTableRows.value;
+
+  if (activeExcludedPrefixes.value.length > 0) {
+    list = list.filter(
+      (item) =>
+        !isSkuPrefixExcluded(item.destySku, activeExcludedPrefixes.value) &&
+        !isSkuPrefixExcluded(item.assistCode, activeExcludedPrefixes.value),
+    );
+  }
+
   if (soFilterSearch.value.trim()) {
     const q = soFilterSearch.value.trim().toLowerCase();
     list = list.filter(
@@ -783,7 +810,21 @@ defineExpose({
             />
           </template>
           <template v-else>
-            Total Item: <strong class="text-slate-900 q-ml-xs">{{ filteredSoTableRows.length }}</strong>
+            <div class="row items-center">
+              <span>Total Item: <strong class="text-slate-900 q-ml-xs">{{ filteredSoTableRows.length }}</strong></span>
+              <q-chip
+                v-if="activeExcludedPrefixes.length > 0"
+                dense
+                size="xs"
+                color="amber-1"
+                text-color="amber-10"
+                icon="filter_alt"
+                class="q-ml-xs"
+              >
+                Kecuali: {{ activeExcludedPrefixes.join(', ') }}
+                <q-tooltip>SKU dengan prefix {{ activeExcludedPrefixes.join(', ') }} dikecualikan sesuai pengaturan</q-tooltip>
+              </q-chip>
+            </div>
           </template>
         </div>
       </q-card-section>

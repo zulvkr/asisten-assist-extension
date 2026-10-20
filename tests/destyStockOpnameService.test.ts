@@ -313,5 +313,118 @@ describe("destyStockOpnameService", () => {
       expect(row.assistStock).toBe(15);
       expect(row.status).toBe("unmapped");
     });
+
+    it("filters out SKUs matching excluded prefixes", () => {
+      const catalog: AssistCatalogItem[] = [
+        { id: "m1", code: "PARA", name: "Paracetamol", type: "prescription", stock: 20 },
+        { id: "m2", code: "ISA-001", name: "Item Terkecualikan", type: "prescription", stock: 10 },
+      ];
+
+      const destyStockMap: Record<string, DestyOmniStockItem> = {
+        PARA: {
+          sku: "PARA",
+          skuId: "sku_para",
+          stock: 20,
+          breakdown: { fisik: 20, tersedia: 20, pesanan: 0 },
+          fisik: 20,
+          tersedia: 20,
+          pesanan: 0,
+        },
+        "ISA-002": {
+          sku: "ISA-002",
+          skuId: "sku_isa_2",
+          stock: 5,
+          breakdown: { fisik: 5, tersedia: 5, pesanan: 0 },
+          fisik: 5,
+          tersedia: 5,
+          pesanan: 0,
+        },
+      };
+
+      const rows = buildAllProductsSoRows({
+        destyStockMap,
+        assistCatalog: catalog,
+        mappings: [],
+        excludedPrefixes: ["ISA-"],
+      });
+
+      // ISA-002 and ISA-001 should be completely omitted
+      expect(rows.length).toBe(1);
+      expect(rows[0].destySku).toBe("PARA");
+    });
+  });
+
+  describe("prefix exclusions in shift and faktur modes", () => {
+    it("filters out candidates matching excluded prefixes in buildShiftSoRows", () => {
+      const soldItems = [
+        {
+          assistItemId: "m1",
+          assistItemType: "prescription" as const,
+          assistCode: "ISA-AMX",
+          assistItemName: "Amoxicillin Excluded",
+          assistUnit: "Strip",
+          offlineQty: 10,
+          onlineQty: 0,
+        },
+        {
+          assistItemId: "m2",
+          assistItemType: "prescription" as const,
+          assistCode: "PARA",
+          assistItemName: "Paracetamol Normal",
+          assistUnit: "Strip",
+          offlineQty: 5,
+          onlineQty: 0,
+        },
+      ];
+
+      const rows = buildShiftSoRows({
+        soldItems,
+        mappings: [],
+        destyStockMap: {},
+        catalogLookup: buildCatalogLookup([]),
+        excludedPrefixes: ["ISA-"],
+      });
+
+      expect(rows.length).toBe(1);
+      expect(rows[0].assistCode).toBe("PARA");
+    });
+
+    it("filters out candidates matching excluded prefixes in buildFakturSoRows", () => {
+      const invoice: AssistRestockInvoice = {
+        id: "inv_1",
+        invoiceNumber: "FAK-001",
+        supplierName: "PBF Kimia Farma",
+        receivedDate: "2026-10-12",
+        itemCount: 2,
+        totalFee: 150000,
+        items: [
+          {
+            medicineId: "m1",
+            code: "ISA-001",
+            name: "Item Excluded",
+            quantity: 5,
+            unit: "Box",
+          },
+          {
+            medicineId: "m2",
+            code: "MED-002",
+            name: "Item Normal",
+            quantity: 10,
+            unit: "Box",
+          },
+        ],
+      };
+
+      const rows = buildFakturSoRows({
+        invoice,
+        mappings: [],
+        destyStockMap: {},
+        catalogLookup: buildCatalogLookup([]),
+        excludedPrefixes: ["ISA-"],
+      });
+
+      expect(rows.length).toBe(1);
+      expect(rows[0].assistCode).toBe("MED-002");
+    });
   });
 });

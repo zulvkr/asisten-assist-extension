@@ -16,6 +16,7 @@ import {
   compareStockLevels,
   type StockComparisonRow,
 } from "@/utils/compareStockLevels";
+import { parseExcludedPrefixes, isSkuPrefixExcluded } from "@/utils/skuPrefixUtils";
 import {
   getAssistShoppingSalesByDate,
   getAssistSoldItemsByDate,
@@ -785,15 +786,10 @@ async function handleFetchStockComparison(
   try {
     const storage = await browser.storage.local.get("settings:excludedDestySkuPrefixes");
     const excludedStr = (storage["settings:excludedDestySkuPrefixes"] as string | undefined) ?? "ISA-";
-    const prefixes = excludedStr
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean);
+    const prefixes = parseExcludedPrefixes(excludedStr);
 
     const shouldExcludeSku = (sku: string | undefined | null): boolean => {
-      if (!sku) return false;
-      const s = sku.trim().toLowerCase();
-      return prefixes.some((pref) => s.startsWith(pref.toLowerCase()));
+      return isSkuPrefixExcluded(sku, prefixes);
     };
 
     const [pemasukanData, marginRows, medicineStockItems, bhpStockItems] =

@@ -11,6 +11,7 @@ import type {
   SoTableRowItem,
 } from "@/types/destyStockOpname";
 import { buildAssistHeaders } from "@/services/integration/assistRequest";
+import { isSkuPrefixExcluded } from "@/utils/skuPrefixUtils";
 
 /**
  * Fetches recent restock invoices from Assist KTxes.
@@ -285,10 +286,11 @@ export function buildShiftSoRows(params: {
   mappings: DestySkuMapping[];
   destyStockMap: Record<string, DestyOmniStockItem>;
   catalogLookup: AssistCatalogLookup;
+  excludedPrefixes?: string[];
   manualStates?: Record<string, { adjustMode?: AdjustMode; adjustQty?: number; checked?: boolean }>;
   syncResults?: Record<string, { status: "success" | "error"; message?: string }>;
 }): SoTableRowItem[] {
-  const { soldItems, mappings, destyStockMap, catalogLookup, manualStates = {}, syncResults = {} } = params;
+  const { soldItems, mappings, destyStockMap, catalogLookup, excludedPrefixes, manualStates = {}, syncResults = {} } = params;
   const rows: SoTableRowItem[] = [];
 
   for (const item of soldItems) {
@@ -296,6 +298,14 @@ export function buildShiftSoRows(params: {
     const candidates = resolveCandidates(item.assistItemId, item.assistCode, item.assistItemName, item.assistUnit, mappings);
 
     for (const cand of candidates) {
+      if (
+        excludedPrefixes &&
+        (isSkuPrefixExcluded(cand.destySku, excludedPrefixes) ||
+          isSkuPrefixExcluded(item.assistCode, excludedPrefixes))
+      ) {
+        continue;
+      }
+
       const rowKey = `${item.assistItemId || item.assistCode || item.assistItemName}__${cand.destySku}`;
       const destyInfo = destyStockMap[cand.destySku];
 
@@ -414,10 +424,11 @@ export function buildFakturSoRows(params: {
   mappings: DestySkuMapping[];
   destyStockMap: Record<string, DestyOmniStockItem>;
   catalogLookup: AssistCatalogLookup;
+  excludedPrefixes?: string[];
   manualStates?: Record<string, { adjustMode?: AdjustMode; adjustQty?: number; checked?: boolean }>;
   syncResults?: Record<string, { status: "success" | "error"; message?: string }>;
 }): SoTableRowItem[] {
-  const { invoice, mappings, destyStockMap, catalogLookup, manualStates = {}, syncResults = {} } = params;
+  const { invoice, mappings, destyStockMap, catalogLookup, excludedPrefixes, manualStates = {}, syncResults = {} } = params;
   const rows: SoTableRowItem[] = [];
 
   for (const item of invoice.items) {
@@ -432,6 +443,14 @@ export function buildFakturSoRows(params: {
     const candidates = resolveCandidates(assistItemId, assistCode, assistItemName, assistUnit, mappings);
 
     for (const cand of candidates) {
+      if (
+        excludedPrefixes &&
+        (isSkuPrefixExcluded(cand.destySku, excludedPrefixes) ||
+          isSkuPrefixExcluded(assistCode, excludedPrefixes))
+      ) {
+        continue;
+      }
+
       const rowKey = `${invoice.id || invoice.invoiceNumber}_${assistItemId || assistCode || assistItemName}__${cand.destySku}`;
       const destyInfo = destyStockMap[cand.destySku];
 
@@ -539,10 +558,11 @@ export function buildAllProductsSoRows(params: {
   destyStockMap: Record<string, DestyOmniStockItem>;
   assistCatalog: AssistCatalogItem[];
   mappings: DestySkuMapping[];
+  excludedPrefixes?: string[];
   manualStates?: Record<string, { adjustMode?: AdjustMode; adjustQty?: number; checked?: boolean }>;
   syncResults?: Record<string, { status: "success" | "error"; message?: string }>;
 }): SoTableRowItem[] {
-  const { destyStockMap, assistCatalog, mappings, manualStates = {}, syncResults = {} } = params;
+  const { destyStockMap, assistCatalog, mappings, excludedPrefixes, manualStates = {}, syncResults = {} } = params;
   const rows: SoTableRowItem[] = [];
   const catalogLookup = buildCatalogLookup(assistCatalog);
 
@@ -557,6 +577,21 @@ export function buildAllProductsSoRows(params: {
   const matchedAssistKeys = new Set<string>();
 
   for (const [destySkuUpper, destyInfo] of Object.entries(destyStockMap)) {
+    if (excludedPrefixes && isSkuPrefixExcluded(destySkuUpper, excludedPrefixes)) {
+      const mapping = mappingByDestySku.get(destySkuUpper);
+      if (mapping) {
+        if (mapping.assistId) matchedAssistKeys.add(mapping.assistId);
+        if (mapping.assistCode) matchedAssistKeys.add(mapping.assistCode.toUpperCase());
+      } else {
+        if (catalogLookup.itemByCode.has(destySkuUpper)) {
+          const assistItem = catalogLookup.itemByCode.get(destySkuUpper);
+          if (assistItem?.id) matchedAssistKeys.add(assistItem.id);
+          matchedAssistKeys.add(destySkuUpper);
+        }
+      }
+      continue;
+    }
+
     const mapping = mappingByDestySku.get(destySkuUpper);
     let assistItem: AssistCatalogItem | undefined;
 
@@ -682,6 +717,22 @@ export function buildAllProductsSoRows(params: {
     if (!cat.id && !codeUpper) continue;
     if (matchedAssistKeys.has(cat.id) || (codeUpper && matchedAssistKeys.has(codeUpper))) {
       continue;
+    }
+
+    if (excludedPrefixes) {
+      if (isSkuPrefixExcluded(codeUpper, excludedPrefixes)) {
+        continue;
+      }
+      const mappedToExcluded = mappings.some(
+        (m) =>
+          m.active &&
+          ((m.assistId && cat.id && m.assistId === cat.id) ||
+            (m.assistCode && codeUpper && m.assistCode.trim().toUpperCase() === codeUpper)) &&
+          isSkuPrefixExcluded(m.destySku, excludedPrefixes),
+      );
+      if (mappedToExcluded) {
+        continue;
+      }
     }
 
     const rowKey = `all_assist_${cat.id || codeUpper}`;
