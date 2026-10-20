@@ -150,15 +150,27 @@
       </q-card-section>
     </q-card>
 
-    <!-- Stock Comparison Settings Card -->
+    <!-- Stock Comparison & Desty Integration Settings Card -->
     <q-card flat bordered class="q-mb-md">
       <q-card-section>
         <div class="text-subtitle1 text-weight-bold text-teal q-mb-md">
-          Pengaturan Perbandingan Stok
+          Pengaturan Integrasi Desty & Perbandingan Stok
         </div>
 
         <form @submit.prevent="saveComparison">
           <div class="q-gutter-y-md">
+            <q-select
+              v-model="selectedDestyWarehouse"
+              :options="warehouseOptions"
+              label="Gudang Master Desty (Read & Edit Stok)"
+              outlined
+              dense
+              emit-value
+              map-options
+              color="teal"
+              hint="Gudang Desty Omni yang digunakan untuk membaca live stock dan memperbarui stok fisik. Default: Apotek Aldila."
+            />
+
             <q-input
               v-model="excludedSkuPrefixes"
               label="Prefix SKU Desty yang Dikecualikan"
@@ -172,7 +184,7 @@
             <div class="row q-mt-lg">
               <q-btn
                 type="submit"
-                label="Simpan Pengaturan Perbandingan"
+                label="Simpan Pengaturan Desty"
                 color="teal"
                 icon="save"
                 class="q-px-md"
