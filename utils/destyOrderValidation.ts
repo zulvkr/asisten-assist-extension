@@ -6,6 +6,7 @@ import type {
   DestySkuMapping,
   NormalizedDestyOrder,
 } from "@/types/destySync";
+import { resolveEffectiveDestySkuMapping } from "@/services/destySync/mappingStorage";
 
 function normalized(value: string | undefined): string {
   return String(value ?? "").trim().toUpperCase();
@@ -24,11 +25,17 @@ function catalogById(items: AssistCatalogItem[] | undefined): Map<string, Assist
 }
 
 function catalogByCode(items: AssistCatalogItem[] | undefined): Map<string, AssistCatalogItem> {
-  return new Map(
-    (items ?? [])
-      .filter((item) => Boolean(item.code))
-      .map((item) => [normalized(item.code), item]),
-  );
+  const map = new Map<string, AssistCatalogItem>();
+  for (const item of items ?? []) {
+    if (item.code) map.set(normalized(item.code), item);
+    if (item.sku) map.set(normalized(item.sku), item);
+    if (Array.isArray(item.skus)) {
+      for (const s of item.skus) {
+        if (s) map.set(normalized(s), item);
+      }
+    }
+  }
+  return map;
 }
 
 function addIssue(
@@ -83,7 +90,16 @@ export function validateDestyOrder(
     }
 
     let mapping = mappings.get(normalized(sku));
-    // Fallback 1:1 to Assist catalog by SKU code if no explicit mapping exists
+    // 1. Try resolveEffectiveDestySkuMapping (checks overrides, item.skus, item.sku, item.code, destyMappings)
+    if (!mapping && context.assistCatalog) {
+      mapping = resolveEffectiveDestySkuMapping(
+        sku,
+        context.mappings,
+        context.assistCatalog,
+        context.defaultDepotId,
+      );
+    }
+    // 2. Fallback via catalogCodes map (code, sku, skus)
     if (!mapping && context.assistCatalog) {
       const fallbackCatalogItem = catalogCodes.get(normalized(sku));
       if (fallbackCatalogItem) {
@@ -100,6 +116,22 @@ export function validateDestyOrder(
           active: true,
         };
       }
+    }
+    // 3. Fallback via ACL item.isMapped metadata if previously resolved
+    if (!mapping && item.isMapped && item.mappedAssistId) {
+      const fallbackCat = context.assistCatalog ? catalog.get(item.mappedAssistId) : undefined;
+      mapping = {
+        destySku: sku,
+        assistCode: item.mappedAssistCode || fallbackCat?.code || sku,
+        assistType: fallbackCat?.type || "prescription",
+        assistId: item.mappedAssistId,
+        assistName: item.mappedAssistName || fallbackCat?.name || item.productName,
+        destyUnit: item.unit || fallbackCat?.unit,
+        assistUnit: fallbackCat?.unit || item.unit,
+        depotId: fallbackCat?.depotId || context.defaultDepotId,
+        conversionFactor: item.conversionFactor || 1,
+        active: true,
+      };
     }
 
     if (!mapping) {

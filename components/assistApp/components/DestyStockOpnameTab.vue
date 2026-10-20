@@ -23,6 +23,7 @@ import {
 import { fetchAllAssistPemasukan } from "@/services/destySync/offlineStockSync";
 import { parseExcludedPrefixes, isSkuPrefixExcluded } from "@/utils/skuPrefixUtils";
 import { cleanseAssistCatalog } from "@/services/integration/assistProductAcl";
+import { DEFAULT_DESTY_MASTER_WAREHOUSE_ID } from "@/config/destyConfig";
 import { useAssistStore } from "../stores/assistStore";
 import DestySkuMappingDialog from "./DestySkuMappingDialog.vue";
 
@@ -140,7 +141,7 @@ async function fetchLiveDestyStock(skus?: string[]) {
       payload: {
         token: props.destyToken,
         tenantId: props.destyTenantId,
-        masterWarehouseId: props.destyWarehouseId || "2042620805094077644",
+        masterWarehouseId: props.destyWarehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
         skus,
       },
     })) as { ok: boolean; items?: DestyOmniStockItem[]; error?: string } | undefined;
@@ -487,7 +488,7 @@ async function saveSingleSoRow(item: SoTableRowItem) {
         token: props.destyToken,
         tenantId: props.destyTenantId,
         skuId: item.destySkuId,
-        warehouseId: item.destyWarehouseId || props.destyWarehouseId || "2042620805094077644",
+        warehouseId: item.destyWarehouseId || props.destyWarehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
         amount,
         editType,
       },
@@ -577,7 +578,7 @@ async function handleExecuteBatchSync() {
             token: props.destyToken,
             tenantId: props.destyTenantId,
             skuId: item.destySkuId,
-            warehouseId: item.destyWarehouseId || props.destyWarehouseId || "2042620805094077644",
+            warehouseId: item.destyWarehouseId || props.destyWarehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
             amount,
             editType,
           },

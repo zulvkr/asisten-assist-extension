@@ -121,7 +121,7 @@ function handleSave() {
       <q-card-section class="bg-teal text-white row items-center justify-between q-py-sm">
         <div class="text-subtitle1 text-weight-bold row items-center">
           <q-icon name="tune" class="q-mr-xs" size="20px" />
-          Pemetaan SKU & Konversi
+          Override Pemetaan SKU & Konversi
         </div>
         <q-btn icon="close" flat round dense v-close-popup />
       </q-card-section>
@@ -221,7 +221,7 @@ function handleSave() {
 
       <q-card-actions align="right" class="q-pa-md bg-white q-gutter-x-sm">
         <q-btn label="Batal" color="grey-7" flat v-close-popup no-caps />
-        <q-btn label="Simpan Pemetaan" color="teal" unelevated no-caps @click="handleSave" />
+        <q-btn label="Simpan Override Pemetaan" color="teal" unelevated no-caps @click="handleSave" />
       </q-card-actions>
     </q-card>
   </q-dialog>

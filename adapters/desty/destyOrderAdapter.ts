@@ -1,4 +1,76 @@
-import type { CanonicalOrder, CanonicalOrderItem } from "@/domain/integration/models";
+import type {
+  CanonicalCatalogItem,
+  CanonicalOrder,
+  CanonicalOrderItem,
+  MappingSource,
+  SkuMappingEntity,
+} from "@/domain/integration/models";
+
+export interface CanonicalMappingContext {
+  mappings?: SkuMappingEntity[];
+  catalog?: CanonicalCatalogItem[];
+}
+
+export function resolveCanonicalItemMapping(
+  sku: string,
+  context?: CanonicalMappingContext,
+): {
+  isMapped: boolean;
+  mappingSource: MappingSource;
+  mappedAssistId?: string;
+  mappedAssistCode?: string;
+  mappedAssistName?: string;
+  conversionFactor: number;
+} {
+  const normalizedSku = sku.trim().toUpperCase();
+  if (!normalizedSku) {
+    return { isMapped: false, mappingSource: "unmapped", conversionFactor: 1 };
+  }
+
+  // 1. Check override mappings first
+  if (context?.mappings && context.mappings.length > 0) {
+    const override = context.mappings.find(
+      (m) => m.active !== false && m.destySku.trim().toUpperCase() === normalizedSku,
+    );
+    if (override) {
+      return {
+        isMapped: true,
+        mappingSource: "override",
+        mappedAssistId: override.assistId,
+        mappedAssistCode: override.assistCode,
+        mappedAssistName: override.assistName,
+        conversionFactor: Number(override.conversionFactor) > 0 ? Number(override.conversionFactor) : 1,
+      };
+    }
+  }
+
+  // 2. Direct SKU match against catalog (SKU 1:1 auto-mapping)
+  if (context?.catalog && context.catalog.length > 0) {
+    const catalogItem = context.catalog.find(
+      (c) =>
+        (c.code && c.code.trim().toUpperCase() === normalizedSku) ||
+        (c.sku && c.sku.trim().toUpperCase() === normalizedSku) ||
+        (Array.isArray(c.skus) && c.skus.some((s) => s && s.trim().toUpperCase() === normalizedSku)) ||
+        (c.id && c.id.trim().toUpperCase() === normalizedSku),
+    );
+    if (catalogItem) {
+      return {
+        isMapped: true,
+        mappingSource: "direct_sku",
+        mappedAssistId: catalogItem.id,
+        mappedAssistCode: catalogItem.code,
+        mappedAssistName: catalogItem.name,
+        conversionFactor: 1,
+      };
+    }
+  }
+
+  return {
+    isMapped: false,
+    mappingSource: "unmapped",
+    conversionFactor: 1,
+  };
+}
 
 function recordOf(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -68,10 +140,26 @@ function normalizeItem(value: unknown): CanonicalOrderItem {
 
 /**
  * Inbound ACL Adapter: converts raw Desty order/package structures into a CanonicalOrder.
+ * When context (mappings and/or catalog) is provided, ACL enriches items with mapping status.
  */
-export function toCanonicalOrder(input: unknown): CanonicalOrder {
+export function toCanonicalOrder(
+  input: unknown,
+  context?: CanonicalMappingContext,
+): CanonicalOrder {
   const order = recordOf(input);
-  const items = itemList(order).map(normalizeItem);
+  const items = itemList(order).map((raw) => {
+    const item = normalizeItem(raw);
+    if (context) {
+      const mapping = resolveCanonicalItemMapping(item.sku, context);
+      item.isMapped = mapping.isMapped;
+      item.mappingSource = mapping.mappingSource;
+      item.mappedAssistId = mapping.mappedAssistId;
+      item.mappedAssistCode = mapping.mappedAssistCode;
+      item.mappedAssistName = mapping.mappedAssistName;
+      item.conversionFactor = mapping.conversionFactor;
+    }
+    return item;
+  });
   const externalOrderSn = text(
     order.marketplaceOrderSn,
     order.displayedOrderSn,

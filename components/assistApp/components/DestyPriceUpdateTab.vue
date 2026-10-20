@@ -185,11 +185,30 @@ async function loadDestyPrices(searchParam?: string) {
 
     const catalog: Record<string, DestyPriceRecord> = {};
     for (const rec of res.records) {
-      if (rec.masterSku) {
-        catalog[rec.masterSku.trim().toUpperCase()] = rec;
+      const resolvedSkuId = rec.skuId ? String(rec.skuId) : (rec as any).id || (rec as any)._id || rec.masterSku;
+      if (resolvedSkuId) {
+        rec.skuId = String(resolvedSkuId);
+        catalog[String(resolvedSkuId)] = rec;
       }
-      if (rec.skuId) {
-        catalog[String(rec.skuId)] = rec;
+
+      const keys = [
+        rec.masterSku,
+        (rec as any).sku,
+        (rec as any).skuCode,
+        (rec as any).sellerSku,
+        (rec as any).outerId,
+      ].filter(Boolean);
+
+      for (const k of keys) {
+        catalog[String(k).trim().toUpperCase()] = rec;
+      }
+
+      if (Array.isArray(rec.bindList)) {
+        for (const b of rec.bindList) {
+          if (b.masterSku) catalog[b.masterSku.trim().toUpperCase()] = rec;
+          if (b.externalSkuId) catalog[b.externalSkuId.trim().toUpperCase()] = rec;
+          if ((b as any).sku) catalog[String((b as any).sku).trim().toUpperCase()] = rec;
+        }
       }
     }
     destyPriceCatalog.value = catalog;
@@ -260,6 +279,7 @@ function buildRowItem(params: {
   assistSellPrice?: number;
   fakturUnitPrice?: number | null;
   soldQtyOnDate?: number;
+  additionalCandidateSkus?: (string | undefined)[];
 }): PriceTableRowItem {
   const {
     rowKey,
@@ -270,10 +290,16 @@ function buildRowItem(params: {
     assistSellPrice = 0,
     fakturUnitPrice = null,
     soldQtyOnDate,
+    additionalCandidateSkus = [],
   } = params;
 
   // Resolve Desty SKU match & conversion factor
-  const resolved = resolveDestyPriceItem(assistCode, props.mappings, destyPriceCatalog.value);
+  const resolved = resolveDestyPriceItem(
+    assistCode,
+    props.mappings,
+    destyPriceCatalog.value,
+    additionalCandidateSkus,
+  );
   const destyRec = resolved.destyRecord;
   const destyCurrentPrice = destyRec ? Number(destyRec.salesPrice || 0) : null;
 
@@ -305,7 +331,7 @@ function buildRowItem(params: {
   const priceDiff = destyCurrentPrice !== null ? calculatedPrice - destyCurrentPrice : 0;
   const pctDiff = destyCurrentPrice && destyCurrentPrice > 0 ? (priceDiff / destyCurrentPrice) * 100 : 0;
 
-  const rowStatus = !destyRec
+  const rowStatus = (!destyRec && !resolved.isMapped)
     ? "unmapped"
     : priceDiff !== 0
     ? "ready"
@@ -343,10 +369,12 @@ function buildRowItem(params: {
     safetyReason: safety.reason,
   };
 
+  const effectiveSkuId = destyRec?.skuId || (resolved.isMapped ? resolved.destySku : undefined);
+
   return {
     rowKey,
-    destySkuId: destyRec?.skuId,
-    destyMasterSku: resolved.destySku,
+    destySkuId: effectiveSkuId,
+    destyMasterSku: destyRec?.masterSku || resolved.destySku,
     destyProductName: destyRec?.productName,
     destyCurrentPrice,
     bindList: destyRec?.bindList || [],
@@ -356,6 +384,7 @@ function buildRowItem(params: {
     assistUnitName: assistUnit || "pcs",
     conversionFactor: factor,
     isMapped: resolved.isMapped,
+    mappingSource: resolved.mappingSource,
 
     assistBuyPrice: baseCost,
     assistSellPrice: offlineSellPrice,
@@ -414,6 +443,14 @@ function buildRowsForFaktur() {
     const catalogBuyPrice = Number(catItem?.buyFee) || Number(catItem?.avgHPP) || 0;
     const latestBuyPrice = invoiceBuyPrice > 0 ? invoiceBuyPrice : catalogBuyPrice;
 
+    const candidateSkus = [
+      it.code,
+      (it as any).sku,
+      catItem?.sku,
+      ...(catItem?.skus || []),
+      catItem?.code,
+    ].filter(Boolean);
+
     rows.push(
       buildRowItem({
         rowKey: `faktur-${inv.id}-${it.medicineId || it.code || it.name}`,
@@ -423,6 +460,7 @@ function buildRowsForFaktur() {
         latestBuyPrice,
         fakturUnitPrice: invoiceBuyPrice > 0 ? invoiceBuyPrice : null,
         assistSellPrice: Number(catItem?.sellNormalFee) || 0,
+        additionalCandidateSkus: candidateSkus,
       }),
     );
   }
@@ -437,6 +475,7 @@ function buildRowsForAllProducts() {
 
     // Harga Beli Terakhir: it.buyFee || it.avgHPP
     const latestBuyPrice = Number(it.buyFee) || Number(it.avgHPP) || 0;
+    const candidateSkus = [it.code, it.sku, ...(it.skus || [])].filter(Boolean);
 
     rows.push(
       buildRowItem({
@@ -446,6 +485,7 @@ function buildRowsForAllProducts() {
         assistUnit: it.unit || "pcs",
         latestBuyPrice,
         assistSellPrice: Number(it.sellNormalFee) || 0,
+        additionalCandidateSkus: candidateSkus,
       }),
     );
   }
@@ -459,6 +499,7 @@ function buildRowsForOnlineSales() {
     const catItem = catalogByCode.value.get(it.code.toUpperCase());
     const latestBuyPrice =
       Number(it.buyFee) || Number(catItem?.buyFee) || Number(catItem?.avgHPP) || 0;
+    const candidateSkus = [it.code, catItem?.sku, ...(catItem?.skus || [])].filter(Boolean);
 
     rows.push(
       buildRowItem({
@@ -469,6 +510,7 @@ function buildRowsForOnlineSales() {
         latestBuyPrice,
         assistSellPrice: Number(catItem?.sellNormalFee) || 0,
         soldQtyOnDate: it.quantitySold,
+        additionalCandidateSkus: candidateSkus,
       }),
     );
   }
@@ -602,11 +644,11 @@ function recalculateAllRows() {
     }
 
     if (row.status !== "success" && row.status !== "error") {
-      row.status = !row.destySkuId ? "unmapped" : row.priceDifference !== 0 ? "ready" : "idle";
+      row.status = (!row.destySkuId && !row.isMapped) ? "unmapped" : row.priceDifference !== 0 ? "ready" : "idle";
     }
 
     if (!isQueueRunning.value && row.status !== "success" && row.status !== "error") {
-      row.checked = Boolean(row.destySkuId && row.priceDifference !== 0);
+      row.checked = Boolean((row.destySkuId || row.isMapped) && row.priceDifference !== 0);
     }
   }
 
@@ -641,7 +683,7 @@ function onTargetPriceChange(row: PriceTableRowItem, newVal: string | number) {
   }
 
   if (row.status !== "success" && row.status !== "error") {
-    row.status = !row.destySkuId ? "unmapped" : row.priceDifference !== 0 ? "ready" : "idle";
+    row.status = (!row.destySkuId && !row.isMapped) ? "unmapped" : row.priceDifference !== 0 ? "ready" : "idle";
   }
 }
 
@@ -672,7 +714,7 @@ function resetRowPrice(row: PriceTableRowItem) {
   }
 
   if (row.status !== "success" && row.status !== "error") {
-    row.status = !row.destySkuId ? "unmapped" : row.priceDifference !== 0 ? "ready" : "idle";
+    row.status = (!row.destySkuId && !row.isMapped) ? "unmapped" : row.priceDifference !== 0 ? "ready" : "idle";
   }
 }
 
@@ -714,7 +756,7 @@ const filterCounts = computed(() => {
   let cautionCount = 0;
 
   for (const r of tableRows.value) {
-    if (!r.destySkuId || r.status === "unmapped") {
+    if ((!r.destySkuId && !r.isMapped) || r.status === "unmapped") {
       unmappedCount++;
     } else if (r.status === "success") {
       successCount++;
@@ -776,13 +818,13 @@ const filteredRows = computed(() => {
   let list = tableRows.value;
 
   if (statusFilter.value === "diff_positive") {
-    list = list.filter((r) => r.destySkuId && r.destyCurrentPrice !== null && r.priceDifference > 0);
+    list = list.filter((r) => (r.destySkuId || r.isMapped) && r.destyCurrentPrice !== null && r.priceDifference > 0);
   } else if (statusFilter.value === "diff_negative") {
-    list = list.filter((r) => r.destySkuId && r.destyCurrentPrice !== null && r.priceDifference < 0);
+    list = list.filter((r) => (r.destySkuId || r.isMapped) && r.destyCurrentPrice !== null && r.priceDifference < 0);
   } else if (statusFilter.value === "same_price") {
-    list = list.filter((r) => r.destySkuId && r.destyCurrentPrice !== null && r.priceDifference === 0);
+    list = list.filter((r) => (r.destySkuId || r.isMapped) && r.destyCurrentPrice !== null && r.priceDifference === 0);
   } else if (statusFilter.value === "unmapped") {
-    list = list.filter((r) => !r.destySkuId || r.status === "unmapped");
+    list = list.filter((r) => (!r.destySkuId && !r.isMapped) || r.status === "unmapped");
   } else if (statusFilter.value === "success") {
     list = list.filter((r) => r.status === "success");
   } else if (statusFilter.value === "error") {
@@ -1499,7 +1541,7 @@ watch([statusFilter, searchFilter, safetyFilter], () => {
                   v-model="row.checked"
                   dense
                   color="teal"
-                  :disable="!row.destySkuId || isQueueRunning"
+                  :disable="(!row.destySkuId && !row.isMapped) || isQueueRunning"
                 />
               </td>
 
@@ -1519,9 +1561,29 @@ watch([statusFilter, searchFilter, safetyFilter], () => {
 
               <!-- Desty SKU & Channels -->
               <td class="col-desty-product">
-                <div v-if="row.destySkuId">
-                  <div class="text-caption font-mono text-weight-bold text-slate-900">
-                    {{ row.destyMasterSku }}
+                <div v-if="row.destySkuId || row.isMapped || row.destyMasterSku">
+                  <div class="row items-center q-gutter-x-xs no-wrap">
+                    <span class="text-caption font-mono text-weight-bold text-slate-900">
+                      {{ row.destyMasterSku }}
+                    </span>
+                    <q-badge
+                      v-if="row.mappingSource === 'override'"
+                      color="teal-1"
+                      text-color="teal-9"
+                      class="text-weight-bold text-2xs q-px-xs"
+                    >
+                      Override
+                      <q-tooltip>Dipetakan via Override Pemetaan</q-tooltip>
+                    </q-badge>
+                    <q-badge
+                      v-else-if="row.isMapped"
+                      color="positive"
+                      text-color="white"
+                      class="text-weight-bold text-2xs q-px-xs"
+                    >
+                      SKU
+                      <q-tooltip>Dipetakan otomatis via SKU 1:1</q-tooltip>
+                    </q-badge>
                   </div>
                   <div v-if="row.destyProductName" class="text-caption text-grey-7 ellipsis" style="max-width: 200px;" :title="row.destyProductName">
                     {{ row.destyProductName }}
@@ -1756,7 +1818,7 @@ watch([statusFilter, searchFilter, safetyFilter], () => {
                   </q-badge>
 
                   <q-btn
-                    v-if="row.destySkuId"
+                    v-if="row.destySkuId || row.isMapped"
                     flat
                     round
                     dense
@@ -1779,7 +1841,7 @@ watch([statusFilter, searchFilter, safetyFilter], () => {
                     size="sm"
                     @click="openMappingDialog(row)"
                   >
-                    <q-tooltip>Petakan ke SKU Desty</q-tooltip>
+                    <q-tooltip>Override Pemetaan ke SKU Desty</q-tooltip>
                   </q-btn>
                 </div>
               </td>

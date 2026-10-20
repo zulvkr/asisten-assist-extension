@@ -1,5 +1,7 @@
 export type CatalogItemType = "prescription" | "akhp";
 
+export type MappingSource = "override" | "direct_sku" | "unmapped";
+
 export interface CanonicalOrderItem {
   sku: string;
   destySku?: string;
@@ -8,6 +10,12 @@ export interface CanonicalOrderItem {
   unit?: string;
   unitPrice?: number;
   totalPrice?: number;
+  isMapped?: boolean;
+  mappingSource?: MappingSource;
+  mappedAssistId?: string;
+  mappedAssistCode?: string;
+  mappedAssistName?: string;
+  conversionFactor?: number;
 }
 
 export interface CanonicalOrder {
@@ -36,6 +44,8 @@ export interface CanonicalCatalogItem {
   sellNormalFee?: number;
   buyFee?: number;
   avgHPP?: number;
+  sku?: string;
+  skus?: string[];
 }
 
 export interface CanonicalStockBalance {
@@ -47,6 +57,11 @@ export interface CanonicalStockBalance {
   reservedStock: number | null;
   productName?: string;
   raw?: unknown;
+  isMapped?: boolean;
+  mappingSource?: MappingSource;
+  mappedAssistId?: string;
+  mappedAssistCode?: string;
+  conversionFactor?: number;
 }
 
 export interface StockDeductionCommand {

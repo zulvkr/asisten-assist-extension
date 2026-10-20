@@ -73,11 +73,17 @@ export function validateCanonicalOrder(
   );
 
   const catalogById = new Map((context.catalog ?? []).map((c) => [c.id.trim(), c]));
-  const catalogByCode = new Map(
-    (context.catalog ?? [])
-      .filter((c) => Boolean(c.code))
-      .map((c) => [normalized(c.code), c]),
-  );
+  const catalogLookup = new Map<string, CanonicalCatalogItem>();
+  for (const c of context.catalog ?? []) {
+    if (c.code) catalogLookup.set(normalized(c.code), c);
+    if (c.sku) catalogLookup.set(normalized(c.sku), c);
+    if (Array.isArray(c.skus)) {
+      for (const s of c.skus) {
+        if (s) catalogLookup.set(normalized(s), c);
+      }
+    }
+    if (c.id) catalogLookup.set(normalized(c.id), c);
+  }
 
   const duplicates = new Set(
     Array.from(context.duplicateOrderNumbers ?? [], (v) => normalized(String(v))),
@@ -115,7 +121,7 @@ export function validateCanonicalOrder(
 
     let mapping = mappings.get(normalized(sku));
     if (!mapping && context.catalog) {
-      const fallback = catalogByCode.get(normalized(sku));
+      const fallback = catalogLookup.get(normalized(sku));
       if (fallback) {
         mapping = {
           destySku: sku,
@@ -130,6 +136,21 @@ export function validateCanonicalOrder(
           active: true,
         };
       }
+    }
+    if (!mapping && item.isMapped && item.mappedAssistId) {
+      const fallback = catalogById.get(item.mappedAssistId.trim());
+      mapping = {
+        destySku: sku,
+        assistCode: item.mappedAssistCode || fallback?.code || sku,
+        assistType: fallback?.type || "prescription",
+        assistId: item.mappedAssistId,
+        assistName: item.mappedAssistName || fallback?.name || item.productName,
+        destyUnit: item.unit || fallback?.unit,
+        assistUnit: fallback?.unit || item.unit,
+        depotId: fallback?.depotId || context.defaultDepotId,
+        conversionFactor: item.conversionFactor || 1,
+        active: true,
+      };
     }
 
     if (!mapping) {
@@ -150,7 +171,7 @@ export function validateCanonicalOrder(
       continue;
     }
 
-    const catalogItem = catalogById.get(mapping.assistId.trim()) ?? catalogByCode.get(normalized(mapping.assistCode));
+    const catalogItem = catalogById.get(mapping.assistId.trim()) ?? catalogLookup.get(normalized(mapping.assistCode));
     const depotId =
       mapping.depotId?.trim() ||
       catalogItem?.depotId?.trim() ||

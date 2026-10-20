@@ -96,4 +96,36 @@ describe("validateDestyOrder", () => {
     expect(result.mappedItems[0].mapping.conversionFactor).toBe(1);
     expect(result.mappedItems[0].assistQuantity).toBe(3);
   });
+
+  it("automatically matches 1:1 when SKU matches catalog item sku or skus array", () => {
+    const orderWithSku = normalizeDestyOrder({
+      displayedOrderSn: "ORDER-SKU-MATCH",
+      bookingSn: "BOOK-SKU-MATCH",
+      totalSales: 10000,
+      items: [{ masterSku: "BARCODE-12345", productName: "Product with barcode SKU", quantity: 2 }],
+    });
+
+    const result = validateDestyOrder(orderWithSku, {
+      mappings: [],
+      assistCatalog: [
+        {
+          id: "med-barcode",
+          code: "INTERNAL-CODE-01",
+          name: "Product By Barcode",
+          type: "prescription",
+          unit: "Pcs",
+          sku: "BARCODE-12345",
+          skus: ["BARCODE-12345"],
+          depotId: "depot-default",
+          stock: 50,
+        },
+      ],
+      stockByAssistId: { "med-barcode": 50 },
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.mappedItems).toHaveLength(1);
+    expect(result.mappedItems[0].mapping.assistCode).toBe("INTERNAL-CODE-01");
+    expect(result.mappedItems[0].assistQuantity).toBe(2);
+  });
 });

@@ -231,49 +231,65 @@ export function calculateSalesVelocityFromTransactions(
 }
 
 /**
- * Resolves match between Assist item and Desty catalog record using mappings.
+ * Resolves match between Assist item and Desty catalog record using mappings (overrides) and direct SKU match.
  */
 export function resolveDestyPriceItem(
   assistCode: string,
   mappings: DestySkuMapping[],
   destyPriceCatalog: Record<string, DestyPriceRecord>,
+  additionalCandidateSkus: (string | undefined)[] = [],
 ): {
   destySku: string;
   conversionFactor: number;
   isMapped: boolean;
+  mappingSource: "override" | "direct_sku" | "unmapped";
   destyRecord?: DestyPriceRecord;
 } {
   const codeUpper = (assistCode || "").trim().toUpperCase();
+  const allCandidates = [
+    codeUpper,
+    ...additionalCandidateSkus.map((s) => String(s || "").trim().toUpperCase()),
+  ].filter(Boolean);
 
-  // 1. Check in SKU mappings (destySku -> assistCode)
-  const mapped = mappings.find(
-    (m) => m.active !== false && (m.assistCode || "").trim().toUpperCase() === codeUpper,
-  );
+  // 1. Check in SKU mappings (destySku -> assistCode) as Override
+  for (const cand of allCandidates) {
+    const mapped = mappings.find(
+      (m) =>
+        m.active !== false &&
+        ((m.assistCode || "").trim().toUpperCase() === cand ||
+          (m.destySku || "").trim().toUpperCase() === cand),
+    );
 
-  if (mapped && mapped.destySku) {
-    const destySkuUpper = mapped.destySku.trim().toUpperCase();
-    const destyRecord = destyPriceCatalog[destySkuUpper];
-    return {
-      destySku: destySkuUpper,
-      conversionFactor: Number(mapped.conversionFactor) > 0 ? Number(mapped.conversionFactor) : 1,
-      isMapped: true,
-      destyRecord,
-    };
+    if (mapped && mapped.destySku) {
+      const destySkuUpper = mapped.destySku.trim().toUpperCase();
+      const destyRecord = destyPriceCatalog[destySkuUpper];
+      return {
+        destySku: destySkuUpper,
+        conversionFactor: Number(mapped.conversionFactor) > 0 ? Number(mapped.conversionFactor) : 1,
+        isMapped: true,
+        mappingSource: "override",
+        destyRecord,
+      };
+    }
   }
 
-  // 2. Direct match with masterSku in Desty catalog
-  if (codeUpper && destyPriceCatalog[codeUpper]) {
-    return {
-      destySku: codeUpper,
-      conversionFactor: 1,
-      isMapped: true,
-      destyRecord: destyPriceCatalog[codeUpper],
-    };
+  // 2. Direct match with Desty catalog (SKU 1:1 auto-map)
+  for (const cand of allCandidates) {
+    if (cand && destyPriceCatalog[cand]) {
+      return {
+        destySku: cand,
+        conversionFactor: 1,
+        isMapped: true,
+        mappingSource: "direct_sku",
+        destyRecord: destyPriceCatalog[cand],
+      };
+    }
   }
 
   return {
     destySku: codeUpper,
     conversionFactor: 1,
     isMapped: false,
+    mappingSource: "unmapped",
   };
 }

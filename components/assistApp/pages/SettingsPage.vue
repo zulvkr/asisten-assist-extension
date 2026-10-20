@@ -423,6 +423,10 @@ import {
   AVAILABLE_GEMINI_MODELS,
   DEFAULT_GEMINI_MODEL,
 } from "@/services/gemini/geminiConfigStorage";
+import {
+  DESTY_MASTER_WAREHOUSES,
+  DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
+} from "@/config/destyConfig";
 
 const $q = useQuasar();
 const store = useAssistStore();
@@ -430,6 +434,13 @@ const store = useAssistStore();
 const scriptUrl = ref(store.googleAppsScriptUrl);
 const scriptToken = ref(store.googleAppsScriptToken);
 const excludedSkuPrefixes = ref(store.excludedDestySkuPrefixes);
+const selectedDestyWarehouse = ref(
+  store.destyMasterWarehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
+);
+const warehouseOptions = DESTY_MASTER_WAREHOUSES.map((wh) => ({
+  label: `${wh.name} (${wh.id})${wh.isDefault ? " - Utama" : ""}`,
+  value: wh.id,
+}));
 const assistAccountTxId = ref(store.assistAccountTxId);
 const developerMode = ref(store.developerMode);
 const syncing = ref(false);
@@ -631,10 +642,11 @@ function save() {
 
 function saveComparison() {
   store.saveComparisonSettings(excludedSkuPrefixes.value);
+  store.setDestyMasterWarehouseId(selectedDestyWarehouse.value);
 
   $q.notify({
     type: "positive",
-    message: "Pengaturan perbandingan stok berhasil disimpan!",
+    message: "Pengaturan Desty & perbandingan stok berhasil disimpan!",
     position: "top"
   });
 }

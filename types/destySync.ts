@@ -26,6 +26,12 @@ export interface NormalizedDestyOrderItem {
   unit?: string;
   unitPrice?: number;
   totalPrice?: number;
+  isMapped?: boolean;
+  mappingSource?: "override" | "direct_sku" | "unmapped";
+  mappedAssistId?: string;
+  mappedAssistCode?: string;
+  mappedAssistName?: string;
+  conversionFactor?: number;
 }
 
 export interface NormalizedDestyOrder {

@@ -8,6 +8,7 @@ import type {
 } from "@/types/offlineStockSync";
 import { DestyHttpClient } from "@/services/clients/destyHttpClient";
 import { toDestyOnHandEditPayload } from "@/adapters/desty/destyStockAdapter";
+import { DEFAULT_DESTY_MASTER_WAREHOUSE_ID } from "@/config/destyConfig";
 
 const ALLOWED_ITEM_TYPES = new Set(["prescription", "akhp", "scourPrescription"]);
 const MARKETPLACE_KEYWORDS = [
@@ -137,7 +138,7 @@ export async function executeStockReductionsUseCase(
     items,
     destyToken,
     destyTenantId,
-    defaultWarehouseId = "2042620805094077644",
+    defaultWarehouseId = DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
     onProgress,
   } = options;
 

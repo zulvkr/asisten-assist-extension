@@ -1,4 +1,5 @@
 import type { PemasukanData } from "@/types/PemasukanData";
+import { DEFAULT_DESTY_MASTER_WAREHOUSE_ID } from "@/config/destyConfig";
 import type { DestySkuMapping, AssistCatalogItem } from "@/types/destySync";
 import type { DestyOmniStockItem } from "@/composables/destyOmniStockApi";
 import { buildPemasukanRequest } from "@/utils/pemasukanApi";
@@ -304,7 +305,7 @@ export async function executeOfflineStockReduction(
   failedCount: number;
   results: Record<string, { status: "success" | "error"; message?: string }>;
 }> {
-  const { items, destyToken, destyTenantId, defaultWarehouseId = "2042620805094077644", onProgress } = params;
+  const { items, destyToken, destyTenantId, defaultWarehouseId = DEFAULT_DESTY_MASTER_WAREHOUSE_ID, onProgress } = params;
   const results: Record<string, { status: "success" | "error"; message?: string }> = {};
   let successCount = 0;
   let failedCount = 0;

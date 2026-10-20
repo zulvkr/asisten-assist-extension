@@ -23,6 +23,7 @@ import {
 } from "@/utils/getSoldItemsByDate";
 import { buildPemasukanRequest } from "@/utils/pemasukanApi";
 import { runtimeConfig } from "@/config/runtimeConfig";
+import { DEFAULT_DESTY_MASTER_WAREHOUSE_ID } from "@/config/destyConfig";
 import { getDestySkuMappings } from "@/services/destySync/mappingStorage";
 import { fetchMarginMappings } from "@/services/marginStorage";
 import { cleanseAssistCatalog } from "@/services/integration/assistProductAcl";
@@ -753,7 +754,8 @@ async function handleFetchStockComparison(
   const assistToken = payload.assistToken?.trim() ?? "";
   const destyToken = payload.destyToken?.trim() ?? "";
   const destyTenantId = payload.destyTenantId?.trim() ?? "";
-  const destyMasterWarehouseId = payload.destyMasterWarehouseId?.trim() ?? "";
+  const destyMasterWarehouseId =
+    payload.destyMasterWarehouseId?.trim() || DEFAULT_DESTY_MASTER_WAREHOUSE_ID;
 
   if (comparisonMode !== "all" && (!startDate || !endDate)) {
     return {
@@ -1014,7 +1016,12 @@ export default defineBackground(() => {
         try {
           const { token, tenantId, masterWarehouseId, skus } = message.payload || {};
           if (!token) throw new Error("Token Desty tidak tersedia.");
-          const items = await fetchDestyOmniStock({ token, tenantId, masterWarehouseId, skus });
+          const items = await fetchDestyOmniStock({
+            token,
+            tenantId,
+            masterWarehouseId: masterWarehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
+            skus,
+          });
           sendResponse({ ok: true, items });
         } catch (err) {
           sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -1033,7 +1040,7 @@ export default defineBackground(() => {
             throw new Error("Jumlah (amount) stok tidak valid.");
           }
 
-          const targetWarehouse = warehouseId ? String(warehouseId) : "2042620805094077644";
+          const targetWarehouse = warehouseId ? String(warehouseId) : DEFAULT_DESTY_MASTER_WAREHOUSE_ID;
           const result = await editDestyOnHand({
             token,
             tenantId,

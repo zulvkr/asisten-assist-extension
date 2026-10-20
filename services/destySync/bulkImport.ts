@@ -66,7 +66,12 @@ export async function bulkImportDestyOrders(
   for (const identifier of options.config.duplicateOrderNumbers ?? []) {
     duplicateIndex.add(String(identifier).trim().toUpperCase());
   }
-  const normalizedOrders = options.orders.map(normalizeDestyOrder);
+  const normalizedOrders = options.orders.map((o) =>
+    normalizeDestyOrder(o, {
+      mappings: options.mappings,
+      catalog: options.config.assistCatalog,
+    }),
+  );
   const results: DestyBulkImportItemResult[] = [];
   const validOrders: ReturnType<typeof normalizeDestyOrder>[] = [];
   const batchIdentifiers = new Set<string>();

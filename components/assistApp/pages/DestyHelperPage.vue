@@ -58,7 +58,7 @@
           <q-tab name="import" icon="cloud_download" label="Impor Pesanan (Desty → Assist)" />
           <q-tab name="price_update" icon="price_change" label="Update Harga Marketplace" />
           <q-tab name="offline_sync" icon="sync_saved_locally" label="SO Stok & Koreksi Desty" />
-          <q-tab name="mapping" icon="tune" label="Pemetaan & Konversi SKU" />
+          <q-tab name="mapping" icon="tune" label="Override Pemetaan & Konversi SKU" />
           <q-tab name="log" icon="history" label="Log Impor" />
         </q-tabs>
         <q-separator />
@@ -147,14 +147,14 @@
                   <div v-if="props.row.mappedItem">
                     <div class="row items-center justify-center q-gutter-x-xs no-wrap">
                       <q-badge
-                        :color="props.row.is1to1Fallback ? 'teal-1' : 'positive'"
-                        :text-color="props.row.is1to1Fallback ? 'teal-9' : 'white'"
+                        :color="props.row.is1to1Fallback ? 'positive' : 'teal-1'"
+                        :text-color="props.row.is1to1Fallback ? 'white' : 'teal-9'"
                         class="q-px-sm text-weight-bold cursor-pointer"
                       >
-                        <q-icon :name="props.row.is1to1Fallback ? 'sync_alt' : 'check_circle'" size="xs" class="q-mr-xs" />
-                        {{ props.row.is1to1Fallback ? '1:1 Auto' : 'Termapping' }}
+                        <q-icon :name="props.row.is1to1Fallback ? 'check_circle' : 'tune'" size="xs" class="q-mr-xs" />
+                        {{ props.row.is1to1Fallback ? 'Terpetakan (SKU)' : 'Override Pemetaan' }}
                         <q-tooltip anchor="top middle" self="bottom middle">
-                          <div class="text-weight-bold">{{ props.row.is1to1Fallback ? 'Cocok 1:1 Katalog Assist:' : 'Terpetakan (Firebase):' }}</div>
+                          <div class="text-weight-bold">{{ props.row.is1to1Fallback ? 'Cocok Otomatis 1:1 Katalog Assist:' : 'Override Pemetaan (Firebase):' }}</div>
                           <div>Kode: {{ props.row.mappedItem.assistCode }}</div>
                           <div>Nama: {{ props.row.mappedItem.assistName }}</div>
                           <div v-if="props.row.mappedItem.conversionFactor !== 1">Faktor: {{ props.row.mappedItem.conversionFactor }}</div>
@@ -168,7 +168,7 @@
                         icon="tune"
                         @click="openSkuRecommendationDialog(props.row.sku, props.row.productName)"
                       >
-                        <q-tooltip>Ubah pemetaan SKU ini</q-tooltip>
+                        <q-tooltip>Atur / ubah override pemetaan SKU ini</q-tooltip>
                       </q-btn>
                     </div>
                     <div class="text-2xs font-mono text-grey-7 ellipsis q-mt-2xs" style="max-width: 140px;" :title="props.row.mappedItem.assistName">
@@ -181,9 +181,9 @@
                       class="q-px-sm cursor-pointer"
                     >
                       <q-icon name="link_off" size="xs" class="q-mr-xs" />
-                      Belum Termapping
+                      Belum Dipetakan
                       <q-tooltip anchor="top middle" self="bottom middle">
-                        SKU Desty belum dipetakan ke katalog Assist di Firebase
+                        SKU Desty tidak ditemukan di katalog Assist maupun daftar override
                       </q-tooltip>
                     </q-badge>
 
@@ -198,7 +198,7 @@
                         @click="applyQuickMapping(props.row.sku, getSkuRecommendation(props.row.sku, props.row.productName).bestMatch!)"
                       >
                         <q-tooltip>
-                          Hubungkan ke: {{ getSkuRecommendation(props.row.sku, props.row.productName).bestMatch?.catalogItem.code }} - {{ getSkuRecommendation(props.row.sku, props.row.productName).bestMatch?.catalogItem.name }} (Disimpan ke Firebase)
+                          Hubungkan ke: {{ getSkuRecommendation(props.row.sku, props.row.productName).bestMatch?.catalogItem.code }} - {{ getSkuRecommendation(props.row.sku, props.row.productName).bestMatch?.catalogItem.name }} (Simpan sebagai override)
                         </q-tooltip>
                       </q-btn>
                       <q-btn
@@ -559,8 +559,11 @@
                       <q-badge color="blue-grey-2" text-color="blue-grey-9" class="q-ml-xs text-2xs">
                         {{ props.row.mappedItem.assistType }}
                       </q-badge>
-                      <q-badge v-if="props.row.is1to1Fallback" color="teal-1" text-color="teal-9" class="q-ml-xs text-2xs">
-                        1:1 Auto
+                      <q-badge v-if="props.row.is1to1Fallback" color="positive" text-color="white" class="q-ml-xs text-2xs">
+                        SKU 1:1
+                      </q-badge>
+                      <q-badge v-else color="teal-1" text-color="teal-9" class="q-ml-xs text-2xs">
+                        Override
                       </q-badge>
                     </div>
                   </div>
@@ -571,7 +574,7 @@
                       size="xs"
                       flat
                       color="teal"
-                      label="Petakan"
+                      label="Set Override"
                       class="q-ml-xs"
                       @click="openSkuRecommendationDialog(props.row.sku, props.row.productName)"
                     />
@@ -698,8 +701,16 @@
             />
           </q-tab-panel>
 
-          <!-- TAB 4: PEMETAAN & KONVERSI SKU -->
+          <!-- TAB 4: OVERRIDE PEMETAAN & KONVERSI SKU -->
           <q-tab-panel name="mapping" class="q-pa-md">
+            <!-- Info Box: Penjelasan Konsep Override Pemetaan -->
+            <div class="q-mb-md q-pa-sm bg-blue-1 text-blue-10 rounded-borders row items-center no-wrap text-caption border-blue-2">
+              <q-icon name="info" size="sm" class="q-mr-sm text-blue-8" />
+              <div>
+                <strong>Dasar Pemetaan:</strong> Secara default, pesanan dan stok dipetakan otomatis berdasarkan kesamaan <strong>SKU (1:1)</strong> ke katalog Assist tanpa perlu pengaturan tambahan.
+                Daftar di bawah ini berfungsi sebagai <strong>Override Pemetaan</strong> untuk produk dengan perbedaan kode SKU atau yang memerlukan <strong>faktor konversi satuan</strong> (misal: 1 Box di Desty = 10 Strip di Assist).
+              </div>
+            </div>
             <!-- Unmapped SKU Suggestions Box -->
             <div v-if="unmappedSkuRecommendations.length" class="q-mb-md q-pa-sm bg-grey-1 rounded-borders border">
               <div class="text-caption text-weight-bold text-teal row items-center justify-between q-mb-xs">
@@ -792,7 +803,7 @@
               <div class="col-12 col-md-3 flex items-center text-caption text-grey-7">Depot default: {{ DEFAULT_ASSIST_DEPOT_ID }}</div>
               <div class="col-12 col-md-2 flex items-center"><q-checkbox v-model="mappingDraft.active" label="Aktif" /></div>
               <div class="col-12 row q-gutter-sm items-center">
-                <q-btn color="teal" icon="save" label="Simpan Mapping" :loading="syncBusy" @click="saveMapping" />
+                <q-btn color="teal" icon="save" label="Simpan Override" :loading="syncBusy" @click="saveMapping" />
                 <q-btn outline color="teal" icon="sync" label="Sync Firebase" :loading="syncBusy" @click="syncWithFirebase" />
                 <q-btn outline color="teal" icon="file_download" label="Ekspor JSON" :disable="syncBusy" @click="exportMappings" />
                 <q-btn outline color="teal" icon="file_upload" label="Impor JSON" :disable="syncBusy" @click="mappingFileInput?.click()" />
@@ -801,7 +812,7 @@
             </div>
 
             <!-- Master Mappings Table -->
-            <q-table class="q-mt-md" flat bordered dense :rows="mappings" :columns="mappingColumns" row-key="destySku" no-data-label="Belum ada mapping SKU.">
+            <q-table class="q-mt-md" flat bordered dense :rows="mappings" :columns="mappingColumns" row-key="destySku" no-data-label="Belum ada override mapping SKU. Produk dengan SKU yang sama dengan katalog Assist otomatis terpetakan 1:1.">
               <template #body-cell-destySku="props">
                 <q-td :props="props" style="max-width: 170px;">
                   <span class="font-mono text-weight-bold text-primary ellipsis inline-block" style="max-width: 160px;" :title="props.value">{{ props.value }}</span>
@@ -945,7 +956,7 @@
       <q-card style="min-width: 550px; max-width: 750px;">
         <q-card-section class="row items-center bg-teal text-white">
           <q-icon name="auto_fix_high" size="24px" class="q-mr-sm" />
-          <div class="text-h6">Rekomendasi Pemetaan SKU</div>
+          <div class="text-h6">Override Pemetaan SKU</div>
           <q-space />
           <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
@@ -1082,7 +1093,7 @@
           <q-btn flat label="Batal" color="grey-7" v-close-popup />
           <q-btn
             color="positive"
-            label="Simpan Pemetaan"
+            label="Simpan Override Pemetaan"
             icon="save"
             :disable="!modalSelectedCandidate"
             :loading="syncBusy"
@@ -1100,6 +1111,7 @@ import * as XLSX from "xlsx";
 import { resolveDestyToken } from "@/composables/destyOmniTokenManager";
 import { resolveAssistToken } from "@/composables/assistTokenManager";
 import { useAssistStore } from "../stores/assistStore";
+import { DEFAULT_DESTY_MASTER_WAREHOUSE_ID } from "@/config/destyConfig";
 import { fetchAssistCatalog, buildAssistDepotIndex, buildAssistStockIndex } from "@/services/integration/assistCatalogApi";
 import {
   createAssistSaleOrder,
@@ -1107,6 +1119,8 @@ import {
   fetchAssistDestyTransactionDetails,
 } from "@/services/integration/assistSalesApi";
 import { normalizeDestyOrder } from "@/services/destySync/orderNormalizer";
+import { toCanonicalOrder, type CanonicalMappingContext } from "@/adapters/desty/destyOrderAdapter";
+import type { CanonicalCatalogItem } from "@/domain/integration/models";
 import { validateDestyOrder } from "@/utils/destyOrderValidation";
 import {
   buildDestyDuplicateIndex,
@@ -1284,30 +1298,43 @@ const modalSelectedCandidate = ref<SkuMatchCandidate | null>(null);
 const modalConversionFactor = ref(1);
 const modalCatalogSearchQuery = ref("");
 
+const canonicalCatalog = computed<CanonicalCatalogItem[]>(() => {
+  return assistCatalog.value.map((item) => ({
+    id: item.id,
+    code: item.code,
+    name: item.name,
+    type: item.type,
+    unit: item.unit,
+    depotId: item.depotId,
+    stock: item.stock,
+    sku: item.sku,
+    skus: item.skus,
+  }));
+});
+
+const canonicalMappingContext = computed<CanonicalMappingContext>(() => ({
+  mappings: mappings.value,
+  catalog: canonicalCatalog.value,
+}));
+
 const unmappedSkusInOrders = computed(() => {
   const unmapped = new Map<string, { sku: string; productName: string; count: number }>();
-  const existingMappingKeys = new Set(
-    mappings.value.filter((m) => m.active).map((m) => m.destySku.trim().toUpperCase())
-  );
-  const catalogCodeKeys = new Set(
-    assistCatalog.value.map((item) => (item.code || "").trim().toUpperCase()).filter(Boolean)
-  );
+  const ctx = canonicalMappingContext.value;
 
   for (const order of orders.value) {
-    const items = Array.isArray(order.items) ? order.items : [];
-    for (const item of items) {
-      const sku = (item.skuCode ?? item.masterSku ?? item.sku ?? "").trim();
-      if (!sku) continue;
-      const skuUpper = sku.toUpperCase();
-      // Only treat as unmapped if NOT in explicit mappings AND NOT matching catalog code 1:1
-      if (!existingMappingKeys.has(skuUpper) && !catalogCodeKeys.has(skuUpper)) {
+    const canonical = toCanonicalOrder(order, ctx);
+    for (const item of canonical.items) {
+      if (!item.isMapped) {
+        const sku = item.sku.trim();
+        if (!sku) continue;
+        const skuUpper = sku.toUpperCase();
         const existing = unmapped.get(skuUpper);
         if (existing) {
           existing.count += Number(item.quantity ?? 1);
         } else {
           unmapped.set(skuUpper, {
             sku,
-            productName: item.productName || item.name || "-",
+            productName: item.productName || "-",
             count: Number(item.quantity ?? 1),
           });
         }
@@ -1515,7 +1542,7 @@ const orderValidationMap = computed<Map<string, ReturnType<typeof validateDestyO
   for (const order of orders.value) {
     const key = order.displayedOrderSn || order.orderId || order.id || "";
     if (key) {
-      map.set(key, validateDestyOrder(normalizeDestyOrder(order), context));
+      map.set(key, validateDestyOrder(normalizeDestyOrder(order, canonicalMappingContext.value), context));
     }
   }
   return map;
@@ -1533,10 +1560,11 @@ const flattenedItems = computed<FlattenedOrderItem[]>(() => {
     const isValid = validationResult ? validationResult.valid : false;
     const validationMessages = validationResult ? validationResult.issues.map((i) => i.message) : [];
 
-    const items = Array.isArray(record.items) && record.items.length ? record.items : [undefined];
+    const canonical = toCanonicalOrder(record, canonicalMappingContext.value);
+    const items = canonical.items.length ? canonical.items : [undefined];
     for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
       const item = items[itemIdx];
-      const sku = item?.skuCode ?? item?.masterSku ?? "";
+      const sku = (item?.sku ?? item?.destySku ?? "").trim();
       const excelRow = rowIndex + 2;
       
       const itemSkuUpper = sku.trim().toUpperCase();
@@ -1667,7 +1695,7 @@ function validateSelectedOrder() {
     return false;
   }
   const validation = validateDestyOrder(
-    normalizeDestyOrder(selectedOrder.value),
+    normalizeDestyOrder(selectedOrder.value, canonicalMappingContext.value),
     buildSyncContext(),
   );
   syncIssues.value = validation.issues;
@@ -2579,7 +2607,7 @@ async function fetchLiveDestyStockForOffline(skusToFetch?: string[]) {
       payload: {
         token: destyToken.value,
         tenantId: destyTenantId.value,
-        masterWarehouseId: store.destyMasterWarehouseId || "2042620805094077644",
+        masterWarehouseId: store.destyMasterWarehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
         skus: targetSkus,
       },
     })) as { ok: boolean; items?: DestyOmniStockItem[]; error?: string } | undefined;
@@ -2675,7 +2703,7 @@ async function handleExecuteOfflineStockSync() {
       items: itemsToSync,
       destyToken: destyToken.value,
       destyTenantId: destyTenantId.value,
-      defaultWarehouseId: store.destyMasterWarehouseId || "2042620805094077644",
+      defaultWarehouseId: store.destyMasterWarehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
       onProgress: (p) => {
         offlineProgressCurrent.value = p.current;
         offlineProgressSuccess.value = p.success;

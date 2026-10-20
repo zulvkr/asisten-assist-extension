@@ -83,6 +83,7 @@ export interface PriceTableRowItem {
   assistUnitName?: string;
   conversionFactor: number;
   isMapped: boolean;
+  mappingSource?: "override" | "direct_sku" | "unmapped";
 
   // Assist Base info (harga beli terakhir & jual offline)
   assistBuyPrice: number; // Harga beli terakhir (HPP)

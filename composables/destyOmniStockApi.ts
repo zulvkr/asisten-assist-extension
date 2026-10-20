@@ -1,3 +1,5 @@
+import { DEFAULT_DESTY_MASTER_WAREHOUSE_ID } from "@/config/destyConfig";
+
 // Desty Omni OpenAPI base URL
 const DESTY_API_BASE = "https://omni.desty.app";
 
@@ -105,10 +107,11 @@ function mapOmniInventoryRecord(
     ? String(record.skuId)
     : (record.id !== undefined && record.id !== null ? String(record.id) : undefined);
 
+  const effectiveTargetWarehouseId = targetWarehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID;
   let specificWh: Record<string, unknown> | undefined;
-  if (targetWarehouseId && Array.isArray(record.warehouseStocks)) {
+  if (Array.isArray(record.warehouseStocks)) {
     specificWh = (record.warehouseStocks as Array<Record<string, unknown>>).find(
-      (ws) => String(ws.warehouseId || "") === targetWarehouseId,
+      (ws) => String(ws.warehouseId || "") === effectiveTargetWarehouseId,
     );
   }
 
@@ -130,7 +133,7 @@ function mapOmniInventoryRecord(
       )
     : null;
 
-  let warehouseId = targetWarehouseId || (specificWh?.warehouseId ? String(specificWh.warehouseId) : undefined);
+  let warehouseId = specificWh?.warehouseId ? String(specificWh.warehouseId) : (targetWarehouseId || undefined);
   if (!warehouseId) {
     warehouseId = record.warehouseId !== undefined && record.warehouseId !== null
       ? String(record.warehouseId)
@@ -147,7 +150,7 @@ function mapOmniInventoryRecord(
   return {
     sku,
     skuId,
-    warehouseId: warehouseId ? String(warehouseId) : "2042620805094077644",
+    warehouseId: warehouseId ? String(warehouseId) : DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
     stock,
     breakdown: {
       fisik,
@@ -234,7 +237,7 @@ function buildInventoryListUrl(params: {
   url.searchParams.set("tag", "");
   url.searchParams.set("param", params.param ?? "");
 
-  const masterWarehouseId = String(params.masterWarehouseId ?? "").trim();
+  const masterWarehouseId = String(params.masterWarehouseId ?? "").trim() || DEFAULT_DESTY_MASTER_WAREHOUSE_ID;
   if (masterWarehouseId) {
     url.searchParams.set("masterWarehouseId", masterWarehouseId);
   }
@@ -404,7 +407,7 @@ export async function editDestyOnHand(
     amount: params.amount,
     editType: params.editType || "Add",
     skuId: params.skuId,
-    warehouseId: params.warehouseId || "2042620805094077644",
+    warehouseId: params.warehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID,
   };
 
   const headers = {

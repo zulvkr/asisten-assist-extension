@@ -124,7 +124,10 @@ export async function createAssistSaleOrder(
   if (!token) throw new Error("Token Assist kosong.");
   if (!trimBaseUrl(config.apiBaseUrl)) throw new Error("URL API Assist kosong.");
 
-  const order = normalizeDestyOrder(inputOrder);
+  const order = normalizeDestyOrder(inputOrder, {
+    mappings,
+    catalog: config.assistCatalog,
+  });
   const validation = validateDestyOrder(order, {
     mappings,
     assistCatalog: config.assistCatalog,

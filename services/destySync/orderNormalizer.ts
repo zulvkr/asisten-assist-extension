@@ -1,12 +1,15 @@
-import { toCanonicalOrder } from "@/adapters/desty/destyOrderAdapter";
+import { toCanonicalOrder, type CanonicalMappingContext } from "@/adapters/desty/destyOrderAdapter";
 import type { NormalizedDestyOrder, NormalizedDestyOrderItem } from "@/types/destySync";
 
 /**
  * Facade: converts the different list/detail shapes returned by Desty into one stable contract.
  * Delegated to inbound ACL adapter toCanonicalOrder.
  */
-export function normalizeDestyOrder(input: unknown): NormalizedDestyOrder {
-  const canonical = toCanonicalOrder(input);
+export function normalizeDestyOrder(
+  input: unknown,
+  context?: CanonicalMappingContext,
+): NormalizedDestyOrder {
+  const canonical = toCanonicalOrder(input, context);
   return {
     orderId: canonical.orderId,
     marketplaceOrderSn: canonical.marketplaceOrderSn || canonical.externalOrderSn,
@@ -24,6 +27,12 @@ export function normalizeDestyOrder(input: unknown): NormalizedDestyOrder {
       unit: i.unit,
       unitPrice: i.unitPrice,
       totalPrice: i.totalPrice,
+      isMapped: i.isMapped,
+      mappingSource: i.mappingSource,
+      mappedAssistId: i.mappedAssistId,
+      mappedAssistCode: i.mappedAssistCode,
+      mappedAssistName: i.mappedAssistName,
+      conversionFactor: i.conversionFactor,
     })),
     raw: canonical.raw,
   };

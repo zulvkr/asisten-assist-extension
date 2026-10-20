@@ -183,6 +183,7 @@ describe("destyPriceUpdateService", () => {
     it("resolves mapped SKU with conversion factor", () => {
       const resolved = resolveDestyPriceItem("PCT500", mockMappings, mockDestyCatalog);
       expect(resolved.isMapped).toBe(true);
+      expect(resolved.mappingSource).toBe("override");
       expect(resolved.destySku).toBe("DESTY-PCT-BOX");
       expect(resolved.conversionFactor).toBe(10);
       expect(resolved.destyRecord?.salesPrice).toBe(45000);
@@ -191,14 +192,30 @@ describe("destyPriceUpdateService", () => {
     it("resolves direct SKU match when identical to masterSku", () => {
       const resolved = resolveDestyPriceItem("AMOX-STRIP", mockMappings, mockDestyCatalog);
       expect(resolved.isMapped).toBe(true);
+      expect(resolved.mappingSource).toBe("direct_sku");
       expect(resolved.destySku).toBe("AMOX-STRIP");
       expect(resolved.conversionFactor).toBe(1);
+      expect(resolved.destyRecord?.salesPrice).toBe(12000);
+    });
+
+    it("resolves match via additional candidate SKUs", () => {
+      // assistCode is an internal code, but product SKU is AMOX-STRIP
+      const resolved = resolveDestyPriceItem(
+        "INTERNAL-AMOX-01",
+        mockMappings,
+        mockDestyCatalog,
+        ["AMOX-STRIP"],
+      );
+      expect(resolved.isMapped).toBe(true);
+      expect(resolved.mappingSource).toBe("direct_sku");
+      expect(resolved.destySku).toBe("AMOX-STRIP");
       expect(resolved.destyRecord?.salesPrice).toBe(12000);
     });
 
     it("returns unmapped when SKU is not in mappings or Desty catalog", () => {
       const resolved = resolveDestyPriceItem("UNKNOWN-CODE", mockMappings, mockDestyCatalog);
       expect(resolved.isMapped).toBe(false);
+      expect(resolved.mappingSource).toBe("unmapped");
       expect(resolved.destyRecord).toBeUndefined();
     });
   });

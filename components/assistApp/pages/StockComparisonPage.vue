@@ -240,6 +240,7 @@ import {
   validateDateRangeLimit,
 } from "@/utils/validateDateRangeLimit";
 import { formatRupiah } from "@/utils/rupiahUtils";
+import { DEFAULT_DESTY_MASTER_WAREHOUSE_ID } from "@/config/destyConfig";
 
 type ValidationState = "muted" | "ok" | "error";
 type DataSource = "assist" | "desty" | "both";
@@ -384,7 +385,7 @@ async function runComparison() {
       const destyTokenResult = await requestDestyTokenFromOpenTabs();
       destyToken = destyTokenResult.token;
       destyTenantId = destyTokenResult.tenantId;
-      destyMasterWarehouseId = destyTokenResult.masterWarehouseId;
+      destyMasterWarehouseId = destyTokenResult.masterWarehouseId || DEFAULT_DESTY_MASTER_WAREHOUSE_ID;
       if (destyTokenResult.warnings.length) {
         warnings.value.push(...destyTokenResult.warnings);
       }

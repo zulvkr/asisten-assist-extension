@@ -1,4 +1,5 @@
 import type { CanonicalStockBalance, StockDeductionCommand } from "@/domain/integration/models";
+import { resolveCanonicalItemMapping, type CanonicalMappingContext } from "./destyOrderAdapter";
 
 function recordOf(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -17,8 +18,12 @@ function toNullableNumber(value: unknown): number | null {
 
 /**
  * Inbound ACL Adapter: translates raw Desty stock item into CanonicalStockBalance.
+ * When context is provided, enriches stock balance with mapping info.
  */
-export function toCanonicalStockBalance(input: unknown): CanonicalStockBalance {
+export function toCanonicalStockBalance(
+  input: unknown,
+  context?: CanonicalMappingContext,
+): CanonicalStockBalance {
   const row = recordOf(input);
   const sku = String(row.sku ?? row.skuCode ?? row.masterSku ?? "").trim();
   const skuId = row.skuId ? String(row.skuId) : undefined;
@@ -30,7 +35,7 @@ export function toCanonicalStockBalance(input: unknown): CanonicalStockBalance {
   const availableStock = toNullableNumber(row.tersedia ?? breakdown.tersedia ?? row.available);
   const reservedStock = toNullableNumber(row.pesanan ?? breakdown.pesanan ?? row.allocated);
 
-  return {
+  const balance: CanonicalStockBalance = {
     sku,
     skuId,
     warehouseId,
@@ -40,6 +45,17 @@ export function toCanonicalStockBalance(input: unknown): CanonicalStockBalance {
     productName,
     raw: input,
   };
+
+  if (context) {
+    const mapping = resolveCanonicalItemMapping(sku, context);
+    balance.isMapped = mapping.isMapped;
+    balance.mappingSource = mapping.mappingSource;
+    balance.mappedAssistId = mapping.mappedAssistId;
+    balance.mappedAssistCode = mapping.mappedAssistCode;
+    balance.conversionFactor = mapping.conversionFactor;
+  }
+
+  return balance;
 }
 
 /**

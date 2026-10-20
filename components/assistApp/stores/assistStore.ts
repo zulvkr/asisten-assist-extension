@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { resolveAssistToken } from "@/composables/assistTokenManager";
 import { resolveDestyToken } from "@/composables/destyOmniTokenManager";
 import { runtimeConfig } from "@/config/runtimeConfig";
+import { DEFAULT_DESTY_MASTER_WAREHOUSE_ID } from "@/config/destyConfig";
 import {
   fetchMarginMappings,
   upsertMarginItem,
@@ -23,7 +24,16 @@ export const useAssistStore = defineStore("assist", () => {
 
   const destyToken = ref(localStorage.getItem("desty_token") || "");
   const destyTenantId = ref(localStorage.getItem("desty_tenant_id") || "");
-  const destyMasterWarehouseId = ref(localStorage.getItem("desty_master_warehouse_id") || "");
+  const initialDestyWarehouse = (() => {
+    const stored = localStorage.getItem("desty_master_warehouse_id");
+    // Migrate legacy default (Apotek Isa) or empty to Apotek Aldila
+    if (!stored || stored === "2042620805094077644") {
+      localStorage.setItem("desty_master_warehouse_id", DEFAULT_DESTY_MASTER_WAREHOUSE_ID);
+      return DEFAULT_DESTY_MASTER_WAREHOUSE_ID;
+    }
+    return stored;
+  })();
+  const destyMasterWarehouseId = ref(initialDestyWarehouse);
 
   async function loadTokenAutomatically() {
     try {
@@ -43,10 +53,15 @@ export const useAssistStore = defineStore("assist", () => {
       if (result.token) {
         destyToken.value = result.token;
         destyTenantId.value = result.tenantId;
-        destyMasterWarehouseId.value = result.masterWarehouseId;
+        if (result.masterWarehouseId && result.masterWarehouseId !== "2042620805094077644") {
+          destyMasterWarehouseId.value = result.masterWarehouseId;
+          localStorage.setItem("desty_master_warehouse_id", result.masterWarehouseId);
+        } else if (!destyMasterWarehouseId.value || destyMasterWarehouseId.value === "2042620805094077644") {
+          destyMasterWarehouseId.value = DEFAULT_DESTY_MASTER_WAREHOUSE_ID;
+          localStorage.setItem("desty_master_warehouse_id", DEFAULT_DESTY_MASTER_WAREHOUSE_ID);
+        }
         localStorage.setItem("desty_token", result.token);
         localStorage.setItem("desty_tenant_id", result.tenantId);
-        localStorage.setItem("desty_master_warehouse_id", result.masterWarehouseId);
       }
     } catch (err) {
       console.error("Gagal memuat token Desty secara otomatis:", err);
@@ -74,10 +89,15 @@ export const useAssistStore = defineStore("assist", () => {
       if (result.token) {
         destyToken.value = result.token;
         destyTenantId.value = result.tenantId;
-        destyMasterWarehouseId.value = result.masterWarehouseId;
+        if (result.masterWarehouseId && result.masterWarehouseId !== "2042620805094077644") {
+          destyMasterWarehouseId.value = result.masterWarehouseId;
+          localStorage.setItem("desty_master_warehouse_id", result.masterWarehouseId);
+        } else if (!destyMasterWarehouseId.value || destyMasterWarehouseId.value === "2042620805094077644") {
+          destyMasterWarehouseId.value = DEFAULT_DESTY_MASTER_WAREHOUSE_ID;
+          localStorage.setItem("desty_master_warehouse_id", DEFAULT_DESTY_MASTER_WAREHOUSE_ID);
+        }
         localStorage.setItem("desty_token", result.token);
         localStorage.setItem("desty_tenant_id", result.tenantId);
-        localStorage.setItem("desty_master_warehouse_id", result.masterWarehouseId);
         return { success: true, token: result.token };
       }
       return { success: false, warnings: result.warnings };
@@ -85,6 +105,11 @@ export const useAssistStore = defineStore("assist", () => {
       console.error("Gagal reload token Desty:", err);
       return { success: false, error: err };
     }
+  }
+
+  function setDestyMasterWarehouseId(id: string) {
+    destyMasterWarehouseId.value = id;
+    localStorage.setItem("desty_master_warehouse_id", id);
   }
 
   function saveConfig(token: string, hospId: string) {
@@ -359,6 +384,7 @@ export const useAssistStore = defineStore("assist", () => {
     saveConfig,
     saveAssistSalesConfig,
     saveDeveloperMode,
+    setDestyMasterWarehouseId,
     getHeaders,
     fetchMarginData,
     saveAppsScriptConfig,

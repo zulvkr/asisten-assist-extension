@@ -76,5 +76,6 @@ export function toCanonicalCatalogItem(
     sellNormalFee: numberValue(row.sellNormalFee, row.sellingPrice, row.baseFee),
     buyFee: parseCatalogBuyFee(row),
     avgHPP: numberValue(row.avgHPP, row.avgHpp),
+    sku: text(row.sku, row.skuCode),
   };
 }
