@@ -8,12 +8,10 @@ import {
 import { db } from "@/config/firebase";
 import type {
   AssistCatalogItem,
-  DestySheetSkuFallback,
   DestySkuMapping,
   DestySkuMappingInput,
 } from "@/types/destySync";
 
-/** Only explicit user overrides are persisted. Effective Sheet/catalog mappings stay in memory. */
 export const DESTY_SKU_MAPPINGS_STORAGE_KEY = "destySync:skuOverrides";
 export const DESTY_MAPPING_COLLECTION = "desty_sku_mappings";
 export const DEFAULT_ASSIST_DEPOT_ID = "68b7af1e072af0c71ed65d3a";
@@ -305,96 +303,6 @@ export async function importDestySkuMappings(
     void upsertDestySkuMappingToFirestore(m);
   }
   return saved;
-}
-
-/** Reads the existing Google Sheet convention: code in column A, name in B, SKU in F. */
-export function buildGoogleSheetSkuFallback(
-  rows: unknown[][],
-): DestySheetSkuFallback[] {
-  const result: DestySheetSkuFallback[] = [];
-  const seen = new Set<string>();
-  for (const row of rows) {
-    if (!Array.isArray(row)) continue;
-    const assistCode = asTrimmedString(row[0]);
-    const assistName = asTrimmedString(row[1]);
-    const destySku = asTrimmedString(row[5]);
-    const key = destySku.toUpperCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    result.push({ destySku, assistCode, assistName });
-  }
-  return result;
-}
-
-export function buildMappingsFromGoogleSheet(
-  rows: unknown[][],
-  catalog: AssistCatalogItem[],
-  existingMappings: DestySkuMapping[] = [],
-  defaultDepotId: string = DEFAULT_ASSIST_DEPOT_ID,
-): { mappings: DestySkuMapping[]; unmatchedSkus: string[] } {
-  const existingBySku = new Map(existingMappings.map((mapping) => [mapping.destySku.toUpperCase(), mapping]));
-  const catalogByCode = new Map(catalog.map((item) => [item.code.trim().toUpperCase(), item]));
-  const mappings: DestySkuMapping[] = [];
-  const unmatchedSkus: string[] = [];
-  const seen = new Set<string>();
-  const seenAssistCodes = new Set<string>();
-  const seenAssistIds = new Set<string>();
-
-  for (const row of rows) {
-    if (!Array.isArray(row)) continue;
-    const destySku = asTrimmedString(row[5]);
-    const assistCode = asTrimmedString(row[0]);
-    const sheetName = asTrimmedString(row[1]);
-    if (!assistCode) continue;
-
-    const codeUpper = assistCode.toUpperCase();
-    seenAssistCodes.add(codeUpper);
-
-    const catalogItem = catalogByCode.get(codeUpper);
-    if (catalogItem?.id) {
-      seenAssistIds.add(catalogItem.id);
-    }
-
-    if (!destySku || seen.has(destySku.toUpperCase())) continue;
-    seen.add(destySku.toUpperCase());
-
-    if (!catalogItem) {
-      unmatchedSkus.push(destySku);
-      continue;
-    }
-
-    const previous = existingBySku.get(destySku.toUpperCase());
-    mappings.push({
-      destySku,
-      assistCode,
-      assistType: catalogItem.type,
-      assistId: catalogItem.id,
-      assistName: catalogItem.name || sheetName,
-      destyUnit: previous?.destyUnit,
-      assistUnit: catalogItem.unit || previous?.assistUnit,
-      // A fresh depot record is preferred over a stale previous fallback.
-      depotId: catalogItem.depotId || previous?.depotId || defaultDepotId.trim(),
-      conversionFactor: previous?.conversionFactor ?? 1,
-      active: previous?.active ?? true,
-      updatedAt: new Date().toISOString(),
-    });
-  }
-
-  // Keep manually confirmed mappings that are not yet present in the sheet.
-  // Stale mappings for items already managed in the sheet are discarded.
-  for (const mapping of existingMappings) {
-    const skuKey = mapping.destySku.toUpperCase();
-    const codeKey = (mapping.assistCode || "").trim().toUpperCase();
-    const idKey = (mapping.assistId || "").trim();
-
-    const isCodeManaged = codeKey && seenAssistCodes.has(codeKey);
-    const isIdManaged = idKey && seenAssistIds.has(idKey);
-
-    if (!seen.has(skuKey) && !isCodeManaged && !isIdManaged) {
-      mappings.push(mapping);
-    }
-  }
-  return { mappings, unmatchedSkus };
 }
 
 export function findDestySkuMapping(

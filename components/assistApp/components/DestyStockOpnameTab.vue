@@ -972,8 +972,17 @@ defineExpose({
 
               <!-- Stok Assist -->
               <td class="text-center">
-                <span class="text-weight-bold text-slate-900">{{ item.assistStock ?? '-' }}</span>
-                <span class="text-caption text-grey-7 q-ml-2xs">{{ item.assistUnit }}</span>
+                <div>
+                  <span class="text-weight-bold text-slate-900">{{ item.assistStock ?? '-' }}</span>
+                  <span class="text-caption text-grey-7 q-ml-2xs">{{ item.assistUnit }}</span>
+                </div>
+                <div
+                  v-if="item.conversionFactor !== 1 && item.assistStock !== null"
+                  class="text-xxs text-teal-8 font-medium q-mt-2xs"
+                  :title="`Stok setara di Desty: ${item.destyEquivalentStock ?? Math.floor(item.assistStock / item.conversionFactor)} ${item.destyUnit}`"
+                >
+                  (≈ {{ item.destyEquivalentStock ?? Math.floor(item.assistStock / item.conversionFactor) }} {{ item.destyUnit }})
+                </div>
               </td>
 
               <!-- Produk Desty -->

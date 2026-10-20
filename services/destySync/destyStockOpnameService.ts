@@ -379,6 +379,10 @@ export function buildShiftSoRows(params: {
         ? manual.checked
         : (item.offlineQty > 0 && status === "ready");
 
+      const destyEquivalentStock = assistStock !== null && cand.conversionFactor > 0
+        ? Math.floor(assistStock / cand.conversionFactor)
+        : null;
+
       rows.push({
         rowKey,
         assistItemId: item.assistItemId,
@@ -387,6 +391,7 @@ export function buildShiftSoRows(params: {
         assistItemName: item.assistItemName,
         assistUnit: item.assistUnit,
         assistStock,
+        destyEquivalentStock,
         destySku: destyStockFound ? cand.destySku : (cand.isMapped ? cand.destySku : ""),
         destyUnit: cand.destyUnit,
         conversionFactor: cand.conversionFactor,
@@ -514,6 +519,10 @@ export function buildFakturSoRows(params: {
 
       const checked = manual?.checked !== undefined ? manual.checked : status === "ready";
 
+      const destyEquivalentStock = assistStock !== null && cand.conversionFactor > 0
+        ? Math.floor(assistStock / cand.conversionFactor)
+        : null;
+
       rows.push({
         rowKey,
         assistItemId,
@@ -522,6 +531,7 @@ export function buildFakturSoRows(params: {
         assistItemName,
         assistUnit,
         assistStock,
+        destyEquivalentStock,
         destySku: destyStockFound ? cand.destySku : (cand.isMapped ? cand.destySku : ""),
         destyUnit: cand.destyUnit,
         conversionFactor: cand.conversionFactor,
@@ -613,7 +623,10 @@ export function buildAllProductsSoRows(params: {
 
     const rawAssistStock = assistItem?.stock !== undefined ? assistItem.stock : null;
     const conversionFactor = mapping ? Number(mapping.conversionFactor) || 1 : 1;
-    const assistStock = rawAssistStock !== null ? Math.floor(rawAssistStock / conversionFactor) : null;
+    const destyEquivalentStock = rawAssistStock !== null && conversionFactor > 0
+      ? Math.floor(rawAssistStock / conversionFactor)
+      : null;
+    const assistStock = rawAssistStock;
 
     const destyFisik = destyInfo.fisik ?? destyInfo.breakdown?.fisik ?? destyInfo.stock ?? null;
     const destyReserved = destyInfo.pesanan ?? destyInfo.breakdown?.pesanan ?? 0;
@@ -622,18 +635,18 @@ export function buildAllProductsSoRows(params: {
     const rowKey = `all_${destySkuUpper}`;
     const manual = manualStates[rowKey];
 
-    const isStockMatched = assistStock !== null && destyFisik !== null && assistStock === destyFisik;
+    const isStockMatched = destyEquivalentStock !== null && destyFisik !== null && destyEquivalentStock === destyFisik;
 
     let defaultMode: AdjustMode = "Set";
-    let defaultQty = assistStock !== null ? assistStock : destyFisik !== null ? destyFisik : 0;
+    let defaultQty = destyEquivalentStock !== null ? destyEquivalentStock : destyFisik !== null ? destyFisik : 0;
 
-    if (assistStock !== null && destyFisik !== null) {
-      if (destyFisik < assistStock) {
+    if (destyEquivalentStock !== null && destyFisik !== null) {
+      if (destyFisik < destyEquivalentStock) {
         defaultMode = "Add";
-        defaultQty = assistStock - destyFisik;
-      } else if (destyFisik > assistStock) {
+        defaultQty = destyEquivalentStock - destyFisik;
+      } else if (destyFisik > destyEquivalentStock) {
         defaultMode = "Min";
-        defaultQty = destyFisik - assistStock;
+        defaultQty = destyFisik - destyEquivalentStock;
       } else {
         defaultMode = "Set";
         defaultQty = 0;
@@ -686,6 +699,7 @@ export function buildAllProductsSoRows(params: {
       assistItemName: assistItem?.name || "",
       assistUnit: mapping?.assistUnit || assistItem?.unit || "Pcs",
       assistStock,
+      destyEquivalentStock,
       destySku: destySkuUpper,
       destyUnit: mapping?.destyUnit || "Pcs",
       conversionFactor,
@@ -745,6 +759,7 @@ export function buildAllProductsSoRows(params: {
       assistItemName: cat.name,
       assistUnit: cat.unit || "Pcs",
       assistStock: typeof cat.stock === "number" ? cat.stock : null,
+      destyEquivalentStock: typeof cat.stock === "number" ? cat.stock : null,
       destySku: "",
       destyUnit: cat.unit || "Pcs",
       conversionFactor: 1,

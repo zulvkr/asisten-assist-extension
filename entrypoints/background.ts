@@ -23,7 +23,7 @@ import {
 } from "@/utils/getSoldItemsByDate";
 import { buildPemasukanRequest } from "@/utils/pemasukanApi";
 import { runtimeConfig } from "@/config/runtimeConfig";
-import { fetchMarginMappings } from "@/services/marginStorage";
+import { getDestySkuMappings } from "@/services/destySync/mappingStorage";
 import { buildAssistHeaders } from "@/services/integration/assistRequest";
 import {
   buildPendingOrderQuantityMap,
@@ -73,12 +73,6 @@ interface FetchProductPriceHistoryPayload {
 
 interface MarkItemsAsOrderedPayload {
   items?: MarkOutstandingOrderItem[];
-}
-
-interface MarginSkuRow {
-  kodeObat: string;
-  namaObat: string;
-  sku: string;
 }
 
 interface AssistStockItem {
@@ -150,15 +144,6 @@ async function fetchAssistPemasukan(
 
     skip += pageSize;
   }
-}
-
-async function fetchMarginSkuRows(): Promise<MarginSkuRow[]> {
-  const { items } = await fetchMarginMappings();
-  return items.map((item) => ({
-    kodeObat: item.kodeAssist.trim(),
-    namaObat: item.nama.trim(),
-    sku: (item.sku || "").trim(),
-  }));
 }
 
 async function fetchAssistStockItemsByPath(params: {
@@ -792,12 +777,12 @@ async function handleFetchStockComparison(
       return isSkuPrefixExcluded(sku, prefixes);
     };
 
-    const [pemasukanData, marginRows, medicineStockItems, bhpStockItems] =
+    const [pemasukanData, destyMappings, medicineStockItems, bhpStockItems] =
       await Promise.all([
         comparisonMode === "all"
           ? Promise.resolve([])
           : fetchAssistPemasukan(startDate, endDate, assistToken),
-        fetchMarginSkuRows(),
+        getDestySkuMappings().catch(() => []),
         fetchAssistMedicineStockItems(assistToken),
         fetchAssistBhpStockItems(assistToken),
       ]);
@@ -834,12 +819,11 @@ async function handleFetchStockComparison(
       buildSellNormalFeeByMedicineId(stockItems);
     const kodeObatByMedicineId = buildKodeObatByMedicineId(stockItems);
 
-    // Kode Obat is Assist metadata and is used only as a bridge key to read SKU from marginData.
     const normalizeCode = (value: string): string => value.trim().toUpperCase();
     const skuByKodeObat = new Map<string, string>();
-    for (const row of marginRows) {
-      if (row.kodeObat && row.sku) {
-        skuByKodeObat.set(normalizeCode(row.kodeObat), row.sku.trim());
+    for (const m of destyMappings) {
+      if (m.active && m.assistCode && m.destySku) {
+        skuByKodeObat.set(normalizeCode(m.assistCode), m.destySku.trim());
       }
     }
 
@@ -1177,9 +1161,9 @@ export default defineBackground(() => {
             return;
           }
 
-          const [marginRows, medicineStockItems, bhpStockItems] =
+          const [destyMappings, medicineStockItems, bhpStockItems] =
             await Promise.all([
-              fetchMarginSkuRows(),
+              getDestySkuMappings().catch(() => []),
               fetchAssistMedicineStockItems(assistToken),
               fetchAssistBhpStockItems(assistToken),
             ]);
@@ -1205,18 +1189,20 @@ export default defineBackground(() => {
           const buyFeeBySku: Record<string, number> = {};
           const unitBySku: Record<string, string> = {};
 
-          // 1. Map via Google Sheet margins mapping (sku -> kodeObat -> values)
-          for (const row of marginRows) {
-            const sku = String(row.sku ?? "").trim().toUpperCase();
-            const code = String(row.kodeObat ?? "").trim().toUpperCase();
-            if (sku && code) {
-              const buyFee = buyFeeByCode.get(code);
-              if (buyFee !== undefined) {
-                buyFeeBySku[sku] = buyFee;
-              }
-              const unit = unitByCode.get(code);
-              if (unit !== undefined) {
-                unitBySku[sku] = unit;
+          // 1. Map via Desty SKU mappings (destySku -> assistCode -> values)
+          for (const m of destyMappings) {
+            if (m.active && m.destySku) {
+              const sku = m.destySku.trim().toUpperCase();
+              const code = (m.assistCode || "").trim().toUpperCase();
+              if (code) {
+                const buyFee = buyFeeByCode.get(code);
+                if (buyFee !== undefined) {
+                  buyFeeBySku[sku] = buyFee;
+                }
+                const unit = unitByCode.get(code);
+                if (unit !== undefined) {
+                  unitBySku[sku] = m.destyUnit || m.assistUnit || unit;
+                }
               }
             }
           }

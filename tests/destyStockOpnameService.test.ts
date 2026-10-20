@@ -264,6 +264,59 @@ describe("destyStockOpnameService", () => {
       expect(row.checked).toBe(false);
     });
 
+    it("keeps raw assistStock in assistUnit while computing destyEquivalentStock with conversionFactor", () => {
+      const catalog: AssistCatalogItem[] = [
+        { id: "m1", code: "AMX500", name: "Amoxicillin 500mg", type: "prescription", stock: 100, unit: "Strip" },
+      ];
+
+      const mappings: DestySkuMapping[] = [
+        {
+          destySku: "AMX-BOX",
+          destyUnit: "Box",
+          assistCode: "AMX500",
+          assistId: "m1",
+          assistName: "Amoxicillin 500mg",
+          assistType: "prescription",
+          assistUnit: "Strip",
+          conversionFactor: 10, // 1 Box = 10 Strip
+          active: true,
+        },
+      ];
+
+      const destyStockMap: Record<string, DestyOmniStockItem> = {
+        "AMX-BOX": {
+          sku: "AMX-BOX",
+          skuId: "sku_box",
+          stock: 10,
+          breakdown: { fisik: 10, tersedia: 10, pesanan: 0 },
+          fisik: 10,
+          tersedia: 10,
+          pesanan: 0,
+        },
+      };
+
+      const rows = buildAllProductsSoRows({
+        destyStockMap,
+        assistCatalog: catalog,
+        mappings,
+      });
+
+      expect(rows.length).toBe(1);
+      const row = rows[0];
+      expect(row.destySku).toBe("AMX-BOX");
+      expect(row.conversionFactor).toBe(10);
+      expect(row.assistUnit).toBe("Strip");
+      expect(row.destyUnit).toBe("Box");
+      // raw Assist stock is 100 Strip
+      expect(row.assistStock).toBe(100);
+      // desty equivalent stock is 100 / 10 = 10 Box
+      expect(row.destyEquivalentStock).toBe(10);
+      expect(row.destyFisik).toBe(10);
+      // Stocks match because 10 Box == 10 Box
+      expect(row.status).toBe("matched");
+      expect(row.adjustQty).toBe(0);
+    });
+
     it("retains Desty SKU and productName when not matched in Assist POS", () => {
       const destyStockMap: Record<string, DestyOmniStockItem> = {
         "DESTY-ONLY-SKU": {

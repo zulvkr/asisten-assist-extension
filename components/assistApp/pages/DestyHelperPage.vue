@@ -638,6 +638,13 @@
                     >
                       {{ props.row.assistStock }} {{ props.row.assistUnit || 'Pcs' }}
                     </q-badge>
+                    <div
+                      v-if="props.row.conversionFactor && props.row.conversionFactor !== 1"
+                      class="text-xxs text-grey-7 q-mt-2xs"
+                      :title="`Setara di Desty: ${Math.floor(props.row.assistStock / props.row.conversionFactor)} ${props.row.mappedItem?.destyUnit || 'Desty'}`"
+                    >
+                      (≈ {{ Math.floor(props.row.assistStock / props.row.conversionFactor) }} {{ props.row.mappedItem?.destyUnit || 'Desty' }})
+                    </div>
                   </div>
                   <div v-else class="text-caption text-grey-5">-</div>
                 </q-td>
@@ -1110,7 +1117,6 @@ import {
 } from "@/services/destySync/importLedgerStorage";
 import { bulkImportDestyOrders } from "@/services/destySync/bulkImport";
 import {
-  buildMappingsFromGoogleSheet,
   DEFAULT_ASSIST_DEPOT_ID,
   exportDestySkuMappings,
   getDestySkuMappings,
@@ -1721,16 +1727,7 @@ async function loadSyncCatalog() {
       apiBaseUrl: store.apiBaseUrl,
       hospitalId: store.hospitalId,
     });
-    await store.fetchMarginData();
-    const autoMapping = buildMappingsFromGoogleSheet(
-      store.marginData,
-      assistCatalog.value,
-      mappings.value,
-      DEFAULT_ASSIST_DEPOT_ID,
-    );
-    mappings.value = autoMapping.mappings;
-    syncValidationMessage.value = `Katalog ${assistCatalog.value.length} item dan ${mappings.value.length} mapping dimuat.` +
-      (autoMapping.unmatchedSkus.length ? ` ${autoMapping.unmatchedSkus.length} SKU belum cocok di katalog Assist.` : "");
+    syncValidationMessage.value = `Katalog ${assistCatalog.value.length} item dan ${mappings.value.length} mapping dimuat.`;
     if (selectedOrder.value) validateSelectedOrder();
   } catch (error) {
     syncValidationMessage.value = error instanceof Error ? error.message : "Gagal memuat katalog Assist.";
@@ -2644,26 +2641,6 @@ async function handleExecuteOfflineStockSync() {
   }
 }
 
-function refreshMappingsFromStore() {
-  if (assistCatalog.value.length > 0 && store.marginData.length > 0) {
-    const autoMapping = buildMappingsFromGoogleSheet(
-      store.marginData,
-      assistCatalog.value,
-      mappings.value,
-      DEFAULT_ASSIST_DEPOT_ID,
-    );
-    mappings.value = autoMapping.mappings;
-  }
-}
-
-watch(
-  () => store.marginData,
-  () => {
-    refreshMappingsFromStore();
-  },
-  { deep: true }
-);
-
 watch(selectedStatus, () => {
   void loadStatusCounts();
 });
@@ -2675,14 +2652,11 @@ watch(syncTab, (newTab) => {
     !syncBusy.value
   ) {
     void loadSyncCatalog();
-  } else if (newTab === "offline_sync" || newTab === "price_update") {
-    refreshMappingsFromStore();
   }
 });
 
 onActivated(async () => {
   await store.fetchMarginData();
-  refreshMappingsFromStore();
 });
 
 onMounted(async () => {

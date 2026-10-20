@@ -19,12 +19,6 @@ export type DestySkuMappingInput = Omit<DestySkuMapping, "updatedAt"> & {
   updatedAt?: string;
 };
 
-export interface DestySheetSkuFallback {
-  destySku: string;
-  assistCode: string;
-  assistName: string;
-}
-
 export interface NormalizedDestyOrderItem {
   destySku: string;
   productName: string;
