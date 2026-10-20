@@ -28,6 +28,7 @@ export interface ImportOrdersConfig {
   accountTxId: string;
   transactionAccountTxId?: string;
   hospitalId: string;
+  catalog?: AssistCatalogItem[];
   duplicateOrderNumbers?: Iterable<string>;
   defaultDepotId?: string;
   dryRun?: boolean;
@@ -173,6 +174,7 @@ export async function importDestyOrdersUseCase(
     // 2. Validate order
     const validation = validateCanonicalOrder(order, {
       mappings: options.mappings,
+      catalog: options.config.catalog,
       duplicateOrderNumbers: duplicateIndex,
       defaultDepotId: options.config.defaultDepotId,
     });

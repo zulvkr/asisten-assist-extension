@@ -42,6 +42,8 @@ export interface SoTableRowItem {
   assistUnit: string;
   assistStock: number | null;
   destyEquivalentStock?: number | null;
+  assistSku?: string;
+  assistMargin?: string;
 
   destySku: string;
   destyUnit: string;

@@ -22,6 +22,7 @@ import {
 } from "@/services/destySync/destyStockOpnameService";
 import { fetchAllAssistPemasukan } from "@/services/destySync/offlineStockSync";
 import { parseExcludedPrefixes, isSkuPrefixExcluded } from "@/utils/skuPrefixUtils";
+import { cleanseAssistCatalog } from "@/services/integration/assistProductAcl";
 import { useAssistStore } from "../stores/assistStore";
 import DestySkuMappingDialog from "./DestySkuMappingDialog.vue";
 
@@ -188,6 +189,10 @@ async function loadSoSessionData() {
   soManualStates.value = {};
   soSyncResult.value = {};
 
+  if (!props.assistCatalog?.length) {
+    emit("refreshCatalog");
+  }
+
   try {
     if (soSessionMode.value === "shift") {
       if (!props.assistToken) {
@@ -264,9 +269,22 @@ async function loadSoSessionData() {
   }
 }
 
+// Cleanse & enrich catalog through Anti-Corruption Layer (ACL) with Firebase metadata
+const effectiveCatalog = computed(() => {
+  if (!props.assistCatalog || !props.assistCatalog.length) return [];
+  if (store.marginData && store.marginData.length > 0) {
+    return cleanseAssistCatalog(props.assistCatalog, {
+      marginMappings: store.marginData,
+      destyMappings: props.mappings,
+    });
+  }
+  return props.assistCatalog;
+});
+
 // Compute Table Rows based on Mode
 const soTableRows = computed<SoTableRowItem[]>(() => {
-  const catalogLookup = buildCatalogLookup(props.assistCatalog);
+  const catalog = effectiveCatalog.value;
+  const catalogLookup = buildCatalogLookup(catalog);
 
   if (soSessionMode.value === "shift") {
     const filteredTxs = filterTransactionsByInferredShift(
@@ -302,7 +320,7 @@ const soTableRows = computed<SoTableRowItem[]>(() => {
   if (soSessionMode.value === "all") {
     return buildAllProductsSoRows({
       destyStockMap: destyStockMap.value,
-      assistCatalog: props.assistCatalog,
+      assistCatalog: catalog,
       mappings: props.mappings,
       excludedPrefixes: activeExcludedPrefixes.value,
       manualStates: soManualStates.value,
@@ -665,6 +683,11 @@ watch(
   { deep: true }
 );
 
+async function loadAllProductsModeData() {
+  emit("refreshCatalog");
+  await fetchLiveDestyStock();
+}
+
 async function handleRefreshAll() {
   emit("refreshCatalog");
   await loadSoSessionData();
@@ -773,13 +796,22 @@ defineExpose({
 
           <!-- Mode: All Products Refresh -->
           <template v-else>
+            <q-badge
+              :color="props.assistCatalog.length > 0 ? 'teal-1' : 'red-1'"
+              :text-color="props.assistCatalog.length > 0 ? 'teal-9' : 'red-9'"
+              class="q-px-sm q-py-xs text-weight-bold"
+              :title="props.assistCatalog.length > 0 ? `${props.assistCatalog.length} item katalog Assist aktif untuk pencocokan 1:1` : 'Katalog Assist belum dimuat'"
+            >
+              <q-icon :name="props.assistCatalog.length > 0 ? 'check_circle' : 'warning'" size="xs" class="q-mr-xs" />
+              Katalog: {{ props.assistCatalog.length }} item
+            </q-badge>
             <q-btn
               color="teal"
               unelevated
               icon="sync"
               label="Muat Seluruh Produk"
               :loading="isLoadingLiveDestyStock"
-              @click="fetchLiveDestyStock()"
+              @click="loadAllProductsModeData"
               class="rounded-borders"
               no-caps
             />
@@ -858,6 +890,38 @@ defineExpose({
           </template>
         </div>
       </q-card-section>
+
+      <!-- Catalog Warning Banner for Mode 3 -->
+      <q-banner
+        v-if="soSessionMode === 'all' && props.assistCatalog.length === 0 && !isLoadingSoData && !isLoadingLiveDestyStock"
+        rounded
+        class="bg-amber-1 text-black q-ma-md border-amber"
+      >
+        <template v-slot:avatar>
+          <q-icon name="warning" color="amber-9" size="md" />
+        </template>
+        <div class="row items-center justify-between">
+          <div class="col-12 col-md-9">
+            <div class="text-subtitle2 text-weight-bold text-amber-10">
+              Katalog Assist Belum Dimuat (0 item)
+            </div>
+            <div class="text-caption text-grey-9">
+              Pencocokan SKU 1:1 otomatis membutuhkan data katalog obat dari Assist. Klik "Muat Katalog Assist" untuk memuat daftar obat &amp; stok Assist agar dapat otomatis dicocokkan ke SKU Desty tanpa perlu pemetaan manual.
+            </div>
+          </div>
+          <div class="col-12 col-md-3 row justify-end q-mt-xs-sm">
+            <q-btn
+              color="teal"
+              icon="sync"
+              label="Muat Katalog Assist"
+              no-caps
+              dense
+              class="q-px-sm"
+              @click="emit('refreshCatalog')"
+            />
+          </div>
+        </div>
+      </q-banner>
 
       <!-- Table Section -->
       <div class="table-container">
@@ -945,11 +1009,24 @@ defineExpose({
                   <div class="text-weight-bold text-slate-900 text-xs leading-tight" :title="item.assistItemName">
                     {{ item.assistItemName || '-' }}
                   </div>
-                  <div class="text-caption font-mono text-teal text-xs q-mt-xs break-all">
-                    {{ item.assistCode || item.assistItemId || 'Kode Kosong' }}
-                    <q-badge color="blue-grey-2" text-color="blue-grey-9" class="q-ml-2xs text-2xs">
+                  <div class="text-caption font-mono text-teal text-xs q-mt-xs break-all row items-center q-gutter-x-xs">
+                    <span class="bg-slate-100 q-px-xs rounded text-weight-bold">
+                      Kode: {{ item.assistCode || item.assistItemId || 'Kode Kosong' }}
+                    </span>
+                    <span>•</span>
+                    <span v-if="item.assistSku" class="bg-teal-50 text-teal-9 text-weight-bold q-px-xs rounded" :title="'SKU dari Firebase: ' + item.assistSku">
+                      SKU: {{ item.assistSku }}
+                    </span>
+                    <span v-else class="text-grey-5">SKU: -</span>
+                    <q-badge color="blue-grey-2" text-color="blue-grey-9" class="text-2xs">
                       {{ item.assistItemType === 'akhp' ? 'AKHP' : 'Obat' }}
                     </q-badge>
+                    <span v-if="item.assistMargin" class="text-amber-9 font-mono text-2xs bg-amber-50 q-px-xs rounded">
+                      M: {{ item.assistMargin }}
+                    </span>
+                    <span v-if="item.conversionFactor !== 1" class="text-indigo-9 font-mono text-2xs bg-indigo-50 q-px-xs rounded font-bold" :title="`Faktor Konversi: 1 ${item.destyUnit} = ${item.conversionFactor} ${item.assistUnit}`">
+                      1 {{ item.destyUnit }} = {{ item.conversionFactor }} {{ item.assistUnit }}
+                    </span>
                   </div>
                   <div v-if="!item.destyStockFound && !item.destySku" class="q-mt-2xs">
                     <q-badge color="red-1" text-color="red-9" class="text-2xs font-bold q-px-xs">

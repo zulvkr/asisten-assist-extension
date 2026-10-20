@@ -250,9 +250,10 @@ export function matchCatalogItem(
   const sku = (destySku || "").trim();
   const name = (productName || "").trim();
   const cCode = (catalogItem.code || "").trim();
+  const cSku = (catalogItem.sku || "").trim();
   const cName = (catalogItem.name || "").trim();
 
-  if (!cCode && !cName) return null;
+  if (!cCode && !cName && !cSku) return null;
 
   const reasons: string[] = [];
   let score = 0;
@@ -260,9 +261,22 @@ export function matchCatalogItem(
 
   const cleanTargetSku = cleanCode(sku);
   const cleanTargetCode = cleanCode(cCode);
+  const cSkus = catalogItem.skus || (catalogItem.sku ? [catalogItem.sku] : []);
+  let matchedFirebaseSku = "";
+  for (const s of cSkus) {
+    const cleanS = cleanCode(s);
+    if (cleanTargetSku && cleanS && cleanTargetSku === cleanS) {
+      matchedFirebaseSku = s;
+      break;
+    }
+  }
 
-  // 1. Exact Code Match
-  if (cleanTargetSku && cleanTargetCode && cleanTargetSku === cleanTargetCode) {
+  // 0. Exact Master SKU Match (from Firebase ACL)
+  if (matchedFirebaseSku) {
+    score = 1.0;
+    codeMatched = true;
+    reasons.push(`SKU Firebase persis cocok (${matchedFirebaseSku})`);
+  } else if (cleanTargetSku && cleanTargetCode && cleanTargetSku === cleanTargetCode) {
     score = 1.0;
     codeMatched = true;
     reasons.push(`Kode SKU persis cocok (${cCode})`);

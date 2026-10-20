@@ -30,6 +30,8 @@ export interface StockComparisonRow {
   itemName: string;
   qtySold: number;
   assistStock: number | null;
+  destyEquivalentStock?: number | null;
+  conversionFactor?: number;
   destyStock: number | null;
   destyStockDetail: DestyStockBreakdown | null;
   kesesuaian: KesesuaianStock;
@@ -50,6 +52,8 @@ export interface CompareStockLevelsInput {
   destyStockBySku?: Record<string, number | null | undefined>;
   /** sku → Desty stock breakdown for UI */
   destyStockDetailBySku?: Record<string, DestyStockBreakdown | undefined>;
+  /** sku → conversionFactor (Desty unit to Assist unit) */
+  conversionFactorBySku?: Record<string, number>;
 }
 
 function normalizeStock(value: number | null | undefined): number | null {
@@ -168,6 +172,27 @@ export function compareStockLevels(
     });
   }
 
+  const normalizedDestyStock: Record<string, number | null> = {};
+  if (input.destyStockBySku) {
+    for (const [k, v] of Object.entries(input.destyStockBySku)) {
+      if (k) normalizedDestyStock[k.trim().toUpperCase()] = normalizeStock(v);
+    }
+  }
+
+  const normalizedDestyDetail: Record<string, DestyStockBreakdown> = {};
+  if (input.destyStockDetailBySku) {
+    for (const [k, v] of Object.entries(input.destyStockDetailBySku)) {
+      if (k && v) normalizedDestyDetail[k.trim().toUpperCase()] = v;
+    }
+  }
+
+  const normalizedConversionFactors: Record<string, number> = {};
+  if (input.conversionFactorBySku) {
+    for (const [k, v] of Object.entries(input.conversionFactorBySku)) {
+      if (k && Number.isFinite(v) && v > 0) normalizedConversionFactors[k.trim().toUpperCase()] = v;
+    }
+  }
+
   const rows: StockComparisonRow[] = [];
   for (const aggregate of grouped.values()) {
     const medicineId = aggregate.medicineId;
@@ -176,26 +201,30 @@ export function compareStockLevels(
     );
     const kodeObat = input.kodeObatByMedicineId?.[medicineId] ?? "";
     const sku = aggregate.sku ?? "";
-    const destyStockDetail = sku
-      ? (input.destyStockDetailBySku?.[sku] ?? null)
+    const skuKey = sku.trim().toUpperCase();
+    const destyStockDetail = skuKey
+      ? (normalizedDestyDetail[skuKey] ?? null)
       : null;
-    const destyStock = sku
-      ? normalizeStock(
-          destyStockDetail?.tersedia ?? input.destyStockBySku?.[sku],
-        )
+    const destyStock = skuKey
+      ? (normalizeStock(destyStockDetail?.tersedia) ?? normalizedDestyStock[skuKey] ?? null)
       : null;
+    const conversionFactor = skuKey && normalizedConversionFactors[skuKey]
+      ? normalizedConversionFactors[skuKey]
+      : 1;
+    const destyEquivalentStock = assistStock !== null && conversionFactor > 0
+      ? Math.floor(assistStock / conversionFactor)
+      : assistStock;
+
     const sellNormalFee = normalizeStock(
       input.sellNormalFeeByMedicineId?.[medicineId],
     );
     const notes = [...aggregate.notes];
     if (!sku) {
-      notes.push(
-        "SKU belum diisi — lengkapi kode obat dan SKU di sheet margin.",
-      );
+      notes.push("SKU belum diisi.");
     }
 
     const attention = resolveAttention({
-      assistStock,
+      assistStock: destyEquivalentStock,
       destyStock,
       hasSku: Boolean(sku),
       sellNormalFee,
@@ -209,9 +238,11 @@ export function compareStockLevels(
       itemName: aggregate.itemName,
       qtySold: aggregate.qtySold,
       assistStock,
+      destyEquivalentStock,
+      conversionFactor,
       destyStock,
       destyStockDetail,
-      kesesuaian: resolveKesesuaian(assistStock, destyStock, Boolean(sku)),
+      kesesuaian: resolveKesesuaian(destyEquivalentStock, destyStock, Boolean(sku)),
       attentionLabel: attention.label,
       attentionTone: attention.tone,
       notes,

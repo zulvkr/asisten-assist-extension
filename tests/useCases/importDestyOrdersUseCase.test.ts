@@ -78,9 +78,9 @@ describe("importDestyOrdersUseCase", () => {
     expect(ledger.find((e) => e.marketplaceOrderSn === "ORD-INVALID-1")?.status).toBe("failed");
   });
 
-  it("handles in-batch duplicate orders gracefully", async () => {
+  it("automatically matches 1:1 Desty SKU with Assist catalog code when no explicit mapping exists", async () => {
     const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ data: { id: "tx-1" } }), {
+      new Response(JSON.stringify({ data: { id: "tx-auto-2", code: "INV-AUTO-2" } }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
@@ -89,30 +89,35 @@ describe("importDestyOrdersUseCase", () => {
     const results = await importDestyOrdersUseCase({
       orders: [
         {
-          displayedOrderSn: "SAME-ORDER",
-          totalSales: 10000,
-          items: [{ masterSku: "SKU-TEST", quantity: 1 }],
-        },
-        {
-          displayedOrderSn: "SAME-ORDER",
-          totalSales: 10000,
-          items: [{ masterSku: "SKU-TEST", quantity: 1 }],
+          displayedOrderSn: "ORD-1TO1-1",
+          totalSales: 25000,
+          items: [{ masterSku: "DIRECT-CODE-1", quantity: 2 }],
         },
       ],
-      mappings: [mapping],
+      mappings: [], // No explicit mappings saved
       config: {
         token: "test-token",
         apiBaseUrl: "https://assist.test/api",
         accountTxId: "kas-account-1",
         hospitalId: "hosp-1",
+        defaultDepotId: "depot-test",
+        catalog: [
+          {
+            id: "cat-1",
+            code: "DIRECT-CODE-1",
+            name: "Direct Code Medicine",
+            type: "prescription",
+            unit: "Pcs",
+            stock: 50,
+          },
+        ],
         fetchImpl,
       },
     });
 
-    expect(results).toHaveLength(2);
+    expect(results).toHaveLength(1);
     expect(results[0].status).toBe("success");
-    expect(results[1].status).toBe("duplicate");
-    expect(results[1].error).toBe("Order duplikat di dalam batch.");
+    expect(results[0].txId).toBe("tx-auto-2");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });

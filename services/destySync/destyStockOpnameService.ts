@@ -197,10 +197,11 @@ export function resolveCandidates(
   assistName: string,
   assistUnit: string,
   mappings: DestySkuMapping[],
+  catalogLookup?: AssistCatalogLookup,
 ): CandidateMapping[] {
   const codeUpper = assistCode.trim().toUpperCase();
   const matched = mappings.filter((m) => {
-    if (!m.active) return false;
+    if (m.active === false) return false;
     if (m.assistId && assistItemId && m.assistId === assistItemId) return true;
     if (m.assistCode && codeUpper && m.assistCode.trim().toUpperCase() === codeUpper) return true;
     return false;
@@ -214,6 +215,31 @@ export function resolveCandidates(
       isMapped: true,
       assistId: m.assistId,
     }));
+  }
+
+  // Check if item has SKUs stored in Firebase via catalog lookup
+  const lookupItem = (assistItemId && catalogLookup?.itemById.get(assistItemId))
+    || (codeUpper && catalogLookup?.itemByCode.get(codeUpper));
+  if (lookupItem) {
+    if (lookupItem.destyMappings && lookupItem.destyMappings.length > 0) {
+      return lookupItem.destyMappings.map((m) => ({
+        destySku: m.destySku.trim().toUpperCase(),
+        destyUnit: m.destyUnit || assistUnit || "Pcs",
+        conversionFactor: Number(m.conversionFactor) || 1,
+        isMapped: true,
+        assistId: assistItemId,
+      }));
+    }
+    const skus = lookupItem.skus && lookupItem.skus.length > 0 ? lookupItem.skus : (lookupItem.sku ? [lookupItem.sku] : []);
+    if (skus.length > 0) {
+      return skus.map((s) => ({
+        destySku: s.trim().toUpperCase(),
+        destyUnit: assistUnit || "Pcs",
+        conversionFactor: 1,
+        isMapped: true,
+        assistId: assistItemId,
+      }));
+    }
   }
 
   return [
@@ -231,33 +257,50 @@ export interface AssistCatalogLookup {
   stockById: Map<string, number>;
   stockByCode: Map<string, number>;
   stockByName: Map<string, number>;
+  stockBySku: Map<string, number>;
   itemById: Map<string, AssistCatalogItem>;
   itemByCode: Map<string, AssistCatalogItem>;
+  itemBySku: Map<string, AssistCatalogItem>;
 }
 
 export function buildCatalogLookup(catalog: AssistCatalogItem[]): AssistCatalogLookup {
   const stockById = new Map<string, number>();
   const stockByCode = new Map<string, number>();
   const stockByName = new Map<string, number>();
+  const stockBySku = new Map<string, number>();
   const itemById = new Map<string, AssistCatalogItem>();
   const itemByCode = new Map<string, AssistCatalogItem>();
+  const itemBySku = new Map<string, AssistCatalogItem>();
 
   for (const item of catalog) {
     if (item.id) {
-      itemById.set(item.id, item);
-      if (typeof item.stock === "number") stockById.set(item.id, item.stock);
+      const idTrimmed = item.id.trim();
+      itemById.set(idTrimmed, item);
+      itemById.set(idTrimmed.toUpperCase(), item);
+      if (typeof item.stock === "number") {
+        stockById.set(idTrimmed, item.stock);
+        stockById.set(idTrimmed.toUpperCase(), item.stock);
+      }
     }
     if (item.code) {
       const codeUpper = item.code.trim().toUpperCase();
       itemByCode.set(codeUpper, item);
       if (typeof item.stock === "number") stockByCode.set(codeUpper, item.stock);
     }
+    const skusToIndex = item.skus && item.skus.length > 0 ? item.skus : (item.sku ? [item.sku] : []);
+    for (const s of skusToIndex) {
+      if (s && s.trim().length > 0) {
+        const skuUpper = s.trim().toUpperCase();
+        itemBySku.set(skuUpper, item);
+        if (typeof item.stock === "number") stockBySku.set(skuUpper, item.stock);
+      }
+    }
     if (item.name && typeof item.stock === "number") {
       stockByName.set(item.name.trim().toLowerCase(), item.stock);
     }
   }
 
-  return { stockById, stockByCode, stockByName, itemById, itemByCode };
+  return { stockById, stockByCode, stockByName, stockBySku, itemById, itemByCode, itemBySku };
 }
 
 export function resolveAssistStock(
@@ -295,7 +338,7 @@ export function buildShiftSoRows(params: {
 
   for (const item of soldItems) {
     const assistStock = resolveAssistStock(item.assistItemId, item.assistCode, item.assistItemName, catalogLookup);
-    const candidates = resolveCandidates(item.assistItemId, item.assistCode, item.assistItemName, item.assistUnit, mappings);
+    const candidates = resolveCandidates(item.assistItemId, item.assistCode, item.assistItemName, item.assistUnit, mappings, catalogLookup);
 
     for (const cand of candidates) {
       if (
@@ -392,10 +435,12 @@ export function buildShiftSoRows(params: {
         assistUnit: item.assistUnit,
         assistStock,
         destyEquivalentStock,
-        destySku: destyStockFound ? cand.destySku : (cand.isMapped ? cand.destySku : ""),
+        assistSku: cand.destySku || catalogLookup.itemById.get(item.assistItemId)?.sku || catalogLookup.itemByCode.get(item.assistCode.toUpperCase())?.sku || "",
+        assistMargin: catalogLookup.itemById.get(item.assistItemId)?.margin || catalogLookup.itemByCode.get(item.assistCode.toUpperCase())?.margin || "",
+        destySku: cand.destySku,
         destyUnit: cand.destyUnit,
         conversionFactor: cand.conversionFactor,
-        isMapped: cand.isMapped,
+        isMapped: cand.isMapped || destyStockFound,
         offlineQty: item.offlineQty,
         onlineQty: item.onlineQty,
         receivedQty: 0,
@@ -445,7 +490,7 @@ export function buildFakturSoRows(params: {
     const assistItemType = item.akhpId ? "akhp" : "prescription";
 
     const assistStock = resolveAssistStock(assistItemId, assistCode, assistItemName, catalogLookup);
-    const candidates = resolveCandidates(assistItemId, assistCode, assistItemName, assistUnit, mappings);
+    const candidates = resolveCandidates(assistItemId, assistCode, assistItemName, assistUnit, mappings, catalogLookup);
 
     for (const cand of candidates) {
       if (
@@ -532,10 +577,12 @@ export function buildFakturSoRows(params: {
         assistUnit,
         assistStock,
         destyEquivalentStock,
-        destySku: destyStockFound ? cand.destySku : (cand.isMapped ? cand.destySku : ""),
+        assistSku: cand.destySku || catalogLookup.itemById.get(assistItemId)?.sku || catalogLookup.itemByCode.get(assistCode.toUpperCase())?.sku || "",
+        assistMargin: catalogLookup.itemById.get(assistItemId)?.margin || catalogLookup.itemByCode.get(assistCode.toUpperCase())?.margin || "",
+        destySku: cand.destySku,
         destyUnit: cand.destyUnit,
         conversionFactor: cand.conversionFactor,
-        isMapped: cand.isMapped,
+        isMapped: cand.isMapped || destyStockFound,
         offlineQty: 0,
         onlineQty: 0,
         receivedQty,
@@ -579,7 +626,7 @@ export function buildAllProductsSoRows(params: {
   // Index mappings by destySku
   const mappingByDestySku = new Map<string, DestySkuMapping>();
   for (const m of mappings) {
-    if (m.active && m.destySku) {
+    if (m.active !== false && m.destySku) {
       mappingByDestySku.set(m.destySku.trim().toUpperCase(), m);
     }
   }
@@ -593,7 +640,11 @@ export function buildAllProductsSoRows(params: {
         if (mapping.assistId) matchedAssistKeys.add(mapping.assistId);
         if (mapping.assistCode) matchedAssistKeys.add(mapping.assistCode.toUpperCase());
       } else {
-        if (catalogLookup.itemByCode.has(destySkuUpper)) {
+        if (catalogLookup.itemBySku.has(destySkuUpper)) {
+          const assistItem = catalogLookup.itemBySku.get(destySkuUpper);
+          if (assistItem?.id) matchedAssistKeys.add(assistItem.id);
+          matchedAssistKeys.add(destySkuUpper);
+        } else if (catalogLookup.itemByCode.has(destySkuUpper)) {
           const assistItem = catalogLookup.itemByCode.get(destySkuUpper);
           if (assistItem?.id) matchedAssistKeys.add(assistItem.id);
           matchedAssistKeys.add(destySkuUpper);
@@ -602,31 +653,48 @@ export function buildAllProductsSoRows(params: {
       continue;
     }
 
-    const mapping = mappingByDestySku.get(destySkuUpper);
+    const destySkuTrimmedUpper = (destyInfo.sku || destySkuUpper).trim().toUpperCase();
+    const mapping = mappingByDestySku.get(destySkuTrimmedUpper);
     let assistItem: AssistCatalogItem | undefined;
 
     if (mapping) {
-      if (mapping.assistId && catalogLookup.itemById.has(mapping.assistId)) {
-        assistItem = catalogLookup.itemById.get(mapping.assistId);
-      } else if (mapping.assistCode && catalogLookup.itemByCode.has(mapping.assistCode.toUpperCase())) {
-        assistItem = catalogLookup.itemByCode.get(mapping.assistCode.toUpperCase());
-      }
-    } else {
-      // Direct code match fallback
-      if (catalogLookup.itemByCode.has(destySkuUpper)) {
-        assistItem = catalogLookup.itemByCode.get(destySkuUpper);
+      if (mapping.assistId && catalogLookup.itemById.has(mapping.assistId.trim())) {
+        assistItem = catalogLookup.itemById.get(mapping.assistId.trim());
+      } else if (mapping.assistCode && catalogLookup.itemByCode.has(mapping.assistCode.trim().toUpperCase())) {
+        assistItem = catalogLookup.itemByCode.get(mapping.assistCode.trim().toUpperCase());
       }
     }
 
-    if (assistItem?.id) matchedAssistKeys.add(assistItem.id);
-    if (assistItem?.code) matchedAssistKeys.add(assistItem.code.toUpperCase());
+    if (!assistItem) {
+      // 1. Check Master SKU from Firebase (ACL enriched)
+      if (catalogLookup.itemBySku.has(destySkuTrimmedUpper)) {
+        assistItem = catalogLookup.itemBySku.get(destySkuTrimmedUpper);
+      } else if (catalogLookup.itemByCode.has(destySkuTrimmedUpper)) {
+        assistItem = catalogLookup.itemByCode.get(destySkuTrimmedUpper);
+      } else if (catalogLookup.itemById.has(destySkuTrimmedUpper)) {
+        assistItem = catalogLookup.itemById.get(destySkuTrimmedUpper);
+      }
+    }
 
+    if (assistItem?.id) matchedAssistKeys.add(assistItem.id.trim());
+    if (assistItem?.code) matchedAssistKeys.add(assistItem.code.trim().toUpperCase());
+    if (assistItem?.sku) matchedAssistKeys.add(assistItem.sku.trim().toUpperCase());
+    if (assistItem?.skus) {
+      for (const s of assistItem.skus) {
+        if (s) matchedAssistKeys.add(s.trim().toUpperCase());
+      }
+    }
+    if (mapping?.assistId) matchedAssistKeys.add(mapping.assistId.trim());
+    if (mapping?.assistCode) matchedAssistKeys.add(mapping.assistCode.trim().toUpperCase());
+
+    const effectiveMapping = mapping || (assistItem?.destyMappings?.find((m) => m.destySku.trim().toUpperCase() === destySkuTrimmedUpper));
     const rawAssistStock = assistItem?.stock !== undefined ? assistItem.stock : null;
-    const conversionFactor = mapping ? Number(mapping.conversionFactor) || 1 : 1;
+    const conversionFactor = effectiveMapping ? Number(effectiveMapping.conversionFactor) || 1 : 1;
     const destyEquivalentStock = rawAssistStock !== null && conversionFactor > 0
       ? Math.floor(rawAssistStock / conversionFactor)
       : null;
     const assistStock = rawAssistStock;
+    const destyUnit = effectiveMapping?.destyUnit || destyInfo.unit || assistItem?.unit || "Pcs";
 
     const destyFisik = destyInfo.fisik ?? destyInfo.breakdown?.fisik ?? destyInfo.stock ?? null;
     const destyReserved = destyInfo.pesanan ?? destyInfo.breakdown?.pesanan ?? 0;
@@ -695,15 +763,17 @@ export function buildAllProductsSoRows(params: {
       rowKey,
       assistItemId: assistItem?.id || "",
       assistItemType: assistItem?.type || "prescription",
-      assistCode: assistItem?.code || mapping?.assistCode || "",
+      assistCode: assistItem?.code || effectiveMapping?.assistCode || "",
       assistItemName: assistItem?.name || "",
-      assistUnit: mapping?.assistUnit || assistItem?.unit || "Pcs",
+      assistUnit: effectiveMapping?.assistUnit || assistItem?.unit || "Pcs",
       assistStock,
       destyEquivalentStock,
+      assistSku: destySkuUpper,
+      assistMargin: assistItem?.margin || "",
       destySku: destySkuUpper,
-      destyUnit: mapping?.destyUnit || "Pcs",
+      destyUnit,
       conversionFactor,
-      isMapped: !!mapping,
+      isMapped: !!effectiveMapping || Boolean(assistItem),
       offlineQty: 0,
       onlineQty: 0,
       receivedQty: 0,
@@ -728,13 +798,21 @@ export function buildAllProductsSoRows(params: {
   // Iterate Assist catalog items that are not in Desty
   for (const cat of assistCatalog) {
     const codeUpper = (cat.code || "").trim().toUpperCase();
-    if (!cat.id && !codeUpper) continue;
-    if (matchedAssistKeys.has(cat.id) || (codeUpper && matchedAssistKeys.has(codeUpper))) {
+    const skuUpper = (cat.sku || "").trim().toUpperCase();
+    if (!cat.id && !codeUpper && !skuUpper) continue;
+    if (
+      (cat.id && matchedAssistKeys.has(cat.id)) ||
+      (codeUpper && matchedAssistKeys.has(codeUpper)) ||
+      (skuUpper && matchedAssistKeys.has(skuUpper))
+    ) {
       continue;
     }
 
     if (excludedPrefixes) {
-      if (isSkuPrefixExcluded(codeUpper, excludedPrefixes)) {
+      if (
+        (codeUpper && isSkuPrefixExcluded(codeUpper, excludedPrefixes)) ||
+        (skuUpper && isSkuPrefixExcluded(skuUpper, excludedPrefixes))
+      ) {
         continue;
       }
       const mappedToExcluded = mappings.some(
@@ -749,7 +827,7 @@ export function buildAllProductsSoRows(params: {
       }
     }
 
-    const rowKey = `all_assist_${cat.id || codeUpper}`;
+    const rowKey = `all_assist_${cat.id || codeUpper || skuUpper}`;
     const manual = manualStates[rowKey];
     rows.push({
       rowKey,
@@ -760,10 +838,12 @@ export function buildAllProductsSoRows(params: {
       assistUnit: cat.unit || "Pcs",
       assistStock: typeof cat.stock === "number" ? cat.stock : null,
       destyEquivalentStock: typeof cat.stock === "number" ? cat.stock : null,
-      destySku: "",
+      destySku: cat.sku || "",
       destyUnit: cat.unit || "Pcs",
       conversionFactor: 1,
       isMapped: false,
+      assistSku: cat.sku || "",
+      assistMargin: cat.margin || "",
       offlineQty: 0,
       onlineQty: 0,
       receivedQty: 0,

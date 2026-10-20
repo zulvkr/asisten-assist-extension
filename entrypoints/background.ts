@@ -24,6 +24,8 @@ import {
 import { buildPemasukanRequest } from "@/utils/pemasukanApi";
 import { runtimeConfig } from "@/config/runtimeConfig";
 import { getDestySkuMappings } from "@/services/destySync/mappingStorage";
+import { fetchMarginMappings } from "@/services/marginStorage";
+import { cleanseAssistCatalog } from "@/services/integration/assistProductAcl";
 import { buildAssistHeaders } from "@/services/integration/assistRequest";
 import {
   buildPendingOrderQuantityMap,
@@ -777,7 +779,7 @@ async function handleFetchStockComparison(
       return isSkuPrefixExcluded(sku, prefixes);
     };
 
-    const [pemasukanData, destyMappings, medicineStockItems, bhpStockItems] =
+    const [pemasukanData, destyMappings, medicineStockItems, bhpStockItems, marginMappingsRes] =
       await Promise.all([
         comparisonMode === "all"
           ? Promise.resolve([])
@@ -785,6 +787,7 @@ async function handleFetchStockComparison(
         getDestySkuMappings().catch(() => []),
         fetchAssistMedicineStockItems(assistToken),
         fetchAssistBhpStockItems(assistToken),
+        fetchMarginMappings().catch(() => ({ items: [], rows: [] })),
       ]);
 
     const stockItems = [...medicineStockItems, ...bhpStockItems];
@@ -821,13 +824,25 @@ async function handleFetchStockComparison(
 
     const normalizeCode = (value: string): string => value.trim().toUpperCase();
     const skuByKodeObat = new Map<string, string>();
-    for (const m of destyMappings) {
-      if (m.active && m.assistCode && m.destySku) {
-        skuByKodeObat.set(normalizeCode(m.assistCode), m.destySku.trim());
+    const conversionFactorBySku: Record<string, number> = {};
+
+    // 1. Base SKU mapping from Firebase (margin_mappings)
+    for (const item of marginMappingsRes.items) {
+      if (item.kodeAssist && item.sku && item.sku.trim()) {
+        skuByKodeObat.set(normalizeCode(item.kodeAssist), item.sku.trim());
       }
     }
 
-    let missingSkuMappingCount = 0;
+    // 2. Explicit SKU override mappings from Firebase (desty_sku_mappings)
+    for (const m of destyMappings) {
+      if (m.active !== false && m.assistCode && m.destySku) {
+        skuByKodeObat.set(normalizeCode(m.assistCode), m.destySku.trim());
+      }
+      if (m.active !== false && m.destySku && m.conversionFactor && m.conversionFactor > 0) {
+        conversionFactorBySku[m.destySku.trim().toUpperCase()] = Number(m.conversionFactor);
+      }
+    }
+
     let missingKodeObatCount = 0;
     for (const item of soldItems) {
       const kodeObat = kodeObatByMedicineId[item.medicineId] ?? "";
@@ -836,12 +851,9 @@ async function handleFetchStockComparison(
         continue;
       }
 
-      const sku = skuByKodeObat.get(normalizeCode(kodeObat));
-      if (sku) {
-        item.sku = sku;
-      } else {
-        missingSkuMappingCount += 1;
-      }
+      const mappedSku = skuByKodeObat.get(normalizeCode(kodeObat));
+      // Prioritize SKU from Firebase; fallback to kodeObat if no SKU exists
+      item.sku = mappedSku ? mappedSku : kodeObat.trim();
     }
 
     // Filter out sold items that match the excluded SKU prefixes
@@ -928,6 +940,7 @@ async function handleFetchStockComparison(
       kodeObatByMedicineId,
       destyStockBySku,
       destyStockDetailBySku,
+      conversionFactorBySku,
     });
 
     if (skippedByType > 0) {
@@ -942,12 +955,7 @@ async function handleFetchStockComparison(
     }
     if (missingKodeObatCount > 0) {
       warnings.push(
-        `${missingKodeObatCount} item tidak punya kodeObat dari Assist, sehingga SKU margin tidak bisa dicari.`,
-      );
-    }
-    if (missingSkuMappingCount > 0) {
-      warnings.push(
-        `${missingSkuMappingCount} item tidak menemukan pasangan SKU di marginData berdasarkan kodeObat Assist.`,
+        `${missingKodeObatCount} item tidak punya kodeObat dari Assist, sehingga SKU tidak bisa dicari.`,
       );
     }
 
@@ -1285,6 +1293,69 @@ export default defineBackground(() => {
               error instanceof Error
                 ? error.message
                 : "Gagal mengambil data HPP dari katalog Assist.",
+          });
+        }
+      })();
+
+      return true;
+    }
+
+    if (message.type === "FETCH_ASSIST_CATALOG") {
+      (async () => {
+        try {
+          const assistToken = message.payload?.token?.trim() ?? "";
+          if (!assistToken) {
+            sendResponse({ ok: false, error: "Token Assist tidak tersedia." });
+            return;
+          }
+
+          const [medicineStockItems, bhpStockItems, marginMappingsRes, destyMappings] = await Promise.all([
+            fetchAssistMedicineStockItems(assistToken),
+            fetchAssistBhpStockItems(assistToken),
+            fetchMarginMappings().catch(() => ({ items: [], rows: [] })),
+            getDestySkuMappings().catch(() => []),
+          ]);
+
+          const rawCatalog = [
+            ...medicineStockItems.map((m) => ({
+              id: String(m.id ?? "").trim(),
+              code: String(m.code ?? "").trim(),
+              name: String(m.medName ?? m.itemName ?? "").trim(),
+              type: "prescription" as const,
+              unit: m.unit,
+              stock: typeof m.stockTotal === "number" ? m.stockTotal : 0,
+              buyFee: m.buyFee,
+              sellNormalFee: m.sellNormalFee,
+              avgHPP: m.avgHPP,
+            })),
+            ...bhpStockItems.map((b) => ({
+              id: String(b.id ?? "").trim(),
+              code: String(b.code ?? "").trim(),
+              name: String(b.itemName ?? b.medName ?? "").trim(),
+              type: "akhp" as const,
+              unit: b.unit,
+              stock: typeof b.stockTotal === "number" ? b.stockTotal : 0,
+              buyFee: b.buyFee,
+              sellNormalFee: b.sellNormalFee,
+              avgHPP: b.avgHPP,
+            })),
+          ];
+
+          // Cleanse and enrich via Anti-Corruption Layer (ACL)
+          const catalog = cleanseAssistCatalog(rawCatalog, {
+            marginMappings: marginMappingsRes.items,
+            destyMappings,
+          });
+
+          sendResponse({ ok: true, catalog });
+        } catch (error) {
+          console.error("Gagal memuat katalog Assist:", error);
+          sendResponse({
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Gagal mengambil data dari katalog Assist.",
           });
         }
       })();

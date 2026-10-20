@@ -1128,6 +1128,7 @@ import {
   findDestySkuMapping,
   resolveEffectiveDestySkuMapping,
 } from "@/services/destySync/mappingStorage";
+import { cleanseAssistCatalog } from "@/services/integration/assistProductAcl";
 import type {
   AssistCatalogItem,
   DestyImportLedgerEntry,
@@ -1539,17 +1540,25 @@ const flattenedItems = computed<FlattenedOrderItem[]>(() => {
       const excelRow = rowIndex + 2;
       
       const itemSkuUpper = sku.trim().toUpperCase();
-      const buyFee = buyFeeMap.value[itemSkuUpper];
-      const hargaModalSatuan: number | "" = buyFee !== undefined ? buyFee : "";
-
-      const assistUnitFromMap = unitMap.value[itemSkuUpper];
-      const satuan = assistUnitFromMap !== undefined && assistUnitFromMap !== "" ? assistUnitFromMap : "";
-
-      const totalHargaModalCalculated: number | "" = typeof hargaModalSatuan === "number" ? (item?.quantity ?? 0) * hargaModalSatuan : "";
-
       const mappedItem = resolveEffectiveDestySkuMapping(sku, mappings.value, assistCatalog.value);
       const isExplicit = Boolean(findDestySkuMapping(mappings.value, sku));
       const is1to1Fallback = Boolean(mappedItem && !isExplicit);
+
+      let buyFee = buyFeeMap.value[itemSkuUpper];
+      let assistUnitFromMap = unitMap.value[itemSkuUpper];
+      if (mappedItem && mappedItem.assistCode) {
+        const assistCodeUpper = mappedItem.assistCode.trim().toUpperCase();
+        if (buyFee === undefined) {
+          buyFee = buyFeeMap.value[assistCodeUpper];
+        }
+        if (!assistUnitFromMap) {
+          assistUnitFromMap = unitMap.value[assistCodeUpper] || mappedItem.assistUnit;
+        }
+      }
+
+      const hargaModalSatuan: number | "" = buyFee !== undefined ? buyFee : "";
+      const satuan = assistUnitFromMap !== undefined && assistUnitFromMap !== "" ? assistUnitFromMap : "";
+      const totalHargaModalCalculated: number | "" = typeof hargaModalSatuan === "number" ? (item?.quantity ?? 0) * hargaModalSatuan : "";
       const conversionFactor = mappedItem?.conversionFactor ?? 1;
       const quantity = item?.quantity ?? 0;
       const assistQty = Math.round(quantity * conversionFactor * 1000) / 1000;
@@ -1721,19 +1730,62 @@ async function loadSyncCatalog() {
   syncBusy.value = true;
   try {
     const result = await resolveAssistToken();
-    if (!result.token) throw new Error("Token Assist tidak ditemukan. Buka tab clinica.assist.id.");
-    assistCatalog.value = await fetchAssistCatalog({
-      token: result.token,
-      apiBaseUrl: store.apiBaseUrl,
-      hospitalId: store.hospitalId,
+    const token = result.token || store.assistToken;
+    if (!token) throw new Error("Token Assist tidak ditemukan. Buka tab clinica.assist.id.");
+    if (result.token) {
+      store.assistToken = result.token;
+      localStorage.setItem("assist_token", result.token);
+    }
+
+    // 1. Try background message first (uses extension host permissions to fetch stock & codes)
+    const bgResponse = (await browser.runtime.sendMessage({
+      type: "FETCH_ASSIST_CATALOG",
+      payload: { token },
+    })) as { ok: boolean; catalog?: AssistCatalogItem[]; error?: string } | undefined;
+
+    let rawCatalog: AssistCatalogItem[] = [];
+    if (bgResponse?.ok && Array.isArray(bgResponse.catalog) && bgResponse.catalog.length > 0) {
+      rawCatalog = bgResponse.catalog;
+    } else {
+      // 2. Fallback to direct API call
+      rawCatalog = await fetchAssistCatalog({
+        token,
+        apiBaseUrl: store.apiBaseUrl,
+        hospitalId: store.hospitalId,
+      });
+    }
+
+    if (!store.marginData.length) {
+      await store.fetchMarginData();
+    }
+
+    // Cleanse & enrich catalog through Anti-Corruption Layer (ACL)
+    assistCatalog.value = cleanseAssistCatalog(rawCatalog, {
+      marginMappings: store.marginData,
+      destyMappings: mappings.value,
     });
+
     syncValidationMessage.value = `Katalog ${assistCatalog.value.length} item dan ${mappings.value.length} mapping dimuat.`;
     if (selectedOrder.value) validateSelectedOrder();
   } catch (error) {
+    console.error("Gagal memuat katalog Assist:", error);
     syncValidationMessage.value = error instanceof Error ? error.message : "Gagal memuat katalog Assist.";
+    $q.notify({
+      type: "warning",
+      message: `Gagal memuat katalog Assist: ${error instanceof Error ? error.message : String(error)}`,
+      position: "top-right",
+    });
   } finally {
     syncBusy.value = false;
   }
+}
+
+function reapplyCatalogAcl() {
+  if (!assistCatalog.value.length) return;
+  assistCatalog.value = cleanseAssistCatalog(assistCatalog.value, {
+    marginMappings: store.marginData,
+    destyMappings: mappings.value,
+  });
 }
 
 function editMapping(mapping: DestySkuMapping) {
@@ -1746,6 +1798,7 @@ async function deleteMapping(destySku: string) {
   syncBusy.value = true;
   try {
     mappings.value = await removeDestySkuMapping(destySku);
+    reapplyCatalogAcl();
     syncValidationMessage.value = `Mapping ${destySku} dihapus.`;
   } catch (error) {
     syncValidationMessage.value = error instanceof Error ? error.message : "Gagal menghapus mapping.";
@@ -1771,6 +1824,7 @@ async function importMappings(event: Event) {
   if (!file) return;
   try {
     mappings.value = await importDestySkuMappings(await file.text());
+    reapplyCatalogAcl();
     syncValidationMessage.value = `${mappings.value.length} mapping berhasil diimpor.`;
   } catch (error) {
     syncValidationMessage.value = error instanceof Error ? error.message : "Gagal mengimpor mapping.";
@@ -1784,6 +1838,7 @@ async function saveMapping() {
   syncBusy.value = true;
   try {
     mappings.value = await upsertDestySkuMapping(mappingDraft.value);
+    reapplyCatalogAcl();
     syncValidationMessage.value = `Mapping ${mappingDraft.value.destySku} berhasil disimpan ke Firebase & lokal.`;
     mappingDraft.value = {
       destySku: "", assistCode: "", assistType: "prescription", assistId: "", assistName: "",
@@ -1817,6 +1872,7 @@ async function handleQuickMappingSave(data: QuickMappingFormData) {
       active: true,
     };
     mappings.value = await upsertDestySkuMapping(input);
+    reapplyCatalogAcl();
     if (selectedOrder.value) validateSelectedOrder();
   } catch (err) {
     console.error("Gagal menyimpan mapping:", err);
@@ -1833,6 +1889,7 @@ async function applyQuickMapping(destySku: string, candidate: SkuMatchCandidate)
       DEFAULT_ASSIST_DEPOT_ID,
     );
     mappings.value = await upsertDestySkuMapping(input);
+    reapplyCatalogAcl();
     syncValidationMessage.value = `Berhasil menghubungkan SKU "${destySku}" → ${candidate.catalogItem.code} (${candidate.catalogItem.name}).`;
     if (selectedOrder.value) validateSelectedOrder();
   } catch (error) {
@@ -2645,18 +2702,15 @@ watch(selectedStatus, () => {
   void loadStatusCounts();
 });
 
-watch(syncTab, (newTab) => {
-  if (
-    (newTab === "import" || newTab === "mapping" || newTab === "offline_sync" || newTab === "price_update") &&
-    !assistCatalog.value.length &&
-    !syncBusy.value
-  ) {
+watch(syncTab, () => {
+  if (!assistCatalog.value.length && !syncBusy.value) {
     void loadSyncCatalog();
   }
 });
 
 onActivated(async () => {
   await store.fetchMarginData();
+  reapplyCatalogAcl();
 });
 
 onMounted(async () => {

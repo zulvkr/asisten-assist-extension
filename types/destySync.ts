@@ -53,6 +53,14 @@ export interface AssistCatalogItem {
   sellNormalFee?: number;
   buyFee?: number;
   avgHPP?: number;
+  sku?: string;
+  skus?: string[];
+  destyMappings?: DestySkuMapping[];
+  margin?: string;
+  batasWarningStok?: string;
+  matikanWarningStok?: boolean;
+  conversionFactor?: number;
+  isMapped?: boolean;
 }
 
 export interface AssistDepot {

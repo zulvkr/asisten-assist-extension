@@ -327,10 +327,18 @@ export function resolveEffectiveDestySkuMapping(
   const key = destySku.trim().toUpperCase();
   if (!key || !assistCatalog.length) return undefined;
 
-  const catalogItem = assistCatalog.find(
-    (item) => item.code && item.code.trim().toUpperCase() === key,
-  );
+  const catalogItem = assistCatalog.find((item) => {
+    if (item.skus && item.skus.some((s) => s.trim().toUpperCase() === key)) return true;
+    if (item.sku && item.sku.trim().toUpperCase() === key) return true;
+    if (item.code && item.code.trim().toUpperCase() === key) return true;
+    return false;
+  });
   if (!catalogItem) return undefined;
+
+  const specificMap = catalogItem.destyMappings?.find(
+    (m) => m.destySku.trim().toUpperCase() === key,
+  );
+  if (specificMap) return specificMap;
 
   return {
     destySku: destySku.trim(),

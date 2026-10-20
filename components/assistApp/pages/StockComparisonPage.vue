@@ -170,6 +170,19 @@
             </q-td>
           </template>
 
+          <template v-slot:body-cell-assistStock="props">
+            <q-td :props="props" class="text-right">
+              <div class="text-weight-medium">{{ formatStockValue(props.value) }}</div>
+              <div
+                v-if="props.row.conversionFactor && props.row.conversionFactor !== 1 && props.row.destyEquivalentStock !== null"
+                class="text-caption text-teal-8 font-medium"
+                :title="`Stok setara di Desty: ${props.row.destyEquivalentStock} (faktor x${props.row.conversionFactor})`"
+              >
+                (≈ {{ props.row.destyEquivalentStock }})
+              </div>
+            </q-td>
+          </template>
+
           <template v-slot:body-cell-destyStatus="props">
             <q-td :props="props">
               <div v-if="props.value">

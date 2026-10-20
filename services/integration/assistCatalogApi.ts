@@ -83,7 +83,7 @@ function mapCatalogItem(
   if (!id) return undefined;
   return {
     id,
-    code: text(row.code, row.itemCode),
+    code: text(row.code, row.itemCode, row.kodeObat, row.kode, row.sku),
     name: text(row.medName, row.itemName, row.name) || id,
     type,
     unit: text(row.unit, row.medUnit) || undefined,
@@ -245,7 +245,10 @@ export async function fetchAssistCatalog(
   const [medicines, akhps, depots] = await Promise.all([
     fetchCatalogPath(params, "KMedicineStocks/getList", "prescription", "medName"),
     fetchCatalogPath(params, "KAKHPStocks/getList", "akhp", "itemName"),
-    fetchAssistDepotRecords(params),
+    fetchAssistDepotRecords(params).catch((err) => {
+      console.warn("Gagal mengambil depot stok Assist (menggunakan default depot):", err);
+      return [];
+    }),
   ]);
   return mergeCatalogAndDepots([...medicines, ...akhps], depots);
 }
