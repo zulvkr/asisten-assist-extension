@@ -99,6 +99,14 @@ interface ShiftSummaryRow {
   apotek: SectionTotals;
   klinik: SectionTotals;
   hpp: number;
+  offlineOmset: number;
+  hppOffline: number;
+  grossProfitOffline: number;
+  marginPercentOffline: number;
+  onlineOmset: number;
+  hppOnline: number;
+  grossProfitOnline: number;
+  marginPercentOnline: number;
   details: ShiftDetailRow[];
 }
 
@@ -179,7 +187,7 @@ function getMarketplaceCategory(
     return null;
   }
 
-  const raw = [payment.type, payment.name, payment.intent, payment.reason]
+  const raw = [payment.type, payment.name, payment.intent, payment.reason, payment.paidName]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -231,6 +239,14 @@ function createShiftSummaryRow(
     apotek: createEmptyTotals(),
     klinik: createEmptyTotals(),
     hpp: 0,
+    offlineOmset: 0,
+    hppOffline: 0,
+    grossProfitOffline: 0,
+    marginPercentOffline: 0,
+    onlineOmset: 0,
+    hppOnline: 0,
+    grossProfitOnline: 0,
+    marginPercentOnline: 0,
     details: [],
   };
 }
@@ -269,12 +285,11 @@ function resolveUnitHpp(
     (item.code ? catalogLookup.get(getCatalogLookupKey(catalogType, item.code)) : undefined) ||
     (item.name ? catalogLookup.get(getCatalogLookupKey(catalogType, item.name)) : undefined);
 
-  // Latest buy price (buyFee) is preferred over avg HPP.
+  // Only use buy price / harga beli (buyFee).
+  // Do NOT use or fallback to avgHPP because unit conversions can distort average HPP.
   return (
     getFinitePositiveNumber(item.buyFee) ??
     getFinitePositiveNumber(catalogItem?.buyFee) ??
-    getFinitePositiveNumber(item.avgHPP) ??
-    getFinitePositiveNumber(catalogItem?.avgHPP) ??
     0
   );
 }
@@ -301,8 +316,9 @@ function calculateTransactionTotals(
     const unitHpp = resolveUnitHpp(item, catalogLookup);
     const totalFee = item.type === "scourPrescription" ? 0 : (item.totalFee ?? 0);
     const totalHpp = Math.round(quantity * unitHpp);
-    const grossProfit = totalFee - totalHpp;
-    const marginPercent = totalFee > 0 ? (grossProfit / totalFee) * 100 : 0;
+    const isApotek = item.incomeType === "apotek";
+    const grossProfit = isApotek ? totalFee - totalHpp : 0;
+    const marginPercent = isApotek && totalFee > 0 ? (grossProfit / totalFee) * 100 : 0;
     return {
       id: item._id,
       name: item.name ?? "-",
@@ -427,8 +443,9 @@ function processTransaction(
     : "-";
 
   const totalFee = apotek.total + klinik.total;
-  const grossProfit = totalFee - hpp;
-  const marginPercent = totalFee > 0 ? (grossProfit / totalFee) * 100 : 0;
+  // Laba kotor dan margin dihitung khusus untuk apotek saja (tidak mengikutsertakan klinik)
+  const grossProfit = apotek.total - hpp;
+  const marginPercent = apotek.total > 0 ? (grossProfit / apotek.total) * 100 : 0;
 
   const hasApotek = apotek.total > 0 || items.some((it) => it.incomeType === "apotek");
   const hasKlinik = klinik.total > 0 || items.some((it) => it.incomeType === "klinik");
@@ -493,9 +510,35 @@ function processTransaction(
 
   summary.transactionCount = summary.details.length;
   summary.totalOmset = summary.apotek.total + summary.klinik.total;
-  summary.grossProfit = summary.totalOmset - summary.hpp;
+  // Laba kotor dan margin dihitung khusus untuk apotek saja (tidak mengikutsertakan klinik)
+  summary.grossProfit = summary.apotek.total - summary.hpp;
   summary.marginPercent =
-    summary.totalOmset > 0 ? (summary.grossProfit / summary.totalOmset) * 100 : 0;
+    summary.apotek.total > 0 ? (summary.grossProfit / summary.apotek.total) * 100 : 0;
+
+  // Breakdown Online vs Offline Apotek
+  summary.offlineOmset = summary.details
+    .filter((d) => !d.onlineInfo.isOnline)
+    .reduce((acc, d) => acc + d.apotek.total, 0);
+  summary.hppOffline = summary.details
+    .filter((d) => !d.onlineInfo.isOnline)
+    .reduce((acc, d) => acc + d.hpp, 0);
+  summary.grossProfitOffline = summary.offlineOmset - summary.hppOffline;
+  summary.marginPercentOffline =
+    summary.offlineOmset > 0
+      ? (summary.grossProfitOffline / summary.offlineOmset) * 100
+      : 0;
+
+  summary.onlineOmset = summary.details
+    .filter((d) => d.onlineInfo.isOnline)
+    .reduce((acc, d) => acc + d.apotek.total, 0);
+  summary.hppOnline = summary.details
+    .filter((d) => d.onlineInfo.isOnline)
+    .reduce((acc, d) => acc + d.hpp, 0);
+  summary.grossProfitOnline = summary.onlineOmset - summary.hppOnline;
+  summary.marginPercentOnline =
+    summary.onlineOmset > 0
+      ? (summary.grossProfitOnline / summary.onlineOmset) * 100
+      : 0;
 }
 
 function sortShiftSummaries(summaries: ShiftSummaryRow[]): ShiftSummaryRow[] {

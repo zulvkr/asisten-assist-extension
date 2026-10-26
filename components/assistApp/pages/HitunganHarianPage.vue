@@ -84,7 +84,7 @@
       <div class="col-12 col-sm-6 col-md-3">
         <q-card flat bordered class="bg-orange-1 text-orange-10">
           <q-card-section class="q-py-sm">
-            <div class="text-caption text-weight-medium text-orange-9">Total HPP (HNA + PPN)</div>
+            <div class="text-caption text-weight-medium text-orange-9">Total HPP (Harga Beli)</div>
             <div class="text-h6 text-weight-bolder">{{ formatRupiah(globalMetrics.totalHpp) }}</div>
             <div class="text-caption text-grey-8 q-mt-xs">
               Biaya modal persediaan terjual
@@ -97,7 +97,7 @@
       <div class="col-12 col-sm-6 col-md-3">
         <q-card flat bordered class="bg-green-1 text-green-10">
           <q-card-section class="q-py-sm">
-            <div class="text-caption text-weight-medium text-green-9">Laba Kotor (Gross Profit)</div>
+            <div class="text-caption text-weight-medium text-green-9">Laba Kotor (Apotek)</div>
             <div class="text-h6 text-weight-bolder">
               {{ formatRupiah(globalMetrics.totalGrossProfit) }}
               <span class="text-caption text-weight-bold text-green-8">
@@ -122,6 +122,71 @@
             <div class="text-caption row justify-between q-mt-xs text-grey-8">
               <span>Shift: <strong>{{ globalMetrics.totalShift }}</strong></span>
               <span>Online: <strong>{{ globalMetrics.totalOnlineTransactions }}</strong></span>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Channel Comparison KPI Cards: Offline vs Online Apotek -->
+    <div v-if="summaries.length" class="row q-col-gutter-sm q-mb-md">
+      <!-- Apotek Offline Card -->
+      <div class="col-12 col-md-6">
+        <q-card flat bordered class="bg-blue-grey-1 text-blue-grey-10">
+          <q-card-section class="q-py-sm">
+            <div class="row items-center justify-between">
+              <div class="text-subtitle2 text-weight-bolder text-teal-9 row items-center">
+                <q-icon name="storefront" size="20px" class="q-mr-xs" />
+                Apotek Offline (Kasir Fisik)
+              </div>
+              <q-badge color="teal" text-color="white" class="text-caption text-weight-bold">
+                Margin: {{ globalMetrics.marginPercentOffline.toFixed(1) }}%
+              </q-badge>
+            </div>
+            <div class="row q-col-gutter-sm q-mt-xs">
+              <div class="col-4">
+                <div class="text-caption text-grey-7">Omset Kasir</div>
+                <div class="text-weight-bold font-mono">{{ formatRupiah(globalMetrics.offlineOmset) }}</div>
+              </div>
+              <div class="col-4">
+                <div class="text-caption text-grey-7">HPP Offline</div>
+                <div class="text-weight-bold font-mono text-orange-9">{{ formatRupiah(globalMetrics.hppOffline) }}</div>
+              </div>
+              <div class="col-4">
+                <div class="text-caption text-grey-7">Laba Kotor</div>
+                <div class="text-weight-bold font-mono text-positive">{{ formatRupiah(globalMetrics.grossProfitOffline) }}</div>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <!-- Apotek Online Card -->
+      <div class="col-12 col-md-6">
+        <q-card flat bordered class="bg-deep-purple-1 text-deep-purple-10">
+          <q-card-section class="q-py-sm">
+            <div class="row items-center justify-between">
+              <div class="text-subtitle2 text-weight-bolder text-deep-purple-9 row items-center">
+                <q-icon name="shopping_cart" size="20px" class="q-mr-xs" />
+                Apotek Online (Marketplace)
+              </div>
+              <q-badge color="deep-purple" text-color="white" class="text-caption text-weight-bold">
+                Margin: {{ globalMetrics.marginPercentOnline.toFixed(1) }}%
+              </q-badge>
+            </div>
+            <div class="row q-col-gutter-sm q-mt-xs">
+              <div class="col-4">
+                <div class="text-caption text-grey-7">Omset Online</div>
+                <div class="text-weight-bold font-mono">{{ formatRupiah(globalMetrics.onlineOmset) }}</div>
+              </div>
+              <div class="col-4">
+                <div class="text-caption text-grey-7">HPP Online</div>
+                <div class="text-weight-bold font-mono text-orange-9">{{ formatRupiah(globalMetrics.hppOnline) }}</div>
+              </div>
+              <div class="col-4">
+                <div class="text-caption text-grey-7">Laba Kotor</div>
+                <div class="text-weight-bold font-mono text-positive">{{ formatRupiah(globalMetrics.grossProfitOnline) }}</div>
+              </div>
             </div>
           </q-card-section>
         </q-card>
@@ -207,6 +272,22 @@
                     :class="props.row.marginPercent >= 20 ? 'text-positive' : props.row.marginPercent > 0 ? 'text-orange-9' : 'text-negative'"
                   >
                     {{ props.row.marginPercent.toFixed(1) }}%
+                  </span>
+                </template>
+                <template v-else-if="col.name === 'marginOffline'">
+                  <span
+                    class="text-weight-bold"
+                    :class="props.row.marginPercentOffline >= 20 ? 'text-positive' : props.row.marginPercentOffline > 0 ? 'text-teal-9' : 'text-negative'"
+                  >
+                    {{ props.row.marginPercentOffline.toFixed(1) }}%
+                  </span>
+                </template>
+                <template v-else-if="col.name === 'marginOnline'">
+                  <span
+                    class="text-weight-bold"
+                    :class="props.row.marginPercentOnline >= 20 ? 'text-positive' : props.row.marginPercentOnline > 0 ? 'text-deep-purple-9' : 'text-negative'"
+                  >
+                    {{ props.row.marginPercentOnline.toFixed(1) }}%
                   </span>
                 </template>
                 <template v-else>
@@ -369,6 +450,8 @@
               <q-td align="right" class="text-orange-9">{{ formatRupiah(globalMetrics.totalHpp) }}</q-td>
               <q-td align="right" class="text-positive">{{ formatRupiah(globalMetrics.totalGrossProfit) }}</q-td>
               <q-td align="right" class="text-positive">{{ globalMetrics.marginPercent.toFixed(1) }}%</q-td>
+              <q-td align="right" class="text-teal-9">{{ globalMetrics.marginPercentOffline.toFixed(1) }}%</q-td>
+              <q-td align="right" class="text-deep-purple-9">{{ globalMetrics.marginPercentOnline.toFixed(1) }}%</q-td>
               <q-td align="center">-</q-td>
             </q-tr>
           </template>
@@ -919,9 +1002,11 @@ const shiftColumns = [
   { name: "klinikDebit", label: "Klinik Debit", align: "right" as const, field: (row: ShiftSummaryRow) => formatRupiah(row.klinik.debit), sortable: true },
   { name: "klinikTotal", label: "Total Klinik", align: "right" as const, field: (row: ShiftSummaryRow) => formatRupiah(row.klinik.total), sortable: true },
   { name: "totalOmset", label: "Total Omset", align: "right" as const, field: (row: ShiftSummaryRow) => formatRupiah(row.totalOmset), sortable: true },
-  { name: "hpp", label: "HPP (HNA + PPN)", align: "right" as const, field: (row: ShiftSummaryRow) => formatRupiah(row.hpp), sortable: true },
-  { name: "grossProfit", label: "Laba Kotor", align: "right" as const, field: (row: ShiftSummaryRow) => formatRupiah(row.grossProfit), sortable: true },
-  { name: "marginPercent", label: "Margin", align: "right" as const, field: (row: ShiftSummaryRow) => `${row.marginPercent.toFixed(1)}%`, sortable: true },
+  { name: "hpp", label: "HPP (Harga Beli)", align: "right" as const, field: (row: ShiftSummaryRow) => formatRupiah(row.hpp), sortable: true },
+  { name: "grossProfit", label: "Laba Kotor Apotek", align: "right" as const, field: (row: ShiftSummaryRow) => formatRupiah(row.grossProfit), sortable: true },
+  { name: "marginPercent", label: "Margin Apotek", align: "right" as const, field: (row: ShiftSummaryRow) => `${row.marginPercent.toFixed(1)}%`, sortable: true },
+  { name: "marginOffline", label: "Margin Offline", align: "right" as const, field: (row: ShiftSummaryRow) => `${row.marginPercentOffline.toFixed(1)}%`, sortable: true },
+  { name: "marginOnline", label: "Margin Online", align: "right" as const, field: (row: ShiftSummaryRow) => `${row.marginPercentOnline.toFixed(1)}%`, sortable: true },
   { name: "action", label: "Detail", align: "center" as const, sortable: false },
 ];
 
@@ -936,7 +1021,7 @@ const transactionColumns = [
   { name: "incomeType", label: "Kategori", align: "center" as const, field: "incomeType", sortable: true },
   { name: "totalFee", label: "Omset (Rp)", align: "right" as const, field: "totalFee", sortable: true },
   { name: "hpp", label: "HPP (Rp)", align: "right" as const, field: "hpp", sortable: true },
-  { name: "grossProfit", label: "Laba Kotor", align: "right" as const, field: "grossProfit", sortable: true },
+  { name: "grossProfit", label: "Laba Kotor Apotek", align: "right" as const, field: "grossProfit", sortable: true },
   { name: "action", label: "Detail", align: "center" as const, sortable: false },
 ];
 
@@ -950,12 +1035,20 @@ const globalMetrics = computed(() => {
   let totalKlinik = 0;
   let totalHpp = 0;
   let totalOnlineTransactions = 0;
+  let offlineOmset = 0;
+  let hppOffline = 0;
+  let onlineOmset = 0;
+  let hppOnline = 0;
 
   for (const s of summaries.value) {
     totalOmset += s.totalOmset;
     totalApotek += s.apotek.total;
     totalKlinik += s.klinik.total;
     totalHpp += s.hpp;
+    offlineOmset += s.offlineOmset;
+    hppOffline += s.hppOffline;
+    onlineOmset += s.onlineOmset;
+    hppOnline += s.hppOnline;
   }
 
   for (const tx of allTransactions.value) {
@@ -964,8 +1057,14 @@ const globalMetrics = computed(() => {
     }
   }
 
-  const totalGrossProfit = totalOmset - totalHpp;
-  const marginPercent = totalOmset > 0 ? (totalGrossProfit / totalOmset) * 100 : 0;
+  const totalGrossProfit = totalApotek - totalHpp;
+  const marginPercent = totalApotek > 0 ? (totalGrossProfit / totalApotek) * 100 : 0;
+
+  const grossProfitOffline = offlineOmset - hppOffline;
+  const marginPercentOffline = offlineOmset > 0 ? (grossProfitOffline / offlineOmset) * 100 : 0;
+
+  const grossProfitOnline = onlineOmset - hppOnline;
+  const marginPercentOnline = onlineOmset > 0 ? (grossProfitOnline / onlineOmset) * 100 : 0;
 
   return {
     totalOmset,
@@ -974,6 +1073,14 @@ const globalMetrics = computed(() => {
     totalHpp,
     totalGrossProfit,
     marginPercent,
+    offlineOmset,
+    hppOffline,
+    grossProfitOffline,
+    marginPercentOffline,
+    onlineOmset,
+    hppOnline,
+    grossProfitOnline,
+    marginPercentOnline,
     totalShift: summaries.value.length,
     totalTransactions: allTransactions.value.length,
     totalOnlineTransactions,
@@ -993,6 +1100,12 @@ const shiftTotals = computed(() => {
     klinikCash: 0,
     klinikDebit: 0,
     klinikTotal: 0,
+    offlineOmset: 0,
+    hppOffline: 0,
+    grossProfitOffline: 0,
+    onlineOmset: 0,
+    hppOnline: 0,
+    grossProfitOnline: 0,
   };
   for (const s of summaries.value) {
     totals.apotekCash += s.apotek.cash;
@@ -1006,6 +1119,12 @@ const shiftTotals = computed(() => {
     totals.klinikCash += s.klinik.cash;
     totals.klinikDebit += s.klinik.debit;
     totals.klinikTotal += s.klinik.total;
+    totals.offlineOmset += s.offlineOmset;
+    totals.hppOffline += s.hppOffline;
+    totals.grossProfitOffline += s.grossProfitOffline;
+    totals.onlineOmset += s.onlineOmset;
+    totals.hppOnline += s.hppOnline;
+    totals.grossProfitOnline += s.grossProfitOnline;
   }
   return totals;
 });
@@ -1075,13 +1194,15 @@ const filteredTransactions = computed<ShiftDetailRow[]>(() => {
 
 const filteredMetrics = computed(() => {
   let omset = 0;
+  let apotekOmset = 0;
   let hpp = 0;
   for (const tx of filteredTransactions.value) {
     omset += tx.totalFee;
+    apotekOmset += tx.apotek.total;
     hpp += tx.hpp;
   }
-  const grossProfit = omset - hpp;
-  const marginPercent = omset > 0 ? (grossProfit / omset) * 100 : 0;
+  const grossProfit = apotekOmset - hpp;
+  const marginPercent = apotekOmset > 0 ? (grossProfit / apotekOmset) * 100 : 0;
   return { omset, hpp, grossProfit, marginPercent };
 });
 
@@ -1225,9 +1346,17 @@ async function exportToExcel() {
       "Debit Klinik",
       "Total Klinik",
       "Total Omset",
-      "HPP (HNA + PPN)",
-      "Laba Kotor",
-      "Margin %",
+      "HPP Total",
+      "Laba Kotor Apotek",
+      "Margin % Apotek",
+      "Omset Offline",
+      "HPP Offline",
+      "Laba Offline",
+      "Margin % Offline",
+      "Omset Online",
+      "HPP Online",
+      "Laba Online",
+      "Margin % Online",
     ];
     const summaryRows = summaries.value.map((summary) => [
       summary.displayDate,
@@ -1248,16 +1377,25 @@ async function exportToExcel() {
       summary.hpp,
       summary.grossProfit,
       Number(summary.marginPercent.toFixed(2)),
+      summary.offlineOmset,
+      summary.hppOffline,
+      summary.grossProfitOffline,
+      Number(summary.marginPercentOffline.toFixed(2)),
+      summary.onlineOmset,
+      summary.hppOnline,
+      summary.grossProfitOnline,
+      Number(summary.marginPercentOnline.toFixed(2)),
     ]);
     const summaryWS = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryRows]);
     XLSX.utils.book_append_sheet(wb, summaryWS, "Summary_Shift");
 
-    // 2. SHEET: DAFTAR TRANSAKSI (1 ROW 1 TRANSAKSI)
+    // 2. SHEET: DAFTAR TRANSAKSI (SEMUA)
     const txHeaders = [
       "Tanggal",
       "Waktu",
       "Shift",
       "No Invoice",
+      "Saluran",
       "Platform Online",
       "No Pesanan Online",
       "No Resi",
@@ -1269,15 +1407,16 @@ async function exportToExcel() {
       "Metode Bayar",
       "Total Omset",
       "Total HPP",
-      "Laba Kotor",
-      "Margin %",
+      "Laba Kotor (Apotek)",
+      "Margin % (Apotek)",
       "Catatan",
     ];
-    const txRows = allTransactions.value.map((tx) => [
+    const mapTxToRow = (tx: ShiftDetailRow) => [
       tx.dateStr,
       tx.time,
       tx.shift,
       tx.code,
+      tx.onlineInfo.isOnline ? "Online" : "Offline",
       tx.onlineInfo.platform || (tx.onlineInfo.isOnline ? "Online" : "Offline POS"),
       tx.onlineInfo.orderNo || "",
       tx.onlineInfo.resi || "",
@@ -1292,9 +1431,21 @@ async function exportToExcel() {
       tx.grossProfit,
       Number(tx.marginPercent.toFixed(2)),
       tx.otherNotes.join(" | "),
-    ]);
+    ];
+
+    const txRows = allTransactions.value.map(mapTxToRow);
     const txWS = XLSX.utils.aoa_to_sheet([txHeaders, ...txRows]);
-    XLSX.utils.book_append_sheet(wb, txWS, "Transaksi");
+    XLSX.utils.book_append_sheet(wb, txWS, "Semua_Transaksi");
+
+    // 3. SHEET: TRANSAKSI OFFLINE (KASIR)
+    const offlineRows = allTransactions.value.filter((tx) => !tx.onlineInfo.isOnline).map(mapTxToRow);
+    const offlineWS = XLSX.utils.aoa_to_sheet([txHeaders, ...offlineRows]);
+    XLSX.utils.book_append_sheet(wb, offlineWS, "Transaksi_Offline");
+
+    // 4. SHEET: TRANSAKSI ONLINE (MARKETPLACE)
+    const onlineRows = allTransactions.value.filter((tx) => tx.onlineInfo.isOnline).map(mapTxToRow);
+    const onlineWS = XLSX.utils.aoa_to_sheet([txHeaders, ...onlineRows]);
+    XLSX.utils.book_append_sheet(wb, onlineWS, "Transaksi_Online");
 
     // 3. SHEET: RAW DATA DETAIL ITEM
     const rawHeaders = [
