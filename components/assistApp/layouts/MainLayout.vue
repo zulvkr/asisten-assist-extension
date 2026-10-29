@@ -62,24 +62,32 @@
           </q-badge>
 
           <!-- Firebase Auth User Badge -->
-          <q-btn-dropdown
-            v-if="isAuthenticated"
-            dense
-            flat
-            color="white"
-            icon="account_circle"
-            :label="userEmail"
-            class="q-ml-sm text-capitalize"
-          >
-            <q-list dense>
-              <q-item clickable v-close-popup @click="logout">
-                <q-item-section avatar>
-                  <q-icon name="logout" color="negative" />
-                </q-item-section>
-                <q-item-section>Keluar (Logout)</q-item-section>
-              </q-item>
-            </q-list>
-          </q-btn-dropdown>
+          <div v-if="isAuthenticated" class="row items-center q-gutter-x-xs q-ml-sm">
+            <q-badge
+              :color="currentRole === 'owner' ? 'amber-9' : currentRole === 'auditor' ? 'indigo-7' : 'teal-8'"
+              text-color="white"
+              class="q-px-xs text-weight-bold text-uppercase"
+            >
+              {{ currentRole }}
+            </q-badge>
+            <q-btn-dropdown
+              dense
+              flat
+              color="white"
+              icon="account_circle"
+              :label="userEmail"
+              class="text-capitalize"
+            >
+              <q-list dense>
+                <q-item clickable v-close-popup @click="logout">
+                  <q-item-section avatar>
+                    <q-icon name="logout" color="negative" />
+                  </q-item-section>
+                  <q-item-section>Keluar (Logout)</q-item-section>
+                </q-item>
+              </q-list>
+            </q-btn-dropdown>
+          </div>
           <q-badge
             v-else-if="!authLoading"
             color="amber-9"
@@ -166,6 +174,27 @@
           <q-item-section>
             <q-item-label>Restock & Return</q-item-label>
             <q-item-label caption>Transaksi masuk & distributor</q-item-label>
+          </q-item-section>
+        </q-item>
+
+        <!-- Stock Opname Tab -->
+        <q-item
+          clickable
+          v-ripple
+          to="/stock-opname"
+          :active="activePage === 'stockOpname' || activePage === 'stockOpnameWorkspace'"
+          active-class="bg-teal-1 text-teal text-weight-bold"
+          @click="emitPage('stockOpname')"
+        >
+          <q-item-section avatar>
+            <q-icon name="fact_check" />
+            <q-tooltip v-if="miniState" anchor="center right" self="center left">
+              Stock Opname
+            </q-tooltip>
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>Stock Opname</q-item-label>
+            <q-item-label caption>Audit & hitung fisik stok</q-item-label>
           </q-item-section>
         </q-item>
 
@@ -361,7 +390,7 @@ const $q = useQuasar();
 const store = useAssistStore();
 const route = useRoute();
 const router = useRouter();
-const { isAuthenticated, authLoading, userEmail, initAuthListener, logout } = useFirebaseAuth();
+const { isAuthenticated, authLoading, userEmail, currentRole, initAuthListener, logout } = useFirebaseAuth();
 
 const activePage = computed(() => {
   if (props.page) return props.page;

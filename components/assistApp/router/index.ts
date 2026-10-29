@@ -36,6 +36,17 @@ export const routes: RouteRecordRaw[] = [
     alias: ["/return", "/restock-return"],
   },
   {
+    path: "/stock-opname",
+    name: "stockOpname",
+    component: () => import("../pages/StockOpnameListPage.vue"),
+    alias: ["/stock_opname", "/stok-opname", "/stok_opname", "/opname"],
+  },
+  {
+    path: "/stock-opname/:id",
+    name: "stockOpnameWorkspace",
+    component: () => import("../pages/StockOpnameWorkspacePage.vue"),
+  },
+  {
     path: "/comparison",
     name: "comparison",
     component: () => import("../pages/StockComparisonPage.vue"),
