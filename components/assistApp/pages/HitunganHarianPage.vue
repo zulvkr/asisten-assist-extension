@@ -922,7 +922,8 @@
 
 <script lang="ts" setup>
 import * as XLSX from "xlsx";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { useQuasar } from "quasar";
 import { enrichPemasukanData } from "@/utils/enrichPemasukanData";
 import {
@@ -1530,9 +1531,38 @@ async function exportToExcel() {
   }
 }
 
+const route = useRoute();
+
+function applyRouteParams(): boolean {
+  let dateChanged = false;
+  if (route.query.date) {
+    startDate.value = String(route.query.date);
+    endDate.value = String(route.query.endDate || route.query.date);
+    dateChanged = true;
+  }
+  if (route.query.tab === "transaksi" || route.query.tab === "shift") {
+    activeTab.value = route.query.tab as "transaksi" | "shift";
+  }
+  if (route.query.search) {
+    searchFilter.value = String(route.query.search);
+  }
+  return dateChanged;
+}
+
 onMounted(() => {
+  applyRouteParams();
   void loadSummaries();
 });
+
+watch(
+  () => [route.query.date, route.query.endDate, route.query.tab, route.query.search],
+  () => {
+    const dateChanged = applyRouteParams();
+    if (dateChanged) {
+      void loadSummaries();
+    }
+  }
+);
 </script>
 
 <style>

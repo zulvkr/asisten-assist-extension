@@ -17,7 +17,24 @@
       <template v-slot:avatar>
         <q-icon name="warning" color="black" />
       </template>
-      Token Desty Omni tidak ditemukan. Silakan buka tab Desty Omni, masuk/login, lalu segarkan halaman ini.
+      <div class="row items-center justify-between no-wrap full-width">
+        <div>
+          <div class="text-weight-bold">Token Desty Omni tidak ditemukan</div>
+          <div class="text-caption">
+            Pastikan tab Desty Omni (<a href="https://omni.desty.app" target="_blank" class="text-dark text-weight-bold">omni.desty.app</a>) sudah dibuka dan login.
+            Jika ekstensi baru saja di-reload/update, silakan tekan <b>F5 (refresh)</b> pada tab Desty Omni sekali agar terhubung, lalu klik <b>Cek Ulang Token</b>.
+          </div>
+        </div>
+        <q-btn
+          color="black"
+          outline
+          icon="refresh"
+          label="Cek Ulang Token"
+          :loading="isProbingToken"
+          class="q-ml-md"
+          @click="probeTokens"
+        />
+      </div>
     </q-banner>
 
     <q-banner v-if="probeWarnings.length" rounded class="bg-warning text-black q-mb-md">
@@ -56,6 +73,7 @@
         >
           <q-tab name="pldmp" icon="table_chart" label="PLDMP (Ekspor Pesanan)" />
           <q-tab name="import" icon="cloud_download" label="Impor Pesanan (Desty → Assist)" />
+          <q-tab name="cancelled_returns" icon="assignment_return" label="Pengecekan Batal / Retur" />
           <q-tab name="price_update" icon="price_change" label="Update Harga Marketplace" />
           <q-tab name="offline_sync" icon="sync_saved_locally" label="SO Stok & Koreksi Desty" />
           <q-tab name="mapping" icon="tune" label="Override Pemetaan & Konversi SKU" />
@@ -836,6 +854,11 @@
           <q-tab-panel name="log" class="q-pa-md">
             <q-table flat bordered dense :rows="importLedger" :columns="ledgerColumns" row-key="marketplaceOrderSn" no-data-label="Belum ada log impor." />
           </q-tab-panel>
+
+          <!-- TAB 6: PENGECEKAN PESANAN BATAL / RETUR -->
+          <q-tab-panel name="cancelled_returns" class="q-pa-md">
+            <DestyCancelledOrdersTab :token="destyToken" :tenant-id="destyTenantId" />
+          </q-tab-panel>
         </q-tab-panels>
       </q-card-section>
     </q-card>
@@ -1172,6 +1195,7 @@ import {
 import { parseExcludedPrefixes, isSkuPrefixExcluded } from "@/utils/skuPrefixUtils";
 import DestyStockOpnameTab from "../components/DestyStockOpnameTab.vue";
 import DestyPriceUpdateTab from "../components/DestyPriceUpdateTab.vue";
+import DestyCancelledOrdersTab from "../components/DestyCancelledOrdersTab.vue";
 import type { QuickMappingFormData } from "@/types/destyStockOpname";
 import {
   fetchAllDestyOrders,
@@ -1232,6 +1256,7 @@ const probeWarnings = ref<string[]>([]);
 
 const selectedStatus = ref("To_Process");
 const loading = ref(false);
+const isProbingToken = ref(false);
 const exporting = ref(false);
 const copyStatusText = ref("Salin ke Clipboard");
 const statusMessage = ref("");
@@ -2297,11 +2322,14 @@ async function loadStatusCounts() {
 }
 
 async function probeTokens() {
+  if (isProbingToken.value) return;
+  isProbingToken.value = true;
   probeWarnings.value = [];
   statusMessage.value = "";
   statusVariant.value = "muted";
 
-  await loadAssistLocalMaps();
+  // Run Assist map loading in the background so it does not block Desty token detection
+  void loadAssistLocalMaps();
 
   try {
     const result = await resolveDestyToken();
@@ -2316,11 +2344,13 @@ async function probeTokens() {
       return;
     }
 
-    await loadStatusCounts();
+    void loadStatusCounts();
   } catch (err) {
     console.error("Gagal mendeteksi token:", err);
     statusMessage.value = "Gagal mendeteksi status token.";
     statusVariant.value = "error";
+  } finally {
+    isProbingToken.value = false;
   }
 }
 

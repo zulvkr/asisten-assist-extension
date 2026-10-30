@@ -11,7 +11,7 @@ export default defineConfig({
   manifest: {
     name: "Asisten Assist",
     description: "Ekstensi asisten operasional apotek",
-    permissions: ["storage"],
+    permissions: ["storage", "tabs", "scripting", "cookies"],
     host_permissions: [
       "https://clinica.assist.id/*",
       "https://api-clinica.assist.id/*",

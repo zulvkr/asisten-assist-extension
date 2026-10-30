@@ -21,14 +21,47 @@ export interface DestyOrderRecord {
   orderSn?: string;
   courier?: string;
   externalShopName?: string;
+  status?: string;
+  orderProcessTime?: number;
+  packageTime?: number;
+  cancelTime?: number;
+  labelPrinted?: boolean;
+  cancelBy?: string;
+  cancelReason?: string;
+  logisticsStatus?: string;
+  requestCancelStatus?: number;
+  packageStatusHistory?: Array<{
+    status: string;
+    statusUpdateTime: number;
+  }>;
   items: DestyOrderItem[];
+}
+
+export interface DestyOrderDetailResult {
+  raw: any;
+  orderId: string;
+  displayedOrderSn: string;
+  cancelReason?: string;
+  cancelBy?: string;
+  logisticsStatus?: string;
+  requestCancelStatus?: number;
+  labelPrinted?: boolean;
+  processedTime?: number;
+  packageStatusHistory?: Array<{
+    status: string;
+    statusUpdateTime: number;
+  }>;
+  totalSales?: number;
+  shipmentNo?: string;
+  bookingSn?: string;
+  courier?: string;
 }
 
 export async function fetchDestyOrderDetail(params: {
   token: string;
   tenantId?: string;
   orderId: string;
-}): Promise<any> {
+}): Promise<DestyOrderDetailResult> {
   const url = `${DESTY_API_BASE}/api/order-center/order/detail?id=${params.orderId}`;
   const response = await fetch(url, {
     method: "GET",
@@ -47,7 +80,32 @@ export async function fetchDestyOrderDetail(params: {
     );
   }
 
-  return payload.data;
+  const data = payload.data || {};
+  const firstPkg = Array.isArray(data.packages) && data.packages.length > 0 ? data.packages[0] : {};
+
+  // Find when order was marked "Processed" in package status history
+  const history: Array<{ status: string; statusUpdateTime: number }> =
+    firstPkg.packageStatusHistory || data.packageStatusHistory || [];
+
+  const processedEntry = history.find((h) => h.status === "Processed");
+  const processedTime = processedEntry ? processedEntry.statusUpdateTime : undefined;
+
+  return {
+    raw: data,
+    orderId: String(data.id || params.orderId),
+    displayedOrderSn: String(data.displayedOrderSn || firstPkg.displayedOrderSn || ""),
+    cancelReason: firstPkg.cancelReason || data.cancelReason,
+    cancelBy: firstPkg.cancelBy || data.cancelBy,
+    logisticsStatus: firstPkg.logisticsStatus || data.logisticsStatus,
+    requestCancelStatus: firstPkg.requestCancelStatus ?? data.requestCancelStatus,
+    labelPrinted: firstPkg.labelPrinted ?? data.labelPrinted,
+    processedTime,
+    packageStatusHistory: history,
+    totalSales: typeof data.totalSales === "number" ? data.totalSales : undefined,
+    shipmentNo: firstPkg.shipmentNo || data.shipmentNo,
+    bookingSn: firstPkg.bookingSn || data.bookingSn,
+    courier: firstPkg.courier || data.courier,
+  };
 }
 
 
@@ -57,6 +115,7 @@ export interface FetchDestyOrdersParams {
   status: string;
   current: number;
   size: number;
+  signal?: AbortSignal;
 }
 
 export interface FetchDestyOrdersResponse {
@@ -95,6 +154,7 @@ export async function fetchDestyOrdersPage(
     method: "POST",
     credentials: "include",
     headers: buildDestyHeaders(params.token, params.tenantId),
+    signal: params.signal,
     body: JSON.stringify({
       current: params.current,
       size: params.size,
@@ -202,6 +262,20 @@ export async function fetchAllDestyOrders(params: {
               if (!record.bookingSn && detailBookingSn) {
                 record.bookingSn = detailBookingSn;
               }
+              if (!record.courier && (detail.courier || detail.logisticsChannel || detail.shippingCarrier)) {
+                record.courier = String(detail.courier || detail.logisticsChannel || detail.shippingCarrier).trim();
+              }
+              const rawProcessTime = detail.packageTime ?? detail.packTime ?? detail.processTime ?? detail.printTime;
+              if (typeof rawProcessTime === "number" && rawProcessTime > 0) {
+                record.orderProcessTime = rawProcessTime;
+                record.packageTime = rawProcessTime;
+              }
+              if (typeof detail.cancelTime === "number" && detail.cancelTime > 0) {
+                record.cancelTime = detail.cancelTime;
+              }
+              if (!record.status && (detail.status || detail.orderStatus || detail.packageStatus)) {
+                record.status = String(detail.status || detail.orderStatus || detail.packageStatus);
+              }
             }
           } catch (err) {
             console.warn(`Gagal mengambil detail untuk orderId ${orderId}:`, err);
@@ -228,6 +302,7 @@ export async function fetchDestyOrderStatusCount(params: {
     method: "POST",
     credentials: "include",
     headers: buildDestyHeaders(params.token, params.tenantId),
+    signal: params.signal,
     body: JSON.stringify({
       current: 1,
       size: 50,
@@ -247,4 +322,78 @@ export async function fetchDestyOrderStatusCount(params: {
 
   return payload.data || {};
 }
+
+/**
+ * Fast paginated fetching for Cancelled and Return orders directly from /api/order-center/package/list.
+ * Does not do eager per-record detail requests, returning all orders and items in seconds.
+ */
+export async function fetchDestyCancelledOrdersFast(params: {
+  token: string;
+  tenantId?: string;
+  status?: "Cancellations" | "Returns" | "ALL";
+  maxPages?: number;
+  signal?: AbortSignal;
+  onProgress?: (
+    fetched: number,
+    total: number,
+    status: string,
+    currentPage?: number,
+    totalPages?: number,
+  ) => void;
+}): Promise<DestyOrderRecord[]> {
+  const statuses =
+    params.status === "Returns"
+      ? ["Returns"]
+      : params.status === "Cancellations"
+        ? ["Cancellations"]
+        : ["Cancellations", "Returns"];
+
+  const allRecords: DestyOrderRecord[] = [];
+  const maxPages = params.maxPages || 20;
+
+  for (const st of statuses) {
+    let current = 1;
+    while (current <= maxPages) {
+      if (params.signal?.aborted) {
+        throw new DOMException(
+          "Operasi penarikan dibatalkan oleh pengguna.",
+          "AbortError",
+        );
+      }
+
+      const page = await fetchDestyOrdersPage({
+        token: params.token,
+        tenantId: params.tenantId,
+        status: st,
+        current,
+        size: 50,
+        signal: params.signal,
+      });
+
+      if (page.records.length === 0) break;
+
+      page.records.forEach((r) => {
+        if (!r.status) r.status = st;
+      });
+
+      allRecords.push(...page.records);
+
+      if (params.onProgress) {
+        params.onProgress(
+          allRecords.length,
+          page.total,
+          st,
+          current,
+          Math.min(page.pages || 1, maxPages),
+        );
+      }
+
+      if (current >= page.pages) break;
+      current += 1;
+    }
+  }
+
+  return allRecords;
+}
+
 
