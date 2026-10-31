@@ -158,10 +158,6 @@
           </div>
         </q-form>
       </q-card-section>
-
-      <q-card-section class="text-center text-caption text-grey-6 q-pt-none">
-        Daftar akun dimuat secara langsung dari koleksi Firestore <code>user_roles</code>.
-      </q-card-section>
     </q-card>
   </q-dialog>
 </template>

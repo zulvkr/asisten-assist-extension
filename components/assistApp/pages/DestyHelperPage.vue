@@ -75,7 +75,7 @@
           <q-tab name="import" icon="cloud_download" label="Impor Pesanan (Desty → Assist)" />
           <q-tab name="cancelled_returns" icon="assignment_return" label="Pengecekan Batal / Retur" />
           <q-tab name="price_update" icon="price_change" label="Update Harga Marketplace" />
-          <q-tab name="offline_sync" icon="sync_saved_locally" label="SO Stok & Koreksi Desty" />
+          <q-tab name="offline_sync" icon="inventory" label="SO Stok & Koreksi Desty" />
           <q-tab name="mapping" icon="tune" label="Override Pemetaan & Konversi SKU" />
           <q-tab name="log" icon="history" label="Log Impor" />
         </q-tabs>
@@ -867,7 +867,7 @@
     <q-dialog v-model="showOfflineConfirmDialog" persistent>
       <q-card style="min-width: 450px; max-width: 600px;">
         <q-card-section class="row items-center bg-teal text-white">
-          <q-icon name="sync_saved_locally" size="24px" class="q-mr-sm" />
+          <q-icon name="inventory" size="24px" class="q-mr-sm" />
           <div class="text-h6">Konfirmasi Koreksi Stok Desty</div>
           <q-space />
           <q-btn icon="close" flat round dense v-close-popup />

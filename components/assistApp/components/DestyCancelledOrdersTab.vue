@@ -227,7 +227,7 @@
         <template v-slot:body-cell-orderSn="props">
           <q-td :props="props">
             <div class="column q-gutter-y-xs">
-              <div class="row items-center q-gutter-x-xs no-wrap">
+              <div class="row items-center q-gutter-x-xs">
                 <q-badge
                   :color="getPlatformBadgeColor(props.row.platformName)"
                   text-color="white"
@@ -235,7 +235,7 @@
                 >
                   {{ props.row.platformName }}
                 </q-badge>
-                <span class="font-mono text-weight-bold text-caption ellipsis" style="max-width: 140px;" :title="props.row.displayedOrderSn">
+                <span class="font-mono text-weight-bold text-caption text-break">
                   {{ props.row.displayedOrderSn }}
                 </span>
                 <q-btn
@@ -261,7 +261,7 @@
                 </q-badge>
               </div>
 
-              <div v-if="props.row.cancelReason" class="text-3xs text-grey-7 ellipsis-2-lines" :title="props.row.cancelReason">
+              <div v-if="props.row.cancelReason" class="text-3xs text-grey-7 text-break" :title="props.row.cancelReason">
                 Alasan: <em>{{ props.row.cancelReason }}</em>
               </div>
             </div>
@@ -304,8 +304,8 @@
 
               <!-- Resi & Kurir Info -->
               <div class="q-mt-xs">
-                <div v-if="props.row.trackingNumber" class="row items-center q-gutter-x-xs no-wrap">
-                  <span class="font-mono text-weight-bold text-caption ellipsis" style="max-width: 140px;" :title="props.row.trackingNumber">
+                <div v-if="props.row.trackingNumber" class="row items-center q-gutter-x-xs">
+                  <span class="font-mono text-weight-bold text-caption text-break">
                     {{ props.row.trackingNumber }}
                   </span>
                   <q-btn
@@ -324,7 +324,7 @@
                   Tanpa Nomor Resi
                 </div>
 
-                <div v-if="props.row.courier" class="text-3xs text-grey-8">
+                <div v-if="props.row.courier" class="text-3xs text-grey-8 text-break">
                   Kurir: {{ props.row.courier }}
                 </div>
               </div>
@@ -332,20 +332,20 @@
           </q-td>
         </template>
 
-        <!-- Kolom 4: Produk / Obat -->
+        <!-- Kolom 4: Produk / Obat (Bisa Di-wrap) -->
         <template v-slot:body-cell-items="props">
           <q-td :props="props">
             <div class="column q-gutter-y-xs">
               <div
                 v-for="(item, idx) in props.row.items.slice(0, 3)"
                 :key="idx"
-                class="row items-start justify-between text-2xs q-py-2xs border-bottom-light"
+                class="product-item-row q-py-2xs border-bottom-light"
               >
-                <div class="col-8 text-weight-medium ellipsis" :title="item.productName">
-                  <strong class="text-teal-9">{{ item.quantity }}x</strong> {{ item.productName }}
+                <div class="product-name-wrap text-2xs text-weight-medium">
+                  <span class="text-teal-9 text-weight-bold">{{ item.quantity }}x</span> {{ item.productName }}
                 </div>
-                <div class="col-4 text-grey-7 font-mono text-right text-3xs ellipsis" :title="item.sku">
-                  {{ item.sku || '-' }}
+                <div v-if="item.sku" class="text-grey-7 font-mono text-3xs product-sku-wrap q-mt-2xs">
+                  SKU: {{ item.sku }}
                 </div>
               </div>
 
@@ -364,8 +364,8 @@
         <template v-slot:body-cell-processing="props">
           <q-td :props="props" class="text-center">
             <div class="column items-center q-gutter-y-xs">
-              <!-- Jika pernah diproses kasir -->
-              <div v-if="props.row.hasBeenProcessed && props.row.orderProcessedAt">
+              <!-- Jika ada tanggal proses / packing terverifikasi -->
+              <div v-if="props.row.orderProcessedAt">
                 <div class="text-weight-bold text-2xs text-teal-9">
                   Tgl Packing: {{ formatDate(props.row.orderProcessedAt) }}
                 </div>
@@ -377,7 +377,7 @@
                   size="xs"
                   color="teal"
                   icon="receipt_long"
-                  label="Lihat Transaksi Kasir"
+                  label="Transaksi Kasir"
                   class="q-mt-xs full-width"
                   @click="navigateToTransactionDate(props.row)"
                   no-caps
@@ -387,16 +387,35 @@
                   v-if="props.row.assistInvoice"
                   color="green-1"
                   text-color="green-9"
-                  class="text-3xs font-mono q-mt-2xs"
+                  class="text-3xs font-mono q-mt-2xs text-break"
                 >
                   Inv: {{ props.row.assistInvoice }}
                 </q-badge>
               </div>
 
-              <!-- Jika belum pernah diproses kasir -->
+              <!-- Jika ada resi / label tercetak (pernah diproses di apotek tapi tanggal packing belum ditarik dari riwayat detail) -->
+              <div v-else-if="props.row.labelPrinted || props.row.trackingNumber">
+                <q-badge color="amber-2" text-color="amber-10" class="q-px-xs text-3xs text-weight-bold">
+                  Resi / Siap Kirim
+                </q-badge>
+                <q-btn
+                  size="xs"
+                  color="teal"
+                  outline
+                  icon="receipt_long"
+                  label="Cek Kasir (Tgl Buat)"
+                  class="q-mt-xs full-width"
+                  @click="navigateToTransactionDate(props.row)"
+                  no-caps
+                >
+                  <q-tooltip>Cek transaksi kasir berdasarkan tanggal pesanan dibuat</q-tooltip>
+                </q-btn>
+              </div>
+
+              <!-- Jika benar-benar batal awal (tanpa resi & belum pernah diproses) -->
               <div v-else>
                 <q-badge color="grey-3" text-color="grey-8" class="q-px-xs text-3xs">
-                  Belum Diproses Kasir
+                  Batal Awal (Tanpa Resi)
                 </q-badge>
               </div>
 
@@ -406,13 +425,13 @@
                 outline
                 color="grey-8"
                 icon="history"
-                label="Riwayat Status"
+                label="Riwayat Desty"
                 @click="openOrderDetailHistoryDialog(props.row)"
                 no-caps
                 dense
-                class="q-px-xs q-mt-xs"
+                class="q-px-xs q-mt-xs full-width"
               >
-                <q-tooltip>Lihat kronologi status paket di Desty</q-tooltip>
+                <q-tooltip>Tarik kronologi status paket terperinci dari Desty</q-tooltip>
               </q-btn>
             </div>
           </q-td>
@@ -421,21 +440,22 @@
         <!-- Kolom 6: Catatan Kondisi -->
         <template v-slot:body-cell-notes="props">
           <q-td :props="props">
-            <div class="row items-center justify-between no-wrap">
-              <div class="ellipsis text-2xs" :class="props.row.notes ? 'text-black' : 'text-grey-5 italic'" style="max-width: 120px;" :title="props.row.notes">
+            <div class="column q-gutter-y-xs">
+              <div class="text-2xs text-break" :class="props.row.notes ? 'text-black' : 'text-grey-5 italic'">
                 {{ props.row.notes || 'Belum ada catatan' }}
               </div>
-              <q-btn
-                flat
-                round
-                dense
-                size="xs"
-                color="teal"
-                icon="edit_note"
-                @click="openNotesDialog(props.row)"
-              >
-                <q-tooltip>Edit catatan kondisi barang</q-tooltip>
-              </q-btn>
+              <div>
+                <q-btn
+                  flat
+                  dense
+                  size="xs"
+                  color="teal"
+                  icon="edit_note"
+                  label="Edit"
+                  @click="openNotesDialog(props.row)"
+                  no-caps
+                />
+              </div>
             </div>
           </q-td>
         </template>
@@ -711,8 +731,8 @@ const filteredOrders = computed(() => {
     list = list.filter((o) => o.platformName.toLowerCase() === platformFilter.value.toLowerCase());
   }
 
-  if (searchQuery.value && searchQuery.value.trim()) {
-    const q = searchQuery.value.trim().toLowerCase();
+  const q = String(searchQuery.value || "").trim().toLowerCase();
+  if (q) {
     list = list.filter((o) => {
       return (
         o.displayedOrderSn.toLowerCase().includes(q) ||
@@ -732,14 +752,14 @@ const filteredOrders = computed(() => {
   return list;
 });
 
-// Table Columns Definition (6 Consolidated, Balanced Columns)
+// Table Columns Definition (6 Consolidated, Responsive Columns - Total 100%, No Horizontal Scroll)
 const tableColumns = [
-  { name: "reception", label: "Status Fisik Apotek", align: "center" as const, field: "isReceived", sortable: true, style: "width: 140px; min-width: 140px;" },
-  { name: "orderSn", label: "Marketplace & Pesanan", align: "left" as const, field: "displayedOrderSn", sortable: true, style: "width: 210px; min-width: 210px;" },
-  { name: "shippingLogistics", label: "Status Ekspedisi & Logistik", align: "left" as const, field: "handoverStatus", sortable: true, style: "width: 250px; min-width: 250px;" },
-  { name: "items", label: "Produk / Obat", align: "left" as const, field: "items", style: "width: 260px; min-width: 260px;" },
-  { name: "processing", label: "Kasir & Kronologi", align: "center" as const, field: "orderProcessedAt", sortable: true, style: "width: 210px; min-width: 210px;" },
-  { name: "notes", label: "Catatan Kondisi", align: "left" as const, field: "notes", style: "width: 150px; min-width: 150px;" },
+  { name: "reception", label: "Fisik Apotek", align: "center" as const, field: "isReceived", sortable: true, style: "width: 11%;" },
+  { name: "orderSn", label: "Pesanan & Marketplace", align: "left" as const, field: "displayedOrderSn", sortable: true, style: "width: 19%;" },
+  { name: "shippingLogistics", label: "Ekspedisi & Logistik", align: "left" as const, field: "handoverStatus", sortable: true, style: "width: 21%;" },
+  { name: "items", label: "Produk / Obat", align: "left" as const, field: "items", style: "width: 27%;" },
+  { name: "processing", label: "Kasir & Riwayat", align: "center" as const, field: "orderProcessedAt", sortable: true, style: "width: 12%;" },
+  { name: "notes", label: "Catatan", align: "left" as const, field: "notes", style: "width: 10%;" },
 ];
 
 /**
@@ -1105,19 +1125,20 @@ function openItemsDialog(row: CancelledOrderRow) {
 }
 
 /**
- * Navigates directly to the transactions page on the exact date when the order was processed
+ * Navigates directly to the transactions page on the exact date when the order was processed or created
  */
 function navigateToTransactionDate(row: CancelledOrderRow) {
-  if (!row.orderProcessedAt) {
+  const targetDate = row.orderProcessedAt || row.orderCreatedAt;
+  if (!targetDate) {
     $q.notify({
       type: "warning",
-      message: "Pesanan ini belum pernah diproses di apotek sehingga tidak memiliki tanggal transaksi.",
+      message: "Pesanan ini tidak memiliki informasi tanggal transaksi.",
     });
     return;
   }
 
-  const dateOnly = row.orderProcessedAt.slice(0, 10); // YYYY-MM-DD
-  const searchKey = row.displayedOrderSn || row.trackingNumber || row.bookingSn || "";
+  const dateOnly = targetDate.slice(0, 10); // YYYY-MM-DD
+  const searchKey = row.assistInvoice || row.displayedOrderSn || row.trackingNumber || row.bookingSn || "";
 
   void router.push({
     path: "/hitunganHarian",
@@ -1126,6 +1147,12 @@ function navigateToTransactionDate(row: CancelledOrderRow) {
       tab: "transaksi",
       search: searchKey,
     },
+  });
+
+  $q.notify({
+    type: "info",
+    message: `Membuka transaksi kasir tanggal ${dateOnly}. Jika tidak ada hasil, hapus filter pencarian karena kasir mungkin tidak mencatat No Pesanan.`,
+    timeout: 4500,
   });
 }
 
@@ -1317,19 +1344,42 @@ onUnmounted(() => {
 
 .table-scroll-container {
   width: 100%;
-  overflow-x: auto;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .cancelled-orders-table {
-  min-width: 1150px;
-  max-height: 650px;
+  width: 100%;
+  max-width: 100%;
+  max-height: 700px;
 }
 
+.cancelled-orders-table :deep(table) {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.cancelled-orders-table :deep(th),
 .cancelled-orders-table :deep(td) {
   white-space: normal !important;
   word-break: break-word !important;
-  padding: 8px 10px !important;
+  padding: 8px 8px !important;
   vertical-align: top;
+}
+
+.product-name-wrap {
+  white-space: normal !important;
+  word-break: break-word !important;
+  line-height: 1.35;
+}
+
+.product-sku-wrap {
+  word-break: break-all !important;
+}
+
+.text-break {
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
 }
 
 .border-bottom-light {

@@ -557,6 +557,30 @@
           </div>
         </div>
 
+        <!-- Alert Banner when Search Yields No Results but Day Has Transactions -->
+        <div
+          v-if="!loading && searchFilter && !filteredTransactions.length && allTransactions.length > 0"
+          class="q-pa-sm q-mx-md q-mt-sm bg-amber-1 text-amber-10 rounded-borders row items-center justify-between border-amber"
+        >
+          <div class="row items-center q-gutter-x-sm col-12 col-md-9">
+            <q-icon name="info" size="sm" color="amber-9" />
+            <div class="text-caption">
+              Tidak ditemukan transaksi dengan kata kunci <strong>"{{ searchFilter }}"</strong>, tetapi ada <strong>{{ allTransactions.length }} transaksi kasir</strong> pada tanggal ini. Kemungkinan kasir tidak mencatat No. Pesanan / Resi di sistem.
+            </div>
+          </div>
+          <div class="col-12 col-md-3 text-right q-mt-xs q-mt-md-none">
+            <q-btn
+              size="sm"
+              color="amber-9"
+              outline
+              label="Hapus Filter & Tampilkan Semua"
+              icon="filter_alt_off"
+              @click="searchFilter = ''"
+              no-caps
+            />
+          </div>
+        </div>
+
         <!-- 1 Row 1 Transaction Table -->
         <q-table
           :rows="filteredTransactions"
@@ -1131,7 +1155,7 @@ const shiftTotals = computed(() => {
 });
 
 const filteredTransactions = computed<ShiftDetailRow[]>(() => {
-  const query = searchFilter.value.trim().toLowerCase();
+  const query = String(searchFilter.value || "").trim().toLowerCase();
   const shift = shiftFilter.value;
   const source = sourceFilter.value;
   const platform = platformFilter.value;

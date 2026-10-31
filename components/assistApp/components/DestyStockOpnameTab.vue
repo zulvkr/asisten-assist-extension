@@ -987,7 +987,7 @@ defineExpose({
                   <div class="q-mt-sm text-caption">Memuat data sesi SO...</div>
                 </template>
                 <template v-else>
-                  <q-icon name="sync_saved_locally" size="40px" class="text-grey-4 q-mb-xs" />
+                  <q-icon name="inventory" size="40px" class="text-grey-4 q-mb-xs" />
                   <div>Tidak ada item yang ditemukan pada sesi SO saat ini.</div>
                 </template>
               </td>
@@ -1259,7 +1259,7 @@ defineExpose({
     <q-dialog v-model="showConfirmBatchDialog" persistent>
       <q-card style="min-width: 440px; max-width: 600px;">
         <q-card-section class="row items-center bg-teal text-white">
-          <q-icon name="sync_saved_locally" size="24px" class="q-mr-sm" />
+          <q-icon name="inventory" size="24px" class="q-mr-sm" />
           <div class="text-h6">Konfirmasi Koreksi Stok Desty</div>
           <q-space />
           <q-btn icon="close" flat round dense v-close-popup />
