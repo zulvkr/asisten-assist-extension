@@ -73,6 +73,7 @@
         >
           <q-tab name="pldmp" icon="table_chart" label="PLDMP (Ekspor Pesanan)" />
           <q-tab name="import" icon="cloud_download" label="Impor Pesanan (Desty → Assist)" />
+          <q-tab name="recent_orders_margin" icon="query_stats" label="Margin Real Pesanan Terjual" />
           <q-tab name="cancelled_returns" icon="assignment_return" label="Pengecekan Batal / Retur" />
           <q-tab name="price_update" icon="price_change" label="Update Harga Marketplace" />
           <q-tab name="offline_sync" icon="inventory" label="SO Stok & Koreksi Desty" />
@@ -855,6 +856,20 @@
             <q-table flat bordered dense :rows="importLedger" :columns="ledgerColumns" row-key="marketplaceOrderSn" no-data-label="Belum ada log impor." />
           </q-tab-panel>
 
+          <!-- TAB: MARGIN REAL PESANAN TERJUAL -->
+          <q-tab-panel name="recent_orders_margin" class="q-pa-md">
+            <DestyOrderRealMarginTab
+              :desty-token="destyToken"
+              :desty-tenant-id="destyTenantId"
+              :assist-token="store.assistToken"
+              :assist-hospital-id="store.hospitalId"
+              :assist-api-base-url="store.apiBaseUrl"
+              :assist-catalog="assistCatalog"
+              :mappings="mappings"
+              @refresh-catalog="loadSyncCatalog"
+            />
+          </q-tab-panel>
+
           <!-- TAB 6: PENGECEKAN PESANAN BATAL / RETUR -->
           <q-tab-panel name="cancelled_returns" class="q-pa-md">
             <DestyCancelledOrdersTab :token="destyToken" :tenant-id="destyTenantId" />
@@ -1196,6 +1211,7 @@ import { parseExcludedPrefixes, isSkuPrefixExcluded } from "@/utils/skuPrefixUti
 import DestyStockOpnameTab from "../components/DestyStockOpnameTab.vue";
 import DestyPriceUpdateTab from "../components/DestyPriceUpdateTab.vue";
 import DestyCancelledOrdersTab from "../components/DestyCancelledOrdersTab.vue";
+import DestyOrderRealMarginTab from "../components/DestyOrderRealMarginTab.vue";
 import type { QuickMappingFormData } from "@/types/destyStockOpname";
 import {
   fetchAllDestyOrders,

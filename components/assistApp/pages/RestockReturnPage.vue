@@ -247,23 +247,26 @@
         <q-markup-table flat bordered dense separator="cell" class="invoice-table">
           <thead>
             <tr class="bg-grey-1 text-blue-grey-8">
-              <th class="text-left" style="width: 50px;">No.</th>
-              <th class="text-left" style="min-width: 250px;">PRODUK</th>
-              <th class="text-left" style="width: 110px;">BATCH</th>
-              <th class="text-left" style="width: 145px;">EXP. DATE</th>
-              <th class="text-center" style="width: 100px;">QTY</th>
-              <th class="text-right" style="width: 140px;">HARGA BELI</th>
-              <th class="text-right" style="width: 110px;">PPN</th>
-              <th class="text-right" style="width: 140px;">SUBTOTAL (BELI)</th>
-              <th class="text-right" style="width: 150px;">HRG JUAL</th>
-              <th class="text-right" style="width: 90px;">MARGIN</th>
-              <th v-if="showDiscountColumn" class="text-right" style="width: 90px;">DISC %</th>
-              <th class="text-center" style="width: 120px;">AKSI</th>
+              <th class="text-left" style="width: 40px;">No.</th>
+              <th class="text-left" style="min-width: 220px;">PRODUK</th>
+              <th class="text-left" style="width: 95px;">BATCH</th>
+              <th class="text-left" style="width: 130px;">EXP. DATE</th>
+              <th class="text-center" style="width: 85px;">QTY</th>
+              <th class="text-right" style="width: 115px;">HARGA BELI</th>
+              <th class="text-right" style="width: 95px;">PPN</th>
+              <th class="text-right" style="width: 120px;">SUBTOTAL</th>
+              <th class="text-right" style="width: 115px;">HRG JUAL</th>
+              <th class="text-right" style="width: 75px;">MARGIN</th>
+              <th class="text-right" style="width: 125px;">HRG DESTY</th>
+              <th class="text-right" style="width: 110px;">NET MARGIN (DESTY)</th>
+              <th class="text-center" style="width: 150px;">UPDATE DESTY</th>
+              <th v-if="showDiscountColumn" class="text-right" style="width: 80px;">DISC %</th>
+              <th class="text-center" style="width: 95px;">AKSI</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="formItems.length === 0">
-              <td colspan="12" class="text-center text-grey q-py-xl">
+              <td colspan="15" class="text-center text-grey q-py-xl">
                 <q-icon name="playlist_add" size="lg" class="q-mb-sm text-grey-4" /><br />
                 Belum ada baris barang. Klik "+ Tambah Baris" atau tekan Alt+N.
               </td>
@@ -412,6 +415,67 @@
                   {{ row.margin > 0 ? '+' : '' }}{{ row.margin.toFixed(1) }}%
                 </q-badge>
                 <span v-else class="text-grey-4">-</span>
+              </td>
+
+              <!-- Desty Price -->
+              <td class="text-right q-pt-sm">
+                <div v-if="row.destyCurrentPrice" class="text-weight-bold text-blue-grey-9 font-mono">
+                  {{ formatRupiah(row.destyCurrentPrice) }}
+                </div>
+                <div v-else class="text-caption text-grey-5">
+                  {{ row.isSearchingDesty ? 'Mencari...' : '-' }}
+                </div>
+                <div v-if="row.destyTargetPrice" class="text-xxs text-teal text-weight-medium q-mt-xxs line-height-tight">
+                  Saran: {{ formatRupiah(row.destyTargetPrice) }}
+                </div>
+              </td>
+
+              <!-- Desty Net Margin -->
+              <td class="text-right q-pt-sm">
+                <template v-if="row.destyNetMarginPercent !== null && row.destyNetMarginPercent !== undefined">
+                  <q-badge
+                    :color="row.destyNetMarginPercent >= 15 ? 'positive' : row.destyNetMarginPercent > 0 ? 'warning' : 'negative'"
+                    class="q-px-sm text-weight-bold"
+                  >
+                    {{ row.destyNetMarginPercent > 0 ? '+' : '' }}{{ row.destyNetMarginPercent.toFixed(1) }}%
+                  </q-badge>
+                  <div class="text-xxs text-grey-6 q-mt-xxs">
+                    {{ formatRupiah(row.destyNetMarginNominal) }}
+                  </div>
+                </template>
+                <span v-else class="text-grey-4">-</span>
+              </td>
+
+              <!-- Update Desty Action -->
+              <td>
+                <div class="row no-wrap items-center justify-end q-gutter-x-xs">
+                  <span class="text-caption text-grey-6">Rp</span>
+                  <q-input
+                    v-model.number="row.newDestyPrice"
+                    type="number"
+                    dense
+                    borderless
+                    placeholder="Harga baru"
+                    class="text-right text-body2 text-weight-medium font-mono"
+                    style="width: 80px;"
+                  />
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    color="teal"
+                    icon="cloud_upload"
+                    size="sm"
+                    :loading="row.isUpdatingDesty"
+                    :disabled="!row.destySkuId || !row.newDestyPrice"
+                    @click="updateSingleDestyPriceForRow(row)"
+                  >
+                    <q-tooltip>Update Harga ke Desty Omni (Master SKU: {{ row.destyMasterSku || row.code }})</q-tooltip>
+                  </q-btn>
+                </div>
+                <div v-if="row.destyUpdateStatus" class="text-xxs text-right q-pr-xs q-mt-xxs" :class="row.destyUpdateStatus === 'success' ? 'text-positive' : 'text-negative'">
+                  {{ row.destyUpdateStatus === 'success' ? '✓ Terupdate' : 'Gagal' }}
+                </div>
               </td>
 
               <!-- Discount % Column (if toggled) -->
@@ -838,6 +902,13 @@ import { encryptPayload, wrapEncryptedPayload } from "@/utils/cryptoUtils";
 import FakturScanDialog from "../components/FakturScanDialog.vue";
 import type { ExtractInvoiceResult } from "@/types/fakturScan";
 import type { CatalogCandidate } from "@/services/gemini/invoiceMatchingService";
+import { resolveDestyToken } from "@/composables/destyOmniTokenManager";
+import { fetchDestyPricePage, updateDestyMasterPriceSingle } from "@/composables/destyOmniPriceApi";
+import { loadMarketplacePricingConfig, DEFAULT_MARKETPLACE_PRICING_CONFIG } from "@/services/destySync/pricingConfigStorage";
+import { getDestySkuMappings } from "@/services/destySync/mappingStorage";
+import { calculateTargetPrice, resolveDestyPriceItem } from "@/services/destySync/destyPriceUpdateService";
+import type { DestyPriceRecord, MarketplacePricingConfig } from "@/types/destyPriceUpdate";
+import type { DestySkuMapping } from "@/types/destySync";
 
 const $q = useQuasar();
 const store = useAssistStore();
@@ -901,6 +972,46 @@ const createdName = ref("Ivan");
 const notes = ref("");
 const elseFee = ref<number>(0);
 
+// Desty Integration States
+const destyToken = ref("");
+const destyTenantId = ref("");
+const destyMappings = ref<DestySkuMapping[]>([]);
+const destyPriceCatalog = ref<Record<string, DestyPriceRecord>>({});
+const pricingConfig = ref<MarketplacePricingConfig>(
+  JSON.parse(JSON.stringify(DEFAULT_MARKETPLACE_PRICING_CONFIG))
+);
+
+async function initDestyIntegration() {
+  try {
+    const tokenResult = await resolveDestyToken();
+    if (tokenResult?.token) {
+      destyToken.value = tokenResult.token;
+      destyTenantId.value = tokenResult.tenantId;
+    }
+    pricingConfig.value = await loadMarketplacePricingConfig();
+    destyMappings.value = await getDestySkuMappings();
+
+    if (destyToken.value) {
+      try {
+        const res = await fetchDestyPricePage({
+          token: destyToken.value,
+          tenantId: destyTenantId.value,
+          current: 1,
+          size: 50,
+        });
+        for (const rec of res.records) {
+          if (rec.skuId) destyPriceCatalog.value[String(rec.skuId)] = rec;
+          if (rec.masterSku) destyPriceCatalog.value[rec.masterSku.trim().toUpperCase()] = rec;
+        }
+      } catch {
+        // silent
+      }
+    }
+  } catch (err) {
+    console.warn("Desty probe in restock page:", err);
+  }
+}
+
 // Global Keydown Listener for Alt+N
 function handleGlobalKeydown(e: KeyboardEvent) {
   if (showCreateForm.value && e.altKey && e.key.toLowerCase() === "n") {
@@ -911,6 +1022,7 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener("keydown", handleGlobalKeydown);
+  initDestyIntegration();
 });
 
 onUnmounted(() => {
@@ -1388,6 +1500,17 @@ function addNewRow() {
     margin: 0,
     prevPrice: 0,
     recPrice: 0,
+    destyRecord: null,
+    destySkuId: "",
+    destyMasterSku: "",
+    destyCurrentPrice: null,
+    destyTargetPrice: null,
+    destyNetMarginPercent: null,
+    destyNetMarginNominal: 0,
+    newDestyPrice: 0,
+    isUpdatingDesty: false,
+    destyUpdateStatus: "",
+    isSearchingDesty: false,
     options: [],
     searchTerm: "",
     hasMore: true,
@@ -1530,6 +1653,133 @@ function recalcRow(row: any) {
 
   // Recommended Selling Price helper (15% markup)
   row.recPrice = Math.round(row.baseFee * 1.15);
+
+  // Calculate Desty Margin
+  calculateRowDestyMargin(row);
+}
+
+// Desty calculation helper for row
+async function calculateRowDestyMargin(row: any) {
+  if (!row.code) return;
+
+  // Resolve Desty Record if not yet resolved
+  if (!row.destyRecord && destyToken.value) {
+    const resolved = resolveDestyPriceItem(
+      row.code,
+      destyMappings.value,
+      destyPriceCatalog.value,
+      [row.code, row.name]
+    );
+    if (resolved.destyRecord) {
+      row.destyRecord = resolved.destyRecord;
+      row.destySkuId = resolved.destyRecord.skuId;
+      row.destyMasterSku = resolved.destyRecord.masterSku;
+      row.destyCurrentPrice = Number(resolved.destyRecord.salesPrice || 0);
+    } else if (!row.isSearchingDesty) {
+      // Lazy search on Desty API
+      row.isSearchingDesty = true;
+      try {
+        const page = await fetchDestyPricePage({
+          token: destyToken.value,
+          tenantId: destyTenantId.value,
+          searchParam: row.code,
+          current: 1,
+          size: 5,
+        });
+        if (page.records.length > 0) {
+          const rec = page.records[0];
+          destyPriceCatalog.value[String(rec.skuId)] = rec;
+          if (rec.masterSku) destyPriceCatalog.value[rec.masterSku.trim().toUpperCase()] = rec;
+          row.destyRecord = rec;
+          row.destySkuId = String(rec.skuId);
+          row.destyMasterSku = rec.masterSku;
+          row.destyCurrentPrice = Number(rec.salesPrice || 0);
+        }
+      } catch {
+        // silent
+      } finally {
+        row.isSearchingDesty = false;
+      }
+    }
+  }
+
+  // Cost calculation (HPP per unit including PPN if exclude)
+  const effectiveCost = ppnType.value === "include" ? row.baseFee : Math.round(row.baseFee + row.ppnAmount);
+  if (effectiveCost > 0) {
+    const formulaTarget = calculateTargetPrice(effectiveCost, 1, pricingConfig.value);
+    row.destyTargetPrice = formulaTarget.calculatedPrice;
+    if (!row.newDestyPrice || row.newDestyPrice === 0) {
+      row.newDestyPrice = row.destyCurrentPrice || formulaTarget.calculatedPrice;
+    }
+
+    if (row.destyCurrentPrice && row.destyCurrentPrice > 0) {
+      const adminPct = Math.max(0, Math.min(99, pricingConfig.value.adminPercent || 0)) / 100;
+      const adminFix = Math.max(0, pricingConfig.value.adminFixedPerTx || 0);
+      const netReceived = row.destyCurrentPrice * (1 - adminPct) - adminFix;
+      const profit = Math.round(netReceived - effectiveCost);
+      row.destyNetMarginNominal = profit;
+      row.destyNetMarginPercent = netReceived > 0 ? (profit / netReceived) * 100 : 0;
+    } else {
+      row.destyNetMarginNominal = formulaTarget.profitNominal;
+      row.destyNetMarginPercent = formulaTarget.actualMarginPercent;
+    }
+  }
+}
+
+// Update Desty Master Price directly from row
+async function updateSingleDestyPriceForRow(row: any) {
+  if (!destyToken.value) {
+    $q.notify({
+      type: "warning",
+      message: "Token Desty tidak terdeteksi. Buka tab omni.desty.app terlebih dahulu.",
+    });
+    return;
+  }
+  if (!row.destySkuId) {
+    $q.notify({
+      type: "warning",
+      message: "SKU Desty tidak ditemukan untuk produk ini.",
+    });
+    return;
+  }
+  if (!row.newDestyPrice || row.newDestyPrice <= 0) {
+    $q.notify({
+      type: "warning",
+      message: "Harga Desty baru harus lebih dari 0.",
+    });
+    return;
+  }
+
+  row.isUpdatingDesty = true;
+  row.destyUpdateStatus = "";
+  try {
+    await updateDestyMasterPriceSingle({
+      token: destyToken.value,
+      tenantId: destyTenantId.value,
+      skuId: String(row.destySkuId),
+      price: row.newDestyPrice,
+    });
+
+    row.destyCurrentPrice = row.newDestyPrice;
+    row.destyUpdateStatus = "success";
+    calculateRowDestyMargin(row);
+
+    $q.notify({
+      type: "positive",
+      message: `Harga Desty berhasil di-update ke ${formatRupiah(row.newDestyPrice)} (${row.name})`,
+      position: "top-right",
+    });
+  } catch (err: any) {
+    console.error("Gagal update harga Desty:", err);
+    row.destyUpdateStatus = "error";
+    $q.notify({
+      type: "negative",
+      message: "Gagal update harga Desty: " + (err?.message || String(err)),
+      position: "top-right",
+    });
+  } finally {
+    row.isUpdatingDesty = false;
+  }
 }
 
 // Recalculates all rows when PPN type changes
